@@ -1,0 +1,230 @@
+"""매수 신호 분석 모듈"""
+import pandas as pd
+import pandas_ta as ta
+from typing import Dict, List
+from .price_levels import PriceLevelDetector
+
+
+class BuySignalAnalyzer:
+    """매수 신호를 분석하는 클래스"""
+
+    def __init__(
+        self,
+        knee_threshold: float = 0.15,
+        stop_loss_pct: float = 0.07,
+        chase_risk_threshold: float = 0.25,
+        rsi_period: int = 14,
+        rsi_oversold: int = 30
+    ):
+        """
+        Args:
+            knee_threshold: 무릎 판단 기준 (바닥 대비 상승률)
+            stop_loss_pct: 손절가 비율
+            chase_risk_threshold: 추격매수 위험 기준 (바닥 대비 상승률)
+            rsi_period: RSI 계산 기간
+            rsi_oversold: RSI 과매도 기준
+        """
+        self.knee_threshold = knee_threshold
+        self.stop_loss_pct = stop_loss_pct
+        self.chase_risk_threshold = chase_risk_threshold
+        self.rsi_period = rsi_period
+        self.rsi_oversold = rsi_oversold
+        self.price_detector = PriceLevelDetector()
+
+    def calculate_rsi(self, df: pd.DataFrame) -> pd.Series:
+        """RSI를 계산합니다."""
+        if df is None or df.empty:
+            return pd.Series()
+
+        rsi = ta.rsi(df['Close'], length=self.rsi_period)
+        return rsi
+
+    def check_volume_surge(self, df: pd.DataFrame, multiplier: float = 2.0) -> bool:
+        """
+        거래량 급증 여부를 확인합니다.
+
+        Args:
+            df: 주가 데이터 DataFrame
+            multiplier: 평균 거래량 대비 배수
+
+        Returns:
+            True if 거래량 급증
+        """
+        if df is None or len(df) < 20:
+            return False
+
+        current_volume = df['Volume'].iloc[-1]
+        avg_volume = df['Volume'].tail(20).mean()
+
+        return current_volume >= avg_volume * multiplier
+
+    def check_golden_cross(self, df: pd.DataFrame) -> Dict[str, any]:
+        """
+        골든크로스 발생 여부를 확인합니다.
+
+        Returns:
+            {
+                'is_golden_cross': True/False,
+                'ma_short': 단기 이동평균,
+                'ma_long': 장기 이동평균,
+                'days_ago': 골든크로스 발생 일수 (최근 5일 이내)
+            }
+        """
+        if df is None or len(df) < 60:
+            return {'is_golden_cross': False}
+
+        # 이동평균선이 이미 계산되어 있는지 확인
+        if 'MA20' not in df.columns or 'MA60' not in df.columns:
+            df = df.copy()
+            df['MA20'] = df['Close'].rolling(window=20).mean()
+            df['MA60'] = df['Close'].rolling(window=60).mean()
+
+        # 최근 5일 이내 골든크로스 확인
+        for i in range(1, min(6, len(df))):
+            prev_idx = -i - 1
+            curr_idx = -i
+
+            if pd.isna(df['MA20'].iloc[prev_idx]) or pd.isna(df['MA60'].iloc[prev_idx]):
+                continue
+
+            # 이전에는 MA20 < MA60, 현재는 MA20 > MA60
+            if (df['MA20'].iloc[prev_idx] < df['MA60'].iloc[prev_idx] and
+                df['MA20'].iloc[curr_idx] > df['MA60'].iloc[curr_idx]):
+                return {
+                    'is_golden_cross': True,
+                    'ma_short': df['MA20'].iloc[-1],
+                    'ma_long': df['MA60'].iloc[-1],
+                    'days_ago': i
+                }
+
+        # 현재 골든크로스 상태인지 확인
+        is_current_gc = (df['MA20'].iloc[-1] > df['MA60'].iloc[-1])
+
+        return {
+            'is_golden_cross': False,
+            'ma_short': df['MA20'].iloc[-1],
+            'ma_long': df['MA60'].iloc[-1],
+            'is_currently_above': is_current_gc
+        }
+
+    def calculate_stop_loss_price(self, buy_price: float) -> float:
+        """
+        손절가를 계산합니다.
+
+        Args:
+            buy_price: 매수 가격
+
+        Returns:
+            손절 가격
+        """
+        return buy_price * (1 - self.stop_loss_pct)
+
+    def analyze_buy_signals(self, df: pd.DataFrame) -> Dict[str, any]:
+        """
+        종합적인 매수 신호를 분석합니다.
+
+        Returns:
+            {
+                'knee_status': 무릎 위치 정보,
+                'rsi': RSI 값,
+                'is_rsi_oversold': RSI 과매도 여부,
+                'volume_surge': 거래량 급증 여부,
+                'golden_cross': 골든크로스 정보,
+                'chase_buy_safe': 추격매수 안전 여부,
+                'stop_loss_price': 권장 손절가,
+                'buy_signals': 매수 신호 목록,
+                'buy_score': 매수 점수 (0-100)
+            }
+        """
+        if df is None or df.empty:
+            return {}
+
+        result = {}
+
+        # 1. 무릎 위치 확인
+        knee_status = self.price_detector.is_at_knee(df, self.knee_threshold)
+        result['knee_status'] = knee_status
+
+        # 2. RSI 확인
+        rsi_series = self.calculate_rsi(df)
+        current_rsi = rsi_series.iloc[-1] if not rsi_series.empty else None
+        result['rsi'] = current_rsi
+        result['is_rsi_oversold'] = current_rsi < self.rsi_oversold if current_rsi else False
+
+        # 3. 거래량 확인
+        result['volume_surge'] = self.check_volume_surge(df)
+
+        # 4. 골든크로스 확인
+        result['golden_cross'] = self.check_golden_cross(df)
+
+        # 5. 추격매수 안전성 확인
+        metrics = self.price_detector.calculate_position_metrics(df)
+        from_floor_pct = metrics.get('from_floor_pct', 0)
+        result['chase_buy_safe'] = from_floor_pct < self.chase_risk_threshold
+
+        # 6. 손절가 계산
+        current_price = df['Close'].iloc[-1]
+        result['stop_loss_price'] = self.calculate_stop_loss_price(current_price)
+
+        # 7. 매수 신호 목록
+        buy_signals = []
+        if knee_status.get('is_at_knee'):
+            buy_signals.append("무릎 위치 도달")
+        if result['is_rsi_oversold']:
+            buy_signals.append("RSI 과매도")
+        if result['volume_surge']:
+            buy_signals.append("거래량 급증")
+        if result['golden_cross'].get('is_golden_cross'):
+            days = result['golden_cross'].get('days_ago', 0)
+            buy_signals.append(f"골든크로스 ({days}일 전)")
+
+        result['buy_signals'] = buy_signals
+
+        # 8. 매수 점수 계산 (0-100)
+        score = 0
+        if knee_status.get('is_at_knee'):
+            score += 30
+        if result['is_rsi_oversold']:
+            score += 25
+        if result['volume_surge']:
+            score += 20
+        if result['golden_cross'].get('is_golden_cross'):
+            score += 25
+
+        result['buy_score'] = min(score, 100)
+
+        return result
+
+    def get_buy_recommendation(self, analysis: Dict) -> str:
+        """
+        매수 분석 결과를 바탕으로 추천 메시지를 생성합니다.
+
+        Args:
+            analysis: analyze_buy_signals() 결과
+
+        Returns:
+            추천 메시지
+        """
+        if not analysis:
+            return "분석 불가"
+
+        score = analysis.get('buy_score', 0)
+        signals = analysis.get('buy_signals', [])
+        chase_safe = analysis.get('chase_buy_safe', False)
+
+        if score >= 70:
+            recommendation = "🟢 강력 매수"
+        elif score >= 50:
+            recommendation = "🟡 매수 고려"
+        elif score >= 30:
+            recommendation = "🟠 관망"
+        else:
+            recommendation = "⚪ 매수 부적합"
+
+        if not chase_safe:
+            recommendation += " (⚠️ 추격매수 주의)"
+
+        if signals:
+            recommendation += f" - {', '.join(signals)}"
+
+        return recommendation
