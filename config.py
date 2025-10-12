@@ -38,3 +38,9 @@ MA_LONG = 60   # 장기 이동평균 (일)
 
 # 거래량 설정
 VOLUME_SURGE_MULTIPLIER = 2.0  # 평균 거래량 대비 2배 이상이면 급증으로 판단
+
+# 보고서 저장 설정
+import os
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+REPORTS_DIR = os.path.join(PROJECT_ROOT, "reports")
+LOGS_DIR = os.path.join(PROJECT_ROOT, "logs")

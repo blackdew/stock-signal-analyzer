@@ -1,5 +1,7 @@
 """주식 신호 분석 메인 애플리케이션"""
 import argparse
+import os
+from datetime import datetime
 from src.analysis.analyzer import StockAnalyzer
 from src.report.generator import ReportGenerator
 import config
@@ -27,6 +29,11 @@ def main():
         '--buy-prices',
         nargs='+',
         help='매수 가격 (종목코드:가격 형식, 예: 005930:70000)'
+    )
+    parser.add_argument(
+        '--scheduled',
+        action='store_true',
+        help='스케줄 실행 모드 (자동으로 파일 저장)'
     )
 
     args = parser.parse_args()
@@ -87,8 +94,16 @@ def main():
         reporter.generate_daily_report(analyses)
 
     # 파일로 저장
-    if args.save:
-        reporter.save_report_to_file(analyses)
+    if args.save or args.scheduled:
+        # 스케줄 모드일 경우 reports 디렉토리에 저장
+        if args.scheduled:
+            os.makedirs(config.REPORTS_DIR, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+            filename = os.path.join(config.REPORTS_DIR, f"stock_report_{timestamp}.txt")
+            reporter.save_report_to_file(analyses, filename)
+            print(f"\n스케줄 실행 완료. 보고서: {filename}")
+        else:
+            reporter.save_report_to_file(analyses)
 
 
 if __name__ == "__main__":
