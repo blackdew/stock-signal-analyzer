@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 from src.analysis.analyzer import StockAnalyzer
 from src.report.generator import ReportGenerator
+from src.portfolio.loader import PortfolioLoader
 import config
 
 
@@ -35,18 +36,61 @@ def main():
         action='store_true',
         help='스케줄 실행 모드 (자동으로 파일 저장)'
     )
+    parser.add_argument(
+        '--portfolio',
+        type=str,
+        help='포트폴리오 파일 경로 (기본값: .portfolio)'
+    )
 
     args = parser.parse_args()
 
     # 분석할 종목 결정
-    symbols = args.symbols if args.symbols else config.STOCK_SYMBOLS
+    symbols = None
+    buy_prices = {}
+
+    # 1. --portfolio 옵션이 지정된 경우
+    if args.portfolio:
+        try:
+            # CSV 파일인지 확인
+            if args.portfolio.endswith('.csv'):
+                symbols, buy_prices = PortfolioLoader.load_csv(args.portfolio)
+                print(f"📂 CSV 포트폴리오 파일에서 {len(symbols)}개 종목을 불러왔습니다: {args.portfolio}")
+            else:
+                symbols, buy_prices = PortfolioLoader.load(args.portfolio)
+                print(f"📂 포트폴리오 파일에서 {len(symbols)}개 종목을 불러왔습니다: {args.portfolio}")
+        except (FileNotFoundError, ValueError) as e:
+            print(f"오류: {e}")
+            return
+    # 2. myportfolio 디렉토리에서 최신 CSV 파일 찾기
+    elif os.path.exists(config.MYPORTFOLIO_DIR):
+        try:
+            latest_csv = PortfolioLoader.find_latest_csv(config.MYPORTFOLIO_DIR)
+            symbols, buy_prices = PortfolioLoader.load_csv(latest_csv)
+            csv_filename = os.path.basename(latest_csv)
+            print(f"📂 최신 CSV 포트폴리오에서 {len(symbols)}개 종목을 불러왔습니다: {csv_filename}")
+        except (FileNotFoundError, ValueError) as e:
+            print(f"경고: {e}")
+            symbols = None
+    # 3. 기본 .portfolio 파일이 존재하는 경우
+    if not symbols and os.path.exists(config.DEFAULT_PORTFOLIO_FILE):
+        try:
+            symbols, buy_prices = PortfolioLoader.load(config.DEFAULT_PORTFOLIO_FILE)
+            print(f"📂 기본 포트폴리오 파일에서 {len(symbols)}개 종목을 불러왔습니다")
+        except ValueError as e:
+            print(f"경고: {e}")
+            symbols = None
+    # 4. --symbols 옵션이 지정된 경우
+    if not symbols and args.symbols:
+        symbols = args.symbols
+    # 5. config.py의 종목 사용
+    elif not symbols:
+        symbols = config.STOCK_SYMBOLS
 
     if not symbols:
         print("분석할 종목이 없습니다. config.py에서 STOCK_SYMBOLS를 설정하세요.")
         return
 
-    # 매수 가격 파싱
-    buy_prices = {}
+    # --buy-prices 옵션으로 매수 가격 덮어쓰기 (포트폴리오 파일보다 우선)
     if args.buy_prices:
         for item in args.buy_prices:
             try:

@@ -215,12 +215,17 @@ class ReportGenerator:
             analyses: 분석 결과 리스트
             filename: 파일명 (None이면 자동 생성)
         """
-        if filename is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"stock_report_{timestamp}.txt"
-
         import sys
+        import os
         from io import StringIO
+
+        if filename is None:
+            # reports 디렉토리 자동 생성
+            import config
+            os.makedirs(config.REPORTS_DIR, exist_ok=True)
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = os.path.join(config.REPORTS_DIR, f"stock_report_{timestamp}.txt")
 
         # stdout을 캡처
         old_stdout = sys.stdout

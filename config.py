@@ -44,3 +44,7 @@ import os
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 REPORTS_DIR = os.path.join(PROJECT_ROOT, "reports")
 LOGS_DIR = os.path.join(PROJECT_ROOT, "logs")
+
+# 포트폴리오 파일 설정
+DEFAULT_PORTFOLIO_FILE = os.path.join(PROJECT_ROOT, ".portfolio")
+MYPORTFOLIO_DIR = os.path.join(PROJECT_ROOT, "myportfolio")

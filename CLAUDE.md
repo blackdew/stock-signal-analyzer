@@ -10,8 +10,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### 기본 실행
 ```bash
-# config.py에 설정된 종목 분석
+# 가장 추천: myportfolio 디렉토리의 최신 CSV 파일을 자동으로 사용
 uv run main.py
+
+# 특정 날짜의 CSV 파일 지정
+uv run main.py --portfolio myportfolio/20251015.csv
 
 # 특정 종목만 분석
 uv run main.py --symbols 005930 000660 035420
@@ -22,9 +25,44 @@ uv run main.py --priority
 # 리포트를 파일로 저장
 uv run main.py --save
 
-# 매수 가격을 지정하여 수익률 계산
+# 매수 가격을 지정하여 수익률 계산 (CSV 파일의 매수가보다 우선)
 uv run main.py --buy-prices 005930:70000 000660:120000
 ```
+
+### 포트폴리오 CSV 파일 사용 (추천!)
+`myportfolio/` 디렉토리에 날짜별 CSV 파일로 포트폴리오를 관리합니다:
+
+```bash
+# myportfolio 디렉토리 구조
+myportfolio/
+├── 20251015.csv  # 오늘 날짜
+├── 20251014.csv  # 어제 날짜
+└── example.csv   # 예제 파일
+```
+
+CSV 파일 형식 (엑셀에서도 편집 가능):
+```csv
+종목코드,매수가격,수량,종목명
+005930,71000,150,삼성전자
+000660,120000,30,SK하이닉스
+035420,195000,40,NAVER
+035720,60000,50,카카오
+```
+
+**장점:**
+- 날짜별 포트폴리오 히스토리 관리
+- 엑셀/Google Sheets에서 편집 가능
+- 수량 정보도 함께 관리 (향후 기능 확장 가능)
+- 자동으로 최신 날짜 파일을 찾아서 사용
+
+### 포트폴리오 우선순위
+프로그램은 다음 순서로 포트폴리오를 찾습니다:
+
+1. `--portfolio` 옵션으로 지정한 파일 (CSV 또는 텍스트)
+2. `myportfolio/` 디렉토리의 최신 CSV 파일 ⭐ **추천**
+3. `.portfolio` 파일 (텍스트 형식)
+4. `--symbols` 옵션으로 지정한 종목들
+5. `config.py`의 `STOCK_SYMBOLS` 리스트
 
 ### 의존성 관리
 ```bash
@@ -47,6 +85,13 @@ deactivate
 stock-signals/
 ├── config.py                    # 설정 파일 (종목, 임계값 등)
 ├── main.py                      # 메인 실행 파일
+├── myportfolio/                 # ⭐ CSV 포트폴리오 디렉토리 (날짜별 관리)
+│   ├── 20251015.csv            #    오늘 날짜 포트폴리오
+│   ├── 20251014.csv            #    어제 날짜 포트폴리오
+│   └── example.csv             #    예제 파일
+├── .portfolio                   # 텍스트 포트폴리오 (옵션)
+├── .portfolio.example           # 포트폴리오 파일 예제
+├── reports/                     # 생성된 리포트 저장 디렉토리
 ├── src/
 │   ├── data/
 │   │   └── fetcher.py          # 주식 데이터 가져오기 (FinanceDataReader)
@@ -56,6 +101,8 @@ stock-signals/
 │   │   └── sell_signals.py     # 매도 신호 분석 (데드크로스 등)
 │   ├── analysis/
 │   │   └── analyzer.py         # 종합 분석 엔진
+│   ├── portfolio/
+│   │   └── loader.py           # 포트폴리오 파일 로더 (CSV & 텍스트)
 │   └── report/
 │       └── generator.py        # 리포트 생성기
 └── pyproject.toml              # 프로젝트 의존성
@@ -128,12 +175,31 @@ stock-signals/
 3. `analyze_buy_signals()` 또는 `analyze_sell_signals()`에 로직 통합
 
 ### 새로운 종목 추가
+
+**방법 1: CSV 파일 편집 (가장 추천!)**
+`myportfolio/YYYYMMDD.csv` 파일을 엑셀이나 텍스트 에디터로 편집:
+```csv
+종목코드,매수가격,수량,종목명
+005930,71000,150,삼성전자
+000660,120000,30,SK하이닉스
+035720,60000,50,카카오
+```
+
+**방법 2: .portfolio 파일 사용**
+`.portfolio` 파일에 종목 추가:
+```
+005930:71000  # 삼성전자
+000660:120000 # SK하이닉스
+035720        # 카카오 (새로 추가)
+```
+
+**방법 3: config.py 수정**
 `config.py`의 `STOCK_SYMBOLS` 리스트에 종목 코드 추가:
 ```python
 STOCK_SYMBOLS = [
     "005930",  # 삼성전자
     "000660",  # SK하이닉스
-    # 여기에 추가
+    "035720",  # 카카오 (새로 추가)
 ]
 ```
 
