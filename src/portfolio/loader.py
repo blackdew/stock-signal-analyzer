@@ -98,15 +98,15 @@ class PortfolioLoader:
         return symbol.isdigit() and len(symbol) == 6
 
     @staticmethod
-    def load_csv(filepath: str) -> Tuple[List[str], Dict[str, float]]:
+    def load_csv(filepath: str) -> Tuple[List[str], Dict[str, float], Dict[str, int]]:
         """
-        CSV 포트폴리오 파일을 읽어서 종목 코드와 매수 가격을 반환
+        CSV 포트폴리오 파일을 읽어서 종목 코드, 매수 가격, 수량을 반환
 
         Args:
             filepath: CSV 파일 경로
 
         Returns:
-            (종목 코드 리스트, 매수 가격 딕셔너리)
+            (종목 코드 리스트, 매수 가격 딕셔너리, 수량 딕셔너리)
 
         Raises:
             FileNotFoundError: 파일이 존재하지 않을 때
@@ -117,6 +117,7 @@ class PortfolioLoader:
 
         symbols = []
         buy_prices = {}
+        quantities = {}
 
         with open(filepath, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
@@ -129,6 +130,7 @@ class PortfolioLoader:
                 try:
                     symbol = row['종목코드'].strip()
                     price_str = row['매수가격'].strip().replace(',', '')
+                    quantity_str = row.get('수량', '').strip().replace(',', '')
 
                     if not symbol:
                         continue
@@ -136,6 +138,12 @@ class PortfolioLoader:
                     if price_str:
                         price = float(price_str)
                         buy_prices[symbol] = price
+
+                    if quantity_str:
+                        quantity = int(quantity_str)
+                        quantities[symbol] = quantity
+                    else:
+                        quantities[symbol] = 1  # 기본값 1주
 
                     symbols.append(symbol)
 
@@ -147,7 +155,7 @@ class PortfolioLoader:
         if not symbols:
             raise ValueError(f"CSV 파일에 유효한 종목이 없습니다: {filepath}")
 
-        return symbols, buy_prices
+        return symbols, buy_prices, quantities
 
     @staticmethod
     def find_latest_csv(directory: str) -> str:

@@ -1,9 +1,14 @@
 """주식 신호 분석 메인 애플리케이션"""
 import argparse
 import os
+import webbrowser
+import http.server
+import socketserver
+import threading
 from datetime import datetime
 from src.analysis.analyzer import StockAnalyzer
 from src.report.generator import ReportGenerator
+from src.report.json_generator import JsonReportGenerator
 from src.portfolio.loader import PortfolioLoader
 import config
 
@@ -41,19 +46,25 @@ def main():
         type=str,
         help='포트폴리오 파일 경로 (기본값: .portfolio)'
     )
+    parser.add_argument(
+        '--web',
+        action='store_true',
+        help='웹 대시보드 모드 (JSON 저장 + 웹서버 실행)'
+    )
 
     args = parser.parse_args()
 
     # 분석할 종목 결정
     symbols = None
     buy_prices = {}
+    quantities = {}
 
     # 1. --portfolio 옵션이 지정된 경우
     if args.portfolio:
         try:
             # CSV 파일인지 확인
             if args.portfolio.endswith('.csv'):
-                symbols, buy_prices = PortfolioLoader.load_csv(args.portfolio)
+                symbols, buy_prices, quantities = PortfolioLoader.load_csv(args.portfolio)
                 print(f"📂 CSV 포트폴리오 파일에서 {len(symbols)}개 종목을 불러왔습니다: {args.portfolio}")
             else:
                 symbols, buy_prices = PortfolioLoader.load(args.portfolio)
@@ -65,7 +76,7 @@ def main():
     elif os.path.exists(config.MYPORTFOLIO_DIR):
         try:
             latest_csv = PortfolioLoader.find_latest_csv(config.MYPORTFOLIO_DIR)
-            symbols, buy_prices = PortfolioLoader.load_csv(latest_csv)
+            symbols, buy_prices, quantities = PortfolioLoader.load_csv(latest_csv)
             csv_filename = os.path.basename(latest_csv)
             print(f"📂 최신 CSV 포트폴리오에서 {len(symbols)}개 종목을 불러왔습니다: {csv_filename}")
         except (FileNotFoundError, ValueError) as e:
@@ -124,6 +135,39 @@ def main():
         config.END_DATE,
         buy_prices if buy_prices else None
     )
+
+    # 웹 대시보드 모드
+    if args.web:
+        # JSON 리포트 생성 및 저장
+        json_reporter = JsonReportGenerator()
+        json_path = json_reporter.save_json_report(analyses, buy_prices, quantities)
+        print(f"\n✅ JSON 리포트가 생성되었습니다: {json_path}")
+
+        # 웹서버 실행
+        web_dir = os.path.join(config.PROJECT_ROOT, "web")
+        port = 8002
+
+        # 웹서버를 별도 스레드에서 실행
+        def start_server():
+            os.chdir(web_dir)
+            handler = http.server.SimpleHTTPRequestHandler
+            with socketserver.TCPServer(("", port), handler) as httpd:
+                print(f"\n🌐 웹 대시보드 서버가 시작되었습니다: http://localhost:{port}/dashboard.html")
+                print("   종료하려면 Ctrl+C를 누르세요.\n")
+                httpd.serve_forever()
+
+        server_thread = threading.Thread(target=start_server, daemon=True)
+        server_thread.start()
+
+        # 브라우저 자동 열기
+        webbrowser.open(f"http://localhost:{port}/dashboard.html")
+
+        try:
+            # 서버가 실행되는 동안 대기
+            server_thread.join()
+        except KeyboardInterrupt:
+            print("\n\n웹서버를 종료합니다.")
+        return
 
     # 리포트 생성기 초기화
     reporter = ReportGenerator()

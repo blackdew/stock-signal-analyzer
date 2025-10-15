@@ -10,7 +10,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### 기본 실행
 ```bash
-# 가장 추천: myportfolio 디렉토리의 최신 CSV 파일을 자동으로 사용
+# 웹 대시보드로 보기 (가장 추천!) ⭐
+uv run main.py --web
+
+# 콘솔에서 분석 결과 확인 (myportfolio 디렉토리의 최신 CSV 파일 자동 사용)
 uv run main.py
 
 # 특정 날짜의 CSV 파일 지정
@@ -28,6 +31,23 @@ uv run main.py --save
 # 매수 가격을 지정하여 수익률 계산 (CSV 파일의 매수가보다 우선)
 uv run main.py --buy-prices 005930:70000 000660:120000
 ```
+
+### 웹 대시보드 사용 (추천!)
+```bash
+# 웹 대시보드 실행 - JSON 리포트 생성 + 웹서버 시작 + 브라우저 자동 열기
+uv run main.py --web
+
+# 서버 주소: http://localhost:8000/dashboard.html
+# 종료: Ctrl+C
+```
+
+**웹 대시보드 기능:**
+- 포트폴리오 전체 요약 (총 투자금, 평가금액, 수익률)
+- 매수/매도 우선순위 종목 한눈에 보기
+- 종목별 상세 분석 및 가격 차트 (Chart.js)
+- 필터링 기능 (전체/매수/매도/관망)
+- 반응형 디자인 (모바일/태블릿/PC 지원)
+- 실시간 새로고침 버튼
 
 ### 포트폴리오 CSV 파일 사용 (추천!)
 `myportfolio/` 디렉토리에 날짜별 CSV 파일로 포트폴리오를 관리합니다:
@@ -91,7 +111,16 @@ stock-signals/
 │   └── example.csv             #    예제 파일
 ├── .portfolio                   # 텍스트 포트폴리오 (옵션)
 ├── .portfolio.example           # 포트폴리오 파일 예제
-├── reports/                     # 생성된 리포트 저장 디렉토리
+├── reports/                     # 생성된 텍스트 리포트 저장 디렉토리
+├── web/                         # ⭐ 웹 대시보드
+│   ├── dashboard.html          #    메인 대시보드 페이지
+│   ├── static/
+│   │   ├── css/
+│   │   │   └── style.css       #    스타일시트
+│   │   └── js/
+│   │       └── app.js          #    JavaScript (차트 & UI 로직)
+│   └── data/                   #    JSON 리포트 저장 위치
+│       └── latest.json         #    최신 분석 결과
 ├── src/
 │   ├── data/
 │   │   └── fetcher.py          # 주식 데이터 가져오기 (FinanceDataReader)
@@ -104,7 +133,8 @@ stock-signals/
 │   ├── portfolio/
 │   │   └── loader.py           # 포트폴리오 파일 로더 (CSV & 텍스트)
 │   └── report/
-│       └── generator.py        # 리포트 생성기
+│       ├── generator.py        # 텍스트 리포트 생성기
+│       └── json_generator.py   # JSON 리포트 생성기 (웹 대시보드용)
 └── pyproject.toml              # 프로젝트 의존성
 ```
 
@@ -138,8 +168,13 @@ stock-signals/
    - 매수/매도 우선순위 종목 추출
 
 6. **ReportGenerator** (src/report/generator.py)
-   - 분석 결과를 보기 좋은 형태로 출력
-   - 파일 저장 기능
+   - 분석 결과를 텍스트 형태로 출력
+   - 텍스트 파일 저장 기능
+
+7. **JsonReportGenerator** (src/report/json_generator.py)
+   - 분석 결과를 JSON 형식으로 변환
+   - 포트폴리오 요약 계산 (투자금, 평가금액, 수익률)
+   - 웹 대시보드용 데이터 생성
 
 ## 설정 (config.py)
 
