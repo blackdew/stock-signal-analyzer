@@ -9,7 +9,9 @@ async function loadReport() {
     loading.style.display = 'block';
 
     try {
-        const response = await fetch('data/latest.json');
+        // 캐시 무효화를 위해 타임스탬프 추가
+        const timestamp = new Date().getTime();
+        const response = await fetch(`data/latest.json?t=${timestamp}`);
         if (!response.ok) {
             throw new Error('리포트를 불러올 수 없습니다.');
         }

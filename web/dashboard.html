@@ -4,7 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>주식 신호 분석 대시보드</title>
-    <link rel="stylesheet" href="static/css/style.css">
+    <script>
+        // 분 단위 타임스탬프로 캐시 무효화
+        const cacheBuster = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+        document.write(`<link rel="stylesheet" href="static/css/style.css?t=${cacheBuster}">`);
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -73,7 +77,11 @@
         </section>
     </div>
 
-    <script src="static/js/app.js"></script>
+    <script>
+        // JavaScript 파일도 캐시 무효화
+        const cacheBuster = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+        document.write(`<script src="static/js/app.js?t=${cacheBuster}"><\/script>`);
+    </script>
     <script>
         // 페이지 로드 시 리포트 불러오기
         window.addEventListener('DOMContentLoaded', loadReport);
