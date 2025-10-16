@@ -5,6 +5,7 @@ from ..data.fetcher import StockDataFetcher
 from ..indicators.price_levels import PriceLevelDetector
 from ..indicators.buy_signals import BuySignalAnalyzer
 from ..indicators.sell_signals import SellSignalAnalyzer
+from ..utils.market_analyzer import get_market_analyzer
 
 
 class StockAnalyzer:
@@ -52,6 +53,7 @@ class StockAnalyzer:
             rsi_period,
             rsi_overbought
         )
+        self.market_analyzer = get_market_analyzer()
 
     def analyze_stock(
         self,
@@ -108,17 +110,21 @@ class StockAnalyzer:
         knee_info = self.price_detector.is_at_knee(df, use_dynamic_threshold=True)
         shoulder_info = self.price_detector.is_at_shoulder(df, use_dynamic_threshold=True)
 
-        # 매수 신호 분석
-        buy_analysis = self.buy_analyzer.analyze_buy_signals(df)
+        # 시장 추세 분석
+        market_trend = self.market_analyzer.analyze_trend()
+        market_summary = self.market_analyzer.get_market_summary()
+
+        # 매수 신호 분석 (시장 추세 전달)
+        buy_analysis = self.buy_analyzer.analyze_buy_signals(df, market_trend)
         buy_recommendation = self.buy_analyzer.get_buy_recommendation(buy_analysis)
 
-        # 매도 신호 분석
-        sell_analysis = self.sell_analyzer.analyze_sell_signals(df, buy_price)
+        # 매도 신호 분석 (시장 추세 전달)
+        sell_analysis = self.sell_analyzer.analyze_sell_signals(df, buy_price, market_trend)
         sell_recommendation = self.sell_analyzer.get_sell_recommendation(sell_analysis)
 
-        # 종합 추천
-        buy_score = buy_analysis.get('buy_score', 0)
-        sell_score = sell_analysis.get('sell_score', 0)
+        # 종합 추천 (시장 조정 점수 기반)
+        buy_score = buy_analysis.get('market_adjusted_score', buy_analysis.get('buy_score', 0))
+        sell_score = sell_analysis.get('market_adjusted_score', sell_analysis.get('sell_score', 0))
 
         if buy_score > sell_score:
             overall_recommendation = buy_recommendation
@@ -141,6 +147,7 @@ class StockAnalyzer:
             'volatility_info': volatility_info,
             'knee_info': knee_info,
             'shoulder_info': shoulder_info,
+            'market_summary': market_summary,
             'buy_analysis': buy_analysis,
             'buy_recommendation': buy_recommendation,
             'sell_analysis': sell_analysis,
@@ -198,17 +205,23 @@ class StockAnalyzer:
         # 에러가 있는 종목 제외
         valid_analyses = [a for a in analyses if 'error' not in a]
 
-        # 액션에 맞는 점수로 정렬
+        # 액션에 맞는 점수로 정렬 (시장 조정 점수 우선 사용)
         if action == 'BUY':
             sorted_analyses = sorted(
                 valid_analyses,
-                key=lambda x: x.get('buy_analysis', {}).get('buy_score', 0),
+                key=lambda x: x.get('buy_analysis', {}).get(
+                    'market_adjusted_score',
+                    x.get('buy_analysis', {}).get('buy_score', 0)
+                ),
                 reverse=True
             )
         elif action == 'SELL':
             sorted_analyses = sorted(
                 valid_analyses,
-                key=lambda x: x.get('sell_analysis', {}).get('sell_score', 0),
+                key=lambda x: x.get('sell_analysis', {}).get(
+                    'market_adjusted_score',
+                    x.get('sell_analysis', {}).get('sell_score', 0)
+                ),
                 reverse=True
             )
         else:

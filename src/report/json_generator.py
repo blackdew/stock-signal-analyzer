@@ -68,6 +68,7 @@ class JsonReportGenerator:
             'volatility_info': self._serialize_volatility_info(analysis.get('volatility_info', {})),
             'knee_info': self._serialize_knee_info(analysis.get('knee_info', {})),
             'shoulder_info': self._serialize_shoulder_info(analysis.get('shoulder_info', {})),
+            'market_summary': self._serialize_market_summary(analysis.get('market_summary', {})),
             'buy_analysis': self._serialize_buy_analysis(analysis.get('buy_analysis', {})),
             'buy_recommendation': analysis.get('buy_recommendation', ''),
             'sell_analysis': self._serialize_sell_analysis(analysis.get('sell_analysis', {})),
@@ -121,10 +122,25 @@ class JsonReportGenerator:
             'message': shoulder_info.get('message', '')
         }
 
+    def _serialize_market_summary(self, market_summary: Dict) -> Dict:
+        """시장 요약 정보를 직렬화"""
+        return {
+            'trend': market_summary.get('trend', 'UNKNOWN'),
+            'trend_pct': self._convert_to_python_type(market_summary.get('trend_pct', 0)),
+            'volatility': market_summary.get('volatility', 'UNKNOWN'),
+            'volatility_value': self._convert_to_python_type(market_summary.get('volatility_value', 0)),
+            'current_price': self._convert_to_python_type(market_summary.get('current_price', 0)),
+            'ma20': self._convert_to_python_type(market_summary.get('ma20', 0)),
+            'ma60': self._convert_to_python_type(market_summary.get('ma60', 0)),
+            'message': market_summary.get('message', '')
+        }
+
     def _serialize_buy_analysis(self, buy_analysis: Dict) -> Dict:
         """매수 분석 정보를 직렬화"""
         return {
             'buy_score': self._convert_to_python_type(buy_analysis.get('buy_score', 0)),
+            'market_adjusted_score': self._convert_to_python_type(buy_analysis.get('market_adjusted_score', 0)),
+            'market_trend': buy_analysis.get('market_trend', 'UNKNOWN'),
             'buy_signals': buy_analysis.get('buy_signals', []),
             'rsi': self._convert_to_python_type(buy_analysis.get('rsi')) if buy_analysis.get('rsi') else None,
             'stop_loss_price': self._convert_to_python_type(buy_analysis.get('stop_loss_price')) if buy_analysis.get('stop_loss_price') else None,
@@ -136,6 +152,8 @@ class JsonReportGenerator:
         """매도 분석 정보를 직렬화"""
         return {
             'sell_score': self._convert_to_python_type(sell_analysis.get('sell_score', 0)),
+            'market_adjusted_score': self._convert_to_python_type(sell_analysis.get('market_adjusted_score', 0)),
+            'market_trend': sell_analysis.get('market_trend', 'UNKNOWN'),
             'sell_signals': sell_analysis.get('sell_signals', []),
             'sell_strategy': sell_analysis.get('sell_strategy', ''),
             'profit_rate': self._convert_to_python_type(sell_analysis.get('profit_rate')) if sell_analysis.get('profit_rate') is not None else None,
@@ -239,13 +257,13 @@ class JsonReportGenerator:
 
         buy_priorities = sorted(
             valid_stocks,
-            key=lambda x: x['buy_analysis']['buy_score'],
+            key=lambda x: x['buy_analysis'].get('market_adjusted_score', x['buy_analysis']['buy_score']),
             reverse=True
         )[:5]
 
         sell_priorities = sorted(
             valid_stocks,
-            key=lambda x: x['sell_analysis']['sell_score'],
+            key=lambda x: x['sell_analysis'].get('market_adjusted_score', x['sell_analysis']['sell_score']),
             reverse=True
         )[:5]
 
@@ -265,6 +283,7 @@ class JsonReportGenerator:
                     'name': s['name'],
                     'current_price': s['current_price'],
                     'buy_score': s['buy_analysis']['buy_score'],
+                    'market_adjusted_score': s['buy_analysis'].get('market_adjusted_score', s['buy_analysis']['buy_score']),
                     'recommendation': s['buy_recommendation']
                 }
                 for s in buy_priorities
@@ -275,6 +294,7 @@ class JsonReportGenerator:
                     'name': s['name'],
                     'current_price': s['current_price'],
                     'sell_score': s['sell_analysis']['sell_score'],
+                    'market_adjusted_score': s['sell_analysis'].get('market_adjusted_score', s['sell_analysis']['sell_score']),
                     'recommendation': s['sell_recommendation'],
                     'profit_rate': s['sell_analysis']['profit_rate']
                 }

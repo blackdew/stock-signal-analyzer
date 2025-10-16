@@ -119,9 +119,17 @@ class BuySignalAnalyzer:
         """
         return buy_price * (1 - self.stop_loss_pct)
 
-    def analyze_buy_signals(self, df: pd.DataFrame) -> Dict[str, any]:
+    def analyze_buy_signals(
+        self,
+        df: pd.DataFrame,
+        market_trend: str = 'UNKNOWN'
+    ) -> Dict[str, any]:
         """
         종합적인 매수 신호를 분석합니다.
+
+        Args:
+            df: 주가 데이터 DataFrame
+            market_trend: 시장 추세 ('BULL', 'BEAR', 'SIDEWAYS', 'UNKNOWN')
 
         Returns:
             {
@@ -133,7 +141,9 @@ class BuySignalAnalyzer:
                 'chase_buy_safe': 추격매수 안전 여부,
                 'stop_loss_price': 권장 손절가,
                 'buy_signals': 매수 신호 목록,
-                'buy_score': 매수 점수 (0-100)
+                'buy_score': 매수 점수 (0-100),
+                'market_trend': 시장 추세,
+                'market_adjusted_score': 시장 필터 적용 후 점수
             }
         """
         if df is None or df.empty:
@@ -193,6 +203,29 @@ class BuySignalAnalyzer:
 
         result['buy_score'] = min(score, 100)
 
+        # 9. 시장 필터 적용
+        result['market_trend'] = market_trend
+        market_adjusted_score = score
+
+        if market_trend == 'BEAR':
+            # 하락장에서는 강력 매수 신호(80점 이상)가 아니면 감점
+            if score < 80:
+                market_adjusted_score = score * 0.5  # 50% 감점
+                if "⚠️ 시장 하락장" not in buy_signals:
+                    buy_signals.append("⚠️ 시장 하락장")
+        elif market_trend == 'BULL':
+            # 상승장에서는 가산점
+            market_adjusted_score = score * 1.1  # 10% 가산점
+            if "📈 시장 상승장" not in buy_signals:
+                buy_signals.append("📈 시장 상승장")
+        elif market_trend == 'SIDEWAYS':
+            # 횡보장은 점수 유지
+            if "➡️ 시장 횡보장" not in buy_signals:
+                buy_signals.append("➡️ 시장 횡보장")
+
+        result['market_adjusted_score'] = min(market_adjusted_score, 100)
+        result['buy_signals'] = buy_signals  # 시장 필터 메시지 반영
+
         return result
 
     def get_buy_recommendation(self, analysis: Dict) -> str:
@@ -208,7 +241,8 @@ class BuySignalAnalyzer:
         if not analysis:
             return "분석 불가"
 
-        score = analysis.get('buy_score', 0)
+        # 시장 조정 점수를 우선 사용, 없으면 기본 점수 사용
+        score = analysis.get('market_adjusted_score', analysis.get('buy_score', 0))
         signals = analysis.get('buy_signals', [])
         chase_safe = analysis.get('chase_buy_safe', False)
 

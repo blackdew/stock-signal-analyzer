@@ -189,7 +189,8 @@ class SellSignalAnalyzer:
     def analyze_sell_signals(
         self,
         df: pd.DataFrame,
-        buy_price: Optional[float] = None
+        buy_price: Optional[float] = None,
+        market_trend: str = 'UNKNOWN'
     ) -> Dict[str, any]:
         """
         종합적인 매도 신호를 분석합니다.
@@ -197,6 +198,7 @@ class SellSignalAnalyzer:
         Args:
             df: 주가 데이터 DataFrame
             buy_price: 매수 가격 (수익률 계산용, 선택사항)
+            market_trend: 시장 추세 ('BULL', 'BEAR', 'SIDEWAYS', 'UNKNOWN')
 
         Returns:
             {
@@ -209,7 +211,9 @@ class SellSignalAnalyzer:
                 'volatility': 변동성,
                 'sell_strategy': 매도 전략 추천,
                 'sell_signals': 매도 신호 목록,
-                'sell_score': 매도 점수 (0-100)
+                'sell_score': 매도 점수 (0-100),
+                'market_trend': 시장 추세,
+                'market_adjusted_score': 시장 필터 적용 후 점수
             }
         """
         if df is None or df.empty:
@@ -272,6 +276,29 @@ class SellSignalAnalyzer:
 
         result['sell_score'] = min(score, 100)
 
+        # 10. 시장 필터 적용
+        result['market_trend'] = market_trend
+        market_adjusted_score = score
+
+        if market_trend == 'BULL':
+            # 상승장에서는 강력 매도 신호(80점 이상)가 아니면 감점
+            if score < 80:
+                market_adjusted_score = score * 0.7  # 30% 감점
+                if "📈 시장 상승장 (보유 유리)" not in sell_signals:
+                    sell_signals.append("📈 시장 상승장 (보유 유리)")
+        elif market_trend == 'BEAR':
+            # 하락장에서는 매도 신호 강화
+            market_adjusted_score = score * 1.2  # 20% 가산점
+            if "⚠️ 시장 하락장 (매도 고려)" not in sell_signals:
+                sell_signals.append("⚠️ 시장 하락장 (매도 고려)")
+        elif market_trend == 'SIDEWAYS':
+            # 횡보장은 점수 유지
+            if "➡️ 시장 횡보장" not in sell_signals:
+                sell_signals.append("➡️ 시장 횡보장")
+
+        result['market_adjusted_score'] = min(market_adjusted_score, 100)
+        result['sell_signals'] = sell_signals  # 시장 필터 메시지 반영
+
         return result
 
     def get_sell_recommendation(self, analysis: Dict) -> str:
@@ -287,7 +314,8 @@ class SellSignalAnalyzer:
         if not analysis:
             return "분석 불가"
 
-        score = analysis.get('sell_score', 0)
+        # 시장 조정 점수를 우선 사용, 없으면 기본 점수 사용
+        score = analysis.get('market_adjusted_score', analysis.get('sell_score', 0))
         signals = analysis.get('sell_signals', [])
         strategy = analysis.get('sell_strategy', '보유')
         profit_rate = analysis.get('profit_rate')

@@ -32,6 +32,9 @@ function renderDashboard() {
     document.getElementById('report-date').textContent =
         `생성일: ${reportDate.toLocaleString('ko-KR')}`;
 
+    // 시장 정보 표시
+    renderMarketInfo();
+
     // 포트폴리오 요약
     renderPortfolioSummary();
 
@@ -40,6 +43,84 @@ function renderDashboard() {
 
     // 종목별 분석
     renderStocks();
+}
+
+// 시장 정보 렌더링
+function renderMarketInfo() {
+    // 첫 번째 종목의 market_summary를 사용 (모든 종목이 동일한 시장 정보를 가짐)
+    const firstStock = reportData.stocks.find(s => !s.error && s.market_summary);
+    if (!firstStock || !firstStock.market_summary) {
+        return;
+    }
+
+    const marketSummary = firstStock.market_summary;
+    const marketInfoSection = document.getElementById('market-info');
+
+    if (!marketInfoSection) {
+        console.error('market-info 섹션을 찾을 수 없습니다.');
+        return;
+    }
+
+    // 시장 추세 아이콘 및 색상
+    const trendIcons = {
+        'BULL': '📈',
+        'BEAR': '📉',
+        'SIDEWAYS': '➡️',
+        'UNKNOWN': '❓'
+    };
+    const trendColors = {
+        'BULL': '#4CAF50',
+        'BEAR': '#F44336',
+        'SIDEWAYS': '#FF9800',
+        'UNKNOWN': '#999'
+    };
+
+    const trendIcon = trendIcons[marketSummary.trend] || '❓';
+    const trendColor = trendColors[marketSummary.trend] || '#999';
+
+    // 변동성 색상
+    const volatilityColors = {
+        'LOW': '#4CAF50',
+        'MEDIUM': '#FF9800',
+        'HIGH': '#F44336',
+        'UNKNOWN': '#999'
+    };
+    const volatilityColor = volatilityColors[marketSummary.volatility] || '#999';
+
+    marketInfoSection.innerHTML = `
+        <div style="background: white; border: 2px solid ${trendColor}; border-left: 6px solid ${trendColor}; padding: 20px; margin: 20px 0; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 250px;">
+                    <div style="font-size: 16px; font-weight: 700; color: ${trendColor}; margin-bottom: 8px;">
+                        ${trendIcon} KOSPI 시장 상황
+                    </div>
+                    <div style="font-size: 13px; color: #555; font-weight: 500;">
+                        ${marketSummary.message}
+                    </div>
+                </div>
+                <div style="display: flex; gap: 30px; align-items: center;">
+                    <div style="text-align: center; padding: 10px 15px; background: ${trendColor}11; border-radius: 8px;">
+                        <div style="font-size: 11px; color: #666; margin-bottom: 5px; font-weight: 600;">추세 차이 (MA20-MA60)</div>
+                        <div style="font-size: 18px; font-weight: 700; color: ${trendColor};">
+                            ${formatPercentage(marketSummary.trend_pct * 100)}
+                        </div>
+                    </div>
+                    <div style="text-align: center; padding: 10px 15px; background: ${volatilityColor}11; border-radius: 8px;">
+                        <div style="font-size: 11px; color: #666; margin-bottom: 5px; font-weight: 600;">시장 변동성</div>
+                        <div style="font-size: 18px; font-weight: 700; color: ${volatilityColor};">
+                            ${marketSummary.volatility}
+                        </div>
+                    </div>
+                    <div style="text-align: center; padding: 10px 15px; background: #f5f5f5; border-radius: 8px;">
+                        <div style="font-size: 11px; color: #666; margin-bottom: 5px; font-weight: 600;">KOSPI 지수</div>
+                        <div style="font-size: 18px; font-weight: 700; color: #333;">
+                            ${formatPrice(marketSummary.current_price)}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
 }
 
 // 포트폴리오 요약 렌더링

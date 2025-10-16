@@ -42,8 +42,9 @@ uv run main.py --web
 ```
 
 **웹 대시보드 기능:**
+- **⭐ NEW: KOSPI 시장 상황 표시** (상승장/하락장/횡보장, MA20-MA60 추세 차이)
 - 포트폴리오 전체 요약 (총 투자금, 평가금액, 수익률)
-- 매수/매도 우선순위 종목 한눈에 보기
+- 매수/매도 우선순위 종목 한눈에 보기 (시장 조정 점수 기반)
 - 종목별 상세 분석 및 가격 차트 (Chart.js)
 - **⭐ NEW: 변동성 정보 표시 (ATR 기반 동적 임계값)**
 - 필터링 기능 (전체/매수/매도/관망)
@@ -133,6 +134,9 @@ stock-signals/
 │   │   └── analyzer.py         # 종합 분석 엔진
 │   ├── portfolio/
 │   │   └── loader.py           # 포트폴리오 파일 로더 (CSV & 텍스트)
+│   ├── utils/                  # ⭐ NEW: 유틸리티 모듈
+│   │   ├── __init__.py
+│   │   └── market_analyzer.py  # 시장 추세 분석 (KOSPI)
 │   └── report/
 │       ├── generator.py        # 텍스트 리포트 생성기
 │       └── json_generator.py   # JSON 리포트 생성기 (웹 대시보드용)
@@ -153,29 +157,39 @@ stock-signals/
    - **⭐ NEW: 동적 무릎/어깨 임계값 (ATR 기반, 종목별 맞춤형)**
    - 변동성 등급 분류 (LOW/MEDIUM/HIGH)
 
-3. **BuySignalAnalyzer** (src/indicators/buy_signals.py)
+3. **MarketAnalyzer** (src/utils/market_analyzer.py) ⭐ NEW
+   - KOSPI 지수 데이터 가져오기 및 캐싱
+   - MA20/MA60 기반 시장 추세 분석 (BULL/BEAR/SIDEWAYS)
+   - 시장 변동성 계산
+   - 싱글톤 패턴으로 효율적 데이터 관리
+
+4. **BuySignalAnalyzer** (src/indicators/buy_signals.py)
    - 매수 신호 분석: RSI 과매도, 거래량 급증, 골든크로스
+   - **⭐ NEW: 시장 필터 적용** (하락장 50% 감점, 상승장 10% 가산점)
    - 손절가 계산 (매수가 -7%)
    - 추격매수 위험도 평가
-   - 매수 점수 (0-100) 산출
+   - 매수 점수 (0-100) 산출 및 시장 조정 점수
 
-4. **SellSignalAnalyzer** (src/indicators/sell_signals.py)
+5. **SellSignalAnalyzer** (src/indicators/sell_signals.py)
    - 매도 신호 분석: RSI 과매수, 거래량 감소, 데드크로스
+   - **⭐ NEW: 시장 필터 적용** (상승장 30% 감점, 하락장 20% 가산점)
    - 변동성 계산 및 전량/분할 매도 전략 추천
    - 수익률 기반 매도 판단
-   - 매도 점수 (0-100) 산출
+   - 매도 점수 (0-100) 산출 및 시장 조정 점수
 
-5. **StockAnalyzer** (src/analysis/analyzer.py)
+6. **StockAnalyzer** (src/analysis/analyzer.py)
    - 위 모든 분석기를 통합
+   - **⭐ NEW: MarketAnalyzer 통합** (모든 종목 분석 시 시장 추세 전달)
    - 여러 종목 동시 분석 지원
-   - 매수/매도 우선순위 종목 추출
+   - 시장 조정 점수 기반 매수/매도 우선순위 종목 추출
 
-6. **ReportGenerator** (src/report/generator.py)
+7. **ReportGenerator** (src/report/generator.py)
    - 분석 결과를 텍스트 형태로 출력
    - 텍스트 파일 저장 기능
 
-7. **JsonReportGenerator** (src/report/json_generator.py)
+8. **JsonReportGenerator** (src/report/json_generator.py)
    - 분석 결과를 JSON 형식으로 변환
+   - **⭐ NEW: 시장 정보 및 조정 점수 포함**
    - 포트폴리오 요약 계산 (투자금, 평가금액, 수익률)
    - 웹 대시보드용 데이터 생성
 
@@ -199,6 +213,10 @@ stock-signals/
 3. **거래량 급증**: 평균 거래량의 2배 이상
 4. **골든크로스**: MA20이 MA60을 상향 돌파
 5. **추격매수 체크**: 바닥 대비 25% 이상 상승 시 경고
+6. **⭐ NEW: 시장 필터**:
+   - 하락장: 강력 매수(80점 이상)가 아니면 50% 감점
+   - 상승장: 모든 매수 신호에 10% 가산점
+   - 횡보장: 점수 유지
 
 ### 매도 신호
 1. **천장 대비 어깨 도달**:
@@ -208,6 +226,10 @@ stock-signals/
 3. **거래량 감소**: 평균 거래량의 70% 이하
 4. **데드크로스**: MA20이 MA60을 하향 돌파
 5. **매도 전략**: 수익률과 변동성에 따라 전량/분할 매도 추천
+6. **⭐ NEW: 시장 필터**:
+   - 상승장: 강력 매도(80점 이상)가 아니면 30% 감점 (보유 유리)
+   - 하락장: 모든 매도 신호에 20% 가산점
+   - 횡보장: 점수 유지
 
 ### ⭐ 변동성 기반 분석 (Phase 1 신규 기능)
 
@@ -222,6 +244,21 @@ stock-signals/
 - 삼성전자 같은 안정적 종목: 작은 움직임도 신호로 감지
 - 바이오/테마주 같은 고변동성 종목: 노이즈 필터링
 - 시장 상황 변화에 자동으로 적응
+
+### ⭐ 시장 필터 (Phase 1 신규 기능)
+
+**KOSPI 지수 추세 분석:**
+- MA20/MA60 기준으로 시장 국면 자동 판단
+- 추세 구분:
+  - **상승장 (BULL)**: MA20 > MA60 (차이 2% 이상)
+  - **하락장 (BEAR)**: MA20 < MA60 (차이 -2% 이하)
+  - **횡보장 (SIDEWAYS)**: 차이 ±2% 이내
+
+**시장 필터 적용 효과:**
+- 하락장에서 무분별한 매수 방지
+- 상승장에서 매수 기회 적극 활용
+- 상승장에서 성급한 매도 방지
+- 하락장에서 빠른 손절 유도
 
 ## 개발 가이드
 
