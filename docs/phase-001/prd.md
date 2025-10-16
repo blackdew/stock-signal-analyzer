@@ -31,7 +31,11 @@
 - [x] **모든 임계값이 변동성 기반으로 동적 조정됨** ✅ (2025-10-16 완료)
   - ATR 계산 및 변동성 등급 분류 구현
   - 동적 무릎/어깨 임계값 적용
-- [ ] KOSPI 추세에 따라 매수/매도 점수가 조정됨 (다음 단계)
+- [x] **KOSPI 추세에 따라 매수/매도 점수가 조정됨** ✅ (2025-10-16 완료)
+  - MarketAnalyzer 모듈 생성 (KOSPI MA20/MA60 분석)
+  - 매수 신호: 하락장 50% 페널티, 상승장 10% 보너스
+  - 매도 신호: 상승장 30% 페널티, 하락장 20% 보너스
+  - 웹 대시보드에 시장 정보 표시
 - [ ] 손실 중인 종목에 대한 명확한 손절 신호 제공 (다음 단계)
 - [ ] 모든 API 호출 및 계산에 예외 처리 적용 (일부 완료, ATR 예외 처리)
 - [ ] 주요 이벤트에 대한 로깅 완료 (계획 단계)
@@ -400,39 +404,55 @@ def setup_logger(name: str, log_file: str = None, level=logging.INFO):
 
 ## 🔄 변경 사항 요약
 
-### 파일 수정
-1. **src/indicators/price_levels.py**
-   - ATR 계산 메서드 추가
-   - 동적 임계값 계산 로직 추가
-   - 변동성 등급 분류 추가
+### 파일 수정 (완료)
+1. **src/indicators/price_levels.py** ✅
+   - ATR 계산 메서드 추가 (calculate_atr)
+   - 동적 임계값 계산 로직 추가 (is_at_knee, is_at_shoulder)
+   - 변동성 등급 분류 추가 (calculate_volatility_level)
+   - 예외 처리 강화
 
-2. **src/indicators/buy_signals.py**
+2. **src/indicators/buy_signals.py** ✅
    - 동적 무릎 임계값 적용
-   - 시장 필터 통합
-   - 안전한 지표 계산 함수로 교체
+   - 시장 필터 통합 (market_trend 파라미터)
+   - market_adjusted_score 반환값 추가
 
-3. **src/indicators/sell_signals.py**
-   - 손절 로직 통합
-   - Trailing stop 계산 추가
-   - 안전한 지표 계산 함수로 교체
+3. **src/indicators/sell_signals.py** ✅
+   - 시장 필터 통합 (market_trend 파라미터)
+   - market_adjusted_score 반환값 추가
 
-4. **src/analysis/analyzer.py**
-   - 시장 추세 분석 메서드 추가
-   - 점수 조정 로직 추가
-   - 예외 처리 강화
+4. **src/analysis/analyzer.py** ✅
+   - MarketAnalyzer 인스턴스 추가
+   - analyze_stock()에서 시장 추세 분석 및 전달
+   - market_summary를 분석 결과에 포함
 
-5. **src/data/fetcher.py**
-   - 재시도 로직 추가
-   - 예외 처리 강화
-   - 로깅 추가
+5. **src/report/json_generator.py** ✅
+   - _serialize_market_summary() 메서드 추가
+   - buy/sell 분석에 market_adjusted_score 직렬화
+   - 우선순위 정렬 시 adjusted score 사용
 
-### 신규 파일
-1. **src/utils/logger.py**
-   - 로깅 유틸리티
+6. **web/dashboard.html** ✅
+   - 시장 정보 표시 영역 추가 (market-info div)
 
-2. **src/utils/market_analyzer.py**
-   - 시장 추세 분석
-   - 시장 변동성 계산
+7. **web/static/js/app.js** ✅
+   - renderMarketInfo() 함수 추가
+   - 시장 추세별 색상 및 아이콘 표시
+
+### 신규 파일 (완료)
+1. **src/utils/__init__.py** ✅
+   - 유틸리티 모듈 패키지 초기화
+
+2. **src/utils/market_analyzer.py** ✅
+   - MarketAnalyzer 클래스 구현
+   - KOSPI 추세 분석 (analyze_trend)
+   - 시장 변동성 계산 (calculate_volatility)
+   - 시장 요약 정보 (get_market_summary)
+   - 1시간 캐싱 및 싱글톤 패턴
+
+### 미완료 (다음 단계)
+- **src/utils/logger.py** (Task 4.1)
+- **src/data/fetcher.py 수정** (Task 4.2)
+- 손절 로직 강화 (Task 3.1-3.3)
+- 예외 처리 개선 (Task 4.3-4.5)
 
 ---
 
@@ -535,22 +555,42 @@ def setup_logger(name: str, log_file: str = None, level=logging.INFO):
 - [x] 변동성 등급 분류 시스템 구현
 - [x] 동적 무릎/어깨 임계값 구현
 - [x] JSON 리포트 생성기 업데이트
-- [x] 웹 대시보드 UI 업데이트
+- [x] 웹 대시보드 UI 업데이트 (변동성 정보)
 - [x] NumPy 타입 직렬화 버그 수정
-- [x] 문서 업데이트 (CLAUDE.md, CHANGELOG.md, TODO.md, PRD.md)
+- [ ] 단위 테스트 작성 (다음 단계)
+
+### Phase 1 - Part 2 (Task 2.1-2.4) ✅ 완료
+- [x] MarketAnalyzer 모듈 생성
+  - [x] KOSPI 데이터 가져오기 (FinanceDataReader)
+  - [x] MA20/MA60 기반 추세 분석 (BULL/BEAR/SIDEWAYS)
+  - [x] 시장 변동성 계산 (LOW/MEDIUM/HIGH)
+  - [x] 캐싱 기능 (1시간) 및 싱글톤 패턴
+- [x] 매수 신호에 시장 필터 통합
+  - [x] analyze_buy_signals()에 market_trend 파라미터 추가
+  - [x] 하락장 페널티 (50%), 상승장 보너스 (10%)
+  - [x] market_adjusted_score 반환
+- [x] 매도 신호에 시장 필터 통합
+  - [x] analyze_sell_signals()에 market_trend 파라미터 추가
+  - [x] 상승장 페널티 (30%), 하락장 보너스 (20%)
+  - [x] market_adjusted_score 반환
+- [x] Analyzer에 시장 분석 통합
+  - [x] MarketAnalyzer 인스턴스 추가
+  - [x] analyze_stock()에서 시장 추세 분석 및 전달
+  - [x] JSON 리포트에 market_summary 직렬화
+- [x] 웹 대시보드 UI 업데이트 (시장 정보 카드)
+- [x] 문서 업데이트 (CLAUDE.md, TODO.md, PRD.md)
 - [ ] 단위 테스트 작성 (다음 단계)
 
 ### Phase 1 - 남은 작업
-- [ ] 시장 필터 추가 (Task 2.1-2.4)
 - [ ] 손절 로직 강화 (Task 3.1-3.3)
 - [ ] 예외 처리 및 로깅 개선 (Task 4.1-4.5)
-- [ ] 단위 테스트 작성 및 통과
-- [ ] 통합 테스트 통과
-- [ ] 코드 리뷰 완료
-- [ ] 배포 준비 완료
+- [ ] 단위 테스트 작성 및 통과 (Task 5.1-5.5)
+- [ ] 시나리오 테스트 (Task 6.1-6.4)
+- [ ] 성능 및 문서화 (Task 7.1-7.4)
+- [ ] 배포 및 모니터링 (Task 8.1-8.4)
 
 ---
 
-**Progress**: 15% (3/20 tasks completed - Week 1)
-**Last Updated**: 2025-10-16 15:45
+**Progress**: 35% (7/20 tasks completed - Week 1)
+**Last Updated**: 2025-10-16 18:00
 **Status**: 🚀 In Progress
