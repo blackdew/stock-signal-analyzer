@@ -71,7 +71,20 @@ uv run main.py --symbols 005930 --buy-prices 005930:70000 --save
 ./scripts/setup_scheduler.sh
 ```
 
-### 스케줄러 관리
+### 스케줄러 관리 (간편 도구)
+```bash
+# 관리 스크립트 사용 (추천!)
+./scripts/manage_scheduler.sh status    # 상태 확인
+./scripts/manage_scheduler.sh start     # 시작
+./scripts/manage_scheduler.sh stop      # 중지
+./scripts/manage_scheduler.sh restart   # 재시작
+./scripts/manage_scheduler.sh test      # 수동 테스트
+./scripts/manage_scheduler.sh logs      # 로그 확인
+./scripts/manage_scheduler.sh reports   # 리포트 확인
+./scripts/manage_scheduler.sh help      # 도움말
+```
+
+### 스케줄러 관리 (직접 명령어)
 ```bash
 # 스케줄러 상태 확인
 launchctl list | grep stock-signals
@@ -129,7 +142,8 @@ stock-signals/
 ├── logs/                        # 실행 로그
 ├── scripts/
 │   ├── run_scheduled_report.sh  # 스케줄 실행 스크립트
-│   └── setup_scheduler.sh       # 스케줄러 설치 스크립트
+│   ├── setup_scheduler.sh       # 스케줄러 설치 스크립트
+│   └── manage_scheduler.sh      # 스케줄러 관리 도구 ⭐
 ├── launchd/
 │   └── com.trading.stock-signals.plist  # launchd 설정
 ├── src/
