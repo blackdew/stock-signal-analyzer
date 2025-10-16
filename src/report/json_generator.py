@@ -65,6 +65,9 @@ class JsonReportGenerator:
             'name': analysis['name'],
             'current_price': self._convert_to_python_type(analysis['current_price']),
             'price_levels': self._serialize_price_levels(analysis.get('price_levels', {})),
+            'volatility_info': self._serialize_volatility_info(analysis.get('volatility_info', {})),
+            'knee_info': self._serialize_knee_info(analysis.get('knee_info', {})),
+            'shoulder_info': self._serialize_shoulder_info(analysis.get('shoulder_info', {})),
             'buy_analysis': self._serialize_buy_analysis(analysis.get('buy_analysis', {})),
             'buy_recommendation': analysis.get('buy_recommendation', ''),
             'sell_analysis': self._serialize_sell_analysis(analysis.get('sell_analysis', {})),
@@ -85,6 +88,38 @@ class JsonReportGenerator:
             else:
                 result[key] = self._convert_to_python_type(value)
         return result
+
+    def _serialize_volatility_info(self, volatility_info: Dict) -> Dict:
+        """변동성 정보를 직렬화"""
+        return {
+            'level': volatility_info.get('level', 'MEDIUM'),
+            'current_atr': self._convert_to_python_type(volatility_info.get('current_atr', 0)),
+            'avg_atr': self._convert_to_python_type(volatility_info.get('avg_atr', 0)),
+            'atr_ratio': self._convert_to_python_type(volatility_info.get('atr_ratio', 1.0)),
+            'adjustment_factor': self._convert_to_python_type(volatility_info.get('adjustment_factor', 1.0))
+        }
+
+    def _serialize_knee_info(self, knee_info: Dict) -> Dict:
+        """무릎 정보를 직렬화"""
+        return {
+            'is_at_knee': knee_info.get('is_at_knee', False),
+            'from_floor_pct': self._convert_to_python_type(knee_info.get('from_floor_pct', 0)),
+            'dynamic_knee_price': self._convert_to_python_type(knee_info.get('dynamic_knee_price')),
+            'volatility_level': knee_info.get('volatility_level', 'MEDIUM'),
+            'current_atr': self._convert_to_python_type(knee_info.get('current_atr', 0)),
+            'message': knee_info.get('message', '')
+        }
+
+    def _serialize_shoulder_info(self, shoulder_info: Dict) -> Dict:
+        """어깨 정보를 직렬화"""
+        return {
+            'is_at_shoulder': shoulder_info.get('is_at_shoulder', False),
+            'from_ceiling_pct': self._convert_to_python_type(shoulder_info.get('from_ceiling_pct', 0)),
+            'dynamic_shoulder_price': self._convert_to_python_type(shoulder_info.get('dynamic_shoulder_price')),
+            'volatility_level': shoulder_info.get('volatility_level', 'MEDIUM'),
+            'current_atr': self._convert_to_python_type(shoulder_info.get('current_atr', 0)),
+            'message': shoulder_info.get('message', '')
+        }
 
     def _serialize_buy_analysis(self, buy_analysis: Dict) -> Dict:
         """매수 분석 정보를 직렬화"""
@@ -289,6 +324,8 @@ class JsonReportGenerator:
                     return float(obj)
                 if isinstance(obj, np.ndarray):
                     return obj.tolist()
+                if isinstance(obj, (np.bool_, bool)):
+                    return bool(obj)
                 return super().default(obj)
 
         # 파일로 저장

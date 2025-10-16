@@ -140,10 +140,21 @@ function renderStockCard(stock) {
     const priceLevels = stock.price_levels;
     const buyAnalysis = stock.buy_analysis;
     const sellAnalysis = stock.sell_analysis;
+    const volatilityInfo = stock.volatility_info || {};
+    const kneeInfo = stock.knee_info || {};
+    const shoulderInfo = stock.shoulder_info || {};
 
     const fromFloorClass = priceLevels.from_floor_pct >= 0 ? 'positive' : 'negative';
     const fromCeilingClass = priceLevels.from_ceiling_pct >= 0 ? 'positive' : 'negative';
     const profitClass = sellAnalysis.profit_rate !== null && sellAnalysis.profit_rate >= 0 ? 'positive' : 'negative';
+
+    // 변동성 레벨 색상
+    const volatilityColors = {
+        'LOW': '#4CAF50',
+        'MEDIUM': '#FF9800',
+        'HIGH': '#F44336'
+    };
+    const volatilityColor = volatilityColors[volatilityInfo.level] || '#999';
 
     return `
         <div class="stock-card action-${stock.action}">
@@ -157,6 +168,24 @@ function renderStockCard(stock) {
                     <div class="price-value">${formatPrice(stock.current_price)}</div>
                 </div>
             </div>
+
+            ${volatilityInfo.level ? `
+            <div class="volatility-info" style="background: linear-gradient(135deg, ${volatilityColor}22, ${volatilityColor}11); border-left: 3px solid ${volatilityColor}; padding: 10px; margin: 10px 0; border-radius: 4px;">
+                <div style="font-size: 12px; font-weight: 600; color: ${volatilityColor}; margin-bottom: 5px;">
+                    변동성: ${volatilityInfo.level} (ATR: ${volatilityInfo.current_atr.toFixed(0)})
+                </div>
+                ${kneeInfo.dynamic_knee_price ? `
+                    <div style="font-size: 11px; color: #666; margin-top: 3px;">
+                        동적 무릎: ${formatPrice(kneeInfo.dynamic_knee_price)} ${kneeInfo.is_at_knee ? '✓' : ''}
+                    </div>
+                ` : ''}
+                ${shoulderInfo.dynamic_shoulder_price ? `
+                    <div style="font-size: 11px; color: #666; margin-top: 3px;">
+                        동적 어깨: ${formatPrice(shoulderInfo.dynamic_shoulder_price)} ${shoulderInfo.is_at_shoulder ? '✓' : ''}
+                    </div>
+                ` : ''}
+            </div>
+            ` : ''}
 
             <div class="price-levels">
                 ${priceLevels.floor ? `

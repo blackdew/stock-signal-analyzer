@@ -103,6 +103,11 @@ class StockAnalyzer:
         price_levels = self.price_detector.detect_floor_ceiling(df)
         position_metrics = self.price_detector.calculate_position_metrics(df)
 
+        # 변동성 분석 추가
+        volatility_info = self.price_detector.calculate_volatility_level(df)
+        knee_info = self.price_detector.is_at_knee(df, use_dynamic_threshold=True)
+        shoulder_info = self.price_detector.is_at_shoulder(df, use_dynamic_threshold=True)
+
         # 매수 신호 분석
         buy_analysis = self.buy_analyzer.analyze_buy_signals(df)
         buy_recommendation = self.buy_analyzer.get_buy_recommendation(buy_analysis)
@@ -133,6 +138,9 @@ class StockAnalyzer:
                 **price_levels,
                 **position_metrics
             },
+            'volatility_info': volatility_info,
+            'knee_info': knee_info,
+            'shoulder_info': shoulder_info,
             'buy_analysis': buy_analysis,
             'buy_recommendation': buy_recommendation,
             'sell_analysis': sell_analysis,
