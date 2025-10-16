@@ -37,7 +37,7 @@ uv run main.py --buy-prices 005930:70000 000660:120000
 # 웹 대시보드 실행 - JSON 리포트 생성 + 웹서버 시작 + 브라우저 자동 열기
 uv run main.py --web
 
-# 서버 주소: http://localhost:8000/dashboard.html
+# 서버 주소: http://localhost:8002/dashboard.html
 # 종료: Ctrl+C
 ```
 

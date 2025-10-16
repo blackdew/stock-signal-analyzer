@@ -4,6 +4,12 @@
 
 ## 주요 기능
 
+- **웹 대시보드**: 차트와 통계를 한눈에 볼 수 있는 인터랙티브 대시보드 (추천!)
+  - 포트폴리오 전체 요약 (총 투자금, 평가금액, 수익률)
+  - 매수/매도 우선순위 종목
+  - 종목별 상세 분석 및 가격 차트 (Chart.js)
+  - 필터링 기능 (전체/매수/매도/관망)
+  - 반응형 디자인 (모바일/태블릿/PC 지원)
 - **바닥/천장 감지**: 최근 60일 기준 최저/최고가 자동 식별
 - **매수 신호 분석**
   - 바닥 대비 "무릎" 위치 (15% 상승) 감지
@@ -18,7 +24,7 @@
   - 데드크로스 감지
   - 거래량 감소 확인
   - 전량/분할 매도 전략 추천
-- **자동 스케줄링**: 월~금 오전 10시, 오후 2시 자동 보고서 생성
+- **자동 스케줄링**: 월~금 오전 10시, 오후 2시 자동 보고서 생성 (텍스트 + JSON)
 
 ## 설치
 
@@ -37,14 +43,20 @@ cd trading
 
 ## 사용 방법
 
-### 기본 실행
+### 웹 대시보드 (가장 추천!) ⭐
+```bash
+# 웹 대시보드 실행 - JSON 리포트 생성 + 웹서버 시작 + 브라우저 자동 열기
+uv run main.py --web
+
+# 서버 주소: http://localhost:8002/dashboard.html
+# 종료: Ctrl+C
+```
+
+### 콘솔 실행
 ```bash
 # config.py에 설정된 종목 분석
 uv run main.py
-```
 
-### 옵션
-```bash
 # 특정 종목만 분석
 uv run main.py --symbols 005930 000660 035420
 
@@ -101,11 +113,23 @@ launchctl load ~/Library/LaunchAgents/com.trading.stock-signals.plist
 ```
 
 ### 보고서 및 로그
-- **보고서**: `reports/` 디렉토리에 `stock_report_YYYYMMDD_HHMM.txt` 형식으로 저장
+- **텍스트 보고서**: `reports/` 디렉토리에 `stock_report_YYYYMMDD_HHMM.txt` 형식으로 저장
+- **JSON 보고서**: `web/data/latest.json` (웹 대시보드용)
 - **로그**: `logs/` 디렉토리에 저장
   - `scheduler_YYYYMMDD.log`: 스케줄러 실행 로그
   - `launchd_stdout.log`: launchd 표준 출력
   - `launchd_stderr.log`: launchd 에러 로그
+
+### 웹 대시보드 접속
+스케줄러가 실행 중이면 언제든지 웹 대시보드를 볼 수 있습니다:
+```bash
+# 1. 웹서버 시작 (새 터미널에서)
+cd /Users/sookbunlee/work/trading/web
+python3 -m http.server 8002
+
+# 2. 브라우저에서 접속
+open http://localhost:8002/dashboard.html
+```
 
 ## 설정
 
@@ -138,8 +162,20 @@ RSI_OVERBOUGHT = 70
 stock-signals/
 ├── config.py                    # 설정 파일
 ├── main.py                      # 메인 실행 파일
-├── reports/                     # 자동 생성 보고서
+├── myportfolio/                 # CSV 포트폴리오 디렉토리 (날짜별 관리)
+│   ├── YYYYMMDD.csv            #   날짜별 포트폴리오 파일
+│   └── example.csv             #   예제 파일
+├── reports/                     # 자동 생성 텍스트 보고서
 ├── logs/                        # 실행 로그
+├── web/                         # ⭐ 웹 대시보드
+│   ├── dashboard.html          #   메인 대시보드 페이지
+│   ├── static/
+│   │   ├── css/
+│   │   │   └── style.css       #   스타일시트
+│   │   └── js/
+│   │       └── app.js          #   JavaScript (차트 & UI 로직)
+│   └── data/
+│       └── latest.json         #   최신 분석 결과 (JSON)
 ├── scripts/
 │   ├── run_scheduled_report.sh  # 스케줄 실행 스크립트
 │   ├── setup_scheduler.sh       # 스케줄러 설치 스크립트
@@ -155,8 +191,11 @@ stock-signals/
 │   │   └── sell_signals.py     # 매도 신호 분석
 │   ├── analysis/
 │   │   └── analyzer.py         # 종합 분석 엔진
+│   ├── portfolio/
+│   │   └── loader.py           # 포트폴리오 파일 로더 (CSV & 텍스트)
 │   └── report/
-│       └── generator.py        # 리포트 생성
+│       ├── generator.py        # 텍스트 리포트 생성
+│       └── json_generator.py   # JSON 리포트 생성 (웹 대시보드용)
 └── pyproject.toml
 ```
 
@@ -194,3 +233,5 @@ MIT License
 - pandas-ta: 기술적 지표 계산
 - uv: 패키지 관리 및 실행
 - launchd: macOS 스케줄링
+- Chart.js: 웹 대시보드 차트 라이브러리
+- Vanilla JavaScript: 프론트엔드 (프레임워크 없음)
