@@ -188,6 +188,7 @@ stock-signals/
    - **⭐ NEW: MarketAnalyzer 통합** (모든 종목 분석 시 시장 추세 전달)
    - 여러 종목 동시 분석 지원
    - 시장 조정 점수 기반 매수/매도 우선순위 종목 추출
+   - **⭐ NEW: 스마트 액션 결정 로직** (임계값 + 점수 차이 기반 필터링)
 
 7. **ReportGenerator** (src/report/generator.py)
    - 분석 결과를 텍스트 형태로 출력
@@ -214,6 +215,10 @@ stock-signals/
 - `SELL_SHOULDER_THRESHOLD`: 어깨 판단 기준 (기본 15%)
 - `STOP_LOSS_PERCENTAGE`: 손절가 비율 (기본 7%)
 - `RSI_OVERSOLD/OVERBOUGHT`: RSI 과매도/과매수 기준
+- **⭐ NEW: 액션 결정 임계값** (신호 품질 향상)
+  - `ACTION_BUY_THRESHOLD`: 매수로 분류하기 위한 최소 점수 (기본 30점)
+  - `ACTION_SELL_THRESHOLD`: 매도로 분류하기 위한 최소 점수 (기본 30점)
+  - `ACTION_SCORE_DIFF_THRESHOLD`: 우위를 판단하기 위한 최소 점수 차이 (기본 10점)
 
 ## 분석 로직
 
@@ -271,6 +276,40 @@ stock-signals/
 - 상승장에서 매수 기회 적극 활용
 - 상승장에서 성급한 매도 방지
 - 하락장에서 빠른 손절 유도
+
+### ⭐ 스마트 액션 결정 로직 (신규 기능)
+
+**기존 문제점:**
+- 매수/매도 점수가 모두 낮아도 둘 중 하나로 무조건 분류
+- 예: buy_score=30, sell_score=25 → BUY로 표시되지만 실제로는 둘 다 약한 신호
+
+**개선된 로직:**
+```python
+# 복합 조건 필터링 (임계값 + 점수 차이)
+if buy_score >= 30 and buy_score > sell_score + 10:
+    action = 'BUY'  # 매수 신호가 충분히 강하고 우위
+elif sell_score >= 30 and sell_score > buy_score + 10:
+    action = 'SELL'  # 매도 신호가 충분히 강하고 우위
+else:
+    action = 'HOLD'  # 신호가 약하거나 애매한 경우 관망
+```
+
+**필터링 기준:**
+1. **최소 점수 요구**: 매수/매도 신호가 30점 이상이어야 함
+2. **명확한 우위**: 한쪽이 다른 쪽보다 10점 이상 높아야 함
+3. **양쪽 조건 충족 필수**: 두 조건을 모두 만족해야 BUY/SELL로 분류
+
+**효과:**
+- 웹 대시보드에서 **매수 탭**에는 명확한 매수 신호만 표시
+- **매도 탭**에는 명확한 매도 신호만 표시
+- 애매한 종목은 **전체 탭** 또는 **관망 탭**에서만 확인
+- 과도한 매매 방지 및 신호 품질 향상
+- 노이즈 필터링으로 실전 투자에 더 적합
+
+**조정 가능한 임계값:**
+- `config.py`에서 `ACTION_BUY_THRESHOLD`, `ACTION_SELL_THRESHOLD`, `ACTION_SCORE_DIFF_THRESHOLD` 수정 가능
+- 보수적 투자: 임계값을 높게 설정 (예: 40점, 차이 15점)
+- 적극적 투자: 임계값을 낮게 설정 (예: 20점, 차이 5점)
 
 ## ⭐ 리포트 히스토리 및 추이 분석 (Phase 2 신규 기능)
 

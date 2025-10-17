@@ -1,6 +1,7 @@
 """종합 분석 엔진"""
 import pandas as pd
 from typing import Dict, Optional
+import config
 from ..data.fetcher import StockDataFetcher
 from ..indicators.price_levels import PriceLevelDetector
 from ..indicators.buy_signals import BuySignalAnalyzer
@@ -122,17 +123,25 @@ class StockAnalyzer:
         sell_analysis = self.sell_analyzer.analyze_sell_signals(df, buy_price, market_trend)
         sell_recommendation = self.sell_analyzer.get_sell_recommendation(sell_analysis)
 
-        # 종합 추천 (시장 조정 점수 기반)
+        # 종합 추천 (시장 조정 점수 기반 + 임계값 필터)
         buy_score = buy_analysis.get('market_adjusted_score', buy_analysis.get('buy_score', 0))
         sell_score = sell_analysis.get('market_adjusted_score', sell_analysis.get('sell_score', 0))
 
-        if buy_score > sell_score:
+        # 액션 결정: 임계값과 점수 차이를 모두 고려
+        buy_threshold = config.ACTION_BUY_THRESHOLD
+        sell_threshold = config.ACTION_SELL_THRESHOLD
+        score_diff_threshold = config.ACTION_SCORE_DIFF_THRESHOLD
+
+        if buy_score >= buy_threshold and buy_score > sell_score + score_diff_threshold:
+            # 매수 신호가 충분히 강하고, 매도 신호보다 명확히 우위
             overall_recommendation = buy_recommendation
             action = 'BUY'
-        elif sell_score > buy_score:
+        elif sell_score >= sell_threshold and sell_score > buy_score + score_diff_threshold:
+            # 매도 신호가 충분히 강하고, 매수 신호보다 명확히 우위
             overall_recommendation = sell_recommendation
             action = 'SELL'
         else:
+            # 신호가 약하거나 애매한 경우 관망
             overall_recommendation = "🟡 관망 - 명확한 신호 없음"
             action = 'HOLD'
 

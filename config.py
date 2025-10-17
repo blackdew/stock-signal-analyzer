@@ -39,6 +39,11 @@ MA_LONG = 60   # 장기 이동평균 (일)
 # 거래량 설정
 VOLUME_SURGE_MULTIPLIER = 2.0  # 평균 거래량 대비 2배 이상이면 급증으로 판단
 
+# 액션 결정 임계값 설정
+ACTION_BUY_THRESHOLD = 30  # 매수 신호로 분류하기 위한 최소 점수
+ACTION_SELL_THRESHOLD = 30  # 매도 신호로 분류하기 위한 최소 점수
+ACTION_SCORE_DIFF_THRESHOLD = 10  # 우위를 판단하기 위한 최소 점수 차이
+
 # 보고서 저장 설정
 import os
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
