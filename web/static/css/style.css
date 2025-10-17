@@ -18,6 +18,37 @@ body {
     margin: 0 auto;
 }
 
+/* 네비게이션 */
+.navigation {
+    background: white;
+    padding: 15px 30px;
+    border-radius: 15px;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+    display: flex;
+    gap: 20px;
+}
+
+.navigation a {
+    color: #666;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 15px;
+    padding: 10px 20px;
+    border-radius: 8px;
+    transition: all 0.3s;
+}
+
+.navigation a:hover {
+    background: #f8f9ff;
+    color: #667eea;
+}
+
+.navigation a.active {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
 /* 헤더 */
 .header {
     background: white;
@@ -458,4 +489,120 @@ body {
     padding: 20px;
     border-radius: 12px;
     text-align: center;
+}
+
+/* 테이블 스타일 */
+.table-container {
+    overflow-x: auto;
+}
+
+.reports-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+}
+
+.reports-table thead {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.reports-table th {
+    padding: 15px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.reports-table td {
+    padding: 15px;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 14px;
+}
+
+.reports-table tr:hover {
+    background: #f8f9ff;
+}
+
+.reports-table .positive {
+    color: #e74c3c;
+    font-weight: 600;
+}
+
+.reports-table .negative {
+    color: #3498db;
+    font-weight: 600;
+}
+
+.btn-view {
+    background: #667eea;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.3s;
+}
+
+.btn-view:hover {
+    background: #5568d3;
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px rgba(102, 126, 234, 0.3);
+}
+
+/* 차트 박스 (추이 분석용) */
+.chart-box {
+    background: white;
+    border: 2px solid #e8e8e8;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.chart-box h3 {
+    color: #333;
+    font-size: 18px;
+    margin-bottom: 15px;
+    font-weight: 700;
+}
+
+/* select 스타일 */
+select {
+    padding: 10px 15px;
+    border: 2px solid #667eea;
+    border-radius: 8px;
+    background: white;
+    color: #333;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+select:hover {
+    background: #f8f9ff;
+}
+
+select:focus {
+    outline: none;
+    border-color: #5568d3;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* 액션 색상 */
+.action-buy {
+    color: #27ae60;
+    font-weight: 600;
+}
+
+.action-sell {
+    color: #e74c3c;
+    font-weight: 600;
+}
+
+.action-hold {
+    color: #95a5a6;
+    font-weight: 600;
 }

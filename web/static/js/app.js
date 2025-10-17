@@ -3,15 +3,31 @@ let reportData = null;
 let currentFilter = 'all';
 let charts = {};
 
+// URL 파라미터 가져오기
+function getUrlParameter(name) {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get(name);
+}
+
 // 리포트 불러오기
 async function loadReport() {
     const loading = document.getElementById('loading');
     loading.style.display = 'block';
 
     try {
-        // 캐시 무효화를 위해 타임스탬프 추가
+        // URL 파라미터로 특정 리포트 지정 가능
+        const reportFilename = getUrlParameter('report');
         const timestamp = new Date().getTime();
-        const response = await fetch(`data/latest.json?t=${timestamp}`);
+
+        let response;
+        if (reportFilename) {
+            // 특정 리포트 불러오기
+            response = await fetch(`/api/report?filename=${reportFilename}&t=${timestamp}`);
+        } else {
+            // 최신 리포트 불러오기
+            response = await fetch(`data/latest.json?t=${timestamp}`);
+        }
+
         if (!response.ok) {
             throw new Error('리포트를 불러올 수 없습니다.');
         }

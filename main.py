@@ -5,12 +5,94 @@ import webbrowser
 import http.server
 import socketserver
 import threading
+import json
 from datetime import datetime
+from urllib.parse import urlparse, parse_qs
 from src.analysis.analyzer import StockAnalyzer
 from src.report.generator import ReportGenerator
 from src.report.json_generator import JsonReportGenerator
+from src.report.history_manager import ReportHistoryManager
 from src.portfolio.loader import PortfolioLoader
 import config
+
+
+class APIHandler(http.server.SimpleHTTPRequestHandler):
+    """API 엔드포인트를 처리하는 커스텀 HTTP Handler"""
+
+    history_manager = None
+
+    def do_GET(self):
+        """GET 요청 처리"""
+        parsed_path = urlparse(self.path)
+        path = parsed_path.path
+
+        # API 엔드포인트 처리
+        if path.startswith('/api/'):
+            self.handle_api_request(path, parsed_path.query)
+        else:
+            # 정적 파일 처리
+            super().do_GET()
+
+    def handle_api_request(self, path, query):
+        """API 요청 처리"""
+        try:
+            if self.history_manager is None:
+                self.send_error(500, "History manager not initialized")
+                return
+
+            # /api/reports - 리포트 목록
+            if path == '/api/reports':
+                reports = self.history_manager.get_report_list()
+                self.send_json_response(reports)
+
+            # /api/report?filename=xxx - 특정 리포트
+            elif path == '/api/report':
+                params = parse_qs(query)
+                filename = params.get('filename', [None])[0]
+
+                if not filename:
+                    self.send_error(400, "Missing filename parameter")
+                    return
+
+                report = self.history_manager.get_report(filename)
+                if report:
+                    self.send_json_response(report)
+                else:
+                    self.send_error(404, "Report not found")
+
+            # /api/trends?symbol=xxx&limit=30 - 종목 추이
+            elif path == '/api/trends':
+                params = parse_qs(query)
+                symbol = params.get('symbol', [None])[0]
+                limit = int(params.get('limit', [30])[0])
+
+                if not symbol:
+                    self.send_error(400, "Missing symbol parameter")
+                    return
+
+                trends = self.history_manager.get_stock_trends(symbol, limit)
+                self.send_json_response(trends)
+
+            # /api/symbols - 전체 종목 목록
+            elif path == '/api/symbols':
+                symbols = self.history_manager.get_available_symbols()
+                self.send_json_response(symbols)
+
+            else:
+                self.send_error(404, "API endpoint not found")
+
+        except Exception as e:
+            self.send_error(500, str(e))
+
+    def send_json_response(self, data):
+        """JSON 응답 전송"""
+        response = json.dumps(data, ensure_ascii=False, indent=2)
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', len(response.encode('utf-8')))
+        self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+        self.end_headers()
+        self.wfile.write(response.encode('utf-8'))
 
 
 def main():
@@ -150,9 +232,12 @@ def main():
         # 웹서버를 별도 스레드에서 실행
         def start_server():
             os.chdir(web_dir)
-            handler = http.server.SimpleHTTPRequestHandler
+            # History Manager 초기화
+            APIHandler.history_manager = ReportHistoryManager()
+            handler = APIHandler
             with socketserver.TCPServer(("", port), handler) as httpd:
                 print(f"\n🌐 웹 대시보드 서버가 시작되었습니다: http://localhost:{port}/dashboard.html")
+                print(f"   API: http://localhost:{port}/api/reports")
                 print("   종료하려면 Ctrl+C를 누르세요.\n")
                 httpd.serve_forever()
 
