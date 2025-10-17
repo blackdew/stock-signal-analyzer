@@ -17,5 +17,17 @@ logs/
 
 # My portfolio
 myportfolio/
+
 # Web Result data
 web/data/
+
+# macOS system files
+.DS_Store
+
+# Personal portfolio files
+.portfolio
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
