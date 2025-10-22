@@ -8,6 +8,10 @@ import pandas as pd
 import FinanceDataReader as fdr
 from typing import Dict, Optional
 from datetime import datetime, timedelta
+from .logger import setup_logger
+
+# 로거 초기화
+logger = setup_logger(__name__)
 
 
 class MarketAnalyzer:
@@ -49,13 +53,14 @@ class MarketAnalyzer:
             )
 
             if df is None or df.empty:
-                print(f"⚠️ 시장 데이터 없음: {self.market_index}")
+                logger.warning(f"시장 데이터 없음: {self.market_index}")
                 return None
 
+            logger.info(f"시장 데이터 가져오기 성공: {self.market_index} ({len(df)}일)")
             return df
 
         except Exception as e:
-            print(f"⚠️ 시장 데이터 가져오기 실패: {e}")
+            logger.error(f"시장 데이터 가져오기 실패: {e}")
             return None
 
     def analyze_trend(self, force_refresh: bool = False) -> str:
@@ -80,7 +85,7 @@ class MarketAnalyzer:
         df = self._fetch_market_data(period_days=180)
 
         if df is None or len(df) < 60:
-            print("⚠️ 시장 추세 분석 불가: 데이터 부족")
+            logger.warning("시장 추세 분석 불가: 데이터 부족")
             return 'UNKNOWN'
 
         try:
@@ -102,10 +107,11 @@ class MarketAnalyzer:
             # 캐시 업데이트
             self._update_cache(df, trend, diff_pct)
 
+            logger.info(f"시장 추세 분석 완료: {trend} (MA20-MA60 차이: {diff_pct*100:.2f}%)")
             return trend
 
         except Exception as e:
-            print(f"⚠️ 시장 추세 계산 오류: {e}")
+            logger.error(f"시장 추세 계산 오류: {e}")
             return 'UNKNOWN'
 
     def calculate_volatility(self, force_refresh: bool = False) -> str:
@@ -130,7 +136,7 @@ class MarketAnalyzer:
         df = self._fetch_market_data(period_days=180)
 
         if df is None or len(df) < 20:
-            print("⚠️ 시장 변동성 계산 불가: 데이터 부족")
+            logger.warning("시장 변동성 계산 불가: 데이터 부족")
             return 'UNKNOWN'
 
         try:
@@ -153,10 +159,11 @@ class MarketAnalyzer:
                 self.cache['volatility'] = volatility_level
                 self.cache['volatility_value'] = volatility
 
+            logger.info(f"시장 변동성 계산 완료: {volatility_level} ({volatility*100:.2f}%)")
             return volatility_level
 
         except Exception as e:
-            print(f"⚠️ 시장 변동성 계산 오류: {e}")
+            logger.error(f"시장 변동성 계산 오류: {e}")
             return 'UNKNOWN'
 
     def get_market_summary(self, force_refresh: bool = False) -> Dict:
@@ -237,7 +244,7 @@ class MarketAnalyzer:
             self.cache_time = datetime.now()
 
         except Exception as e:
-            print(f"⚠️ 캐시 업데이트 오류: {e}")
+            logger.error(f"캐시 업데이트 오류: {e}")
 
     def _generate_market_message(self, trend: str, volatility: str) -> str:
         """사용자 친화적 메시지 생성"""

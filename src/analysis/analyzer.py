@@ -7,6 +7,10 @@ from ..indicators.price_levels import PriceLevelDetector
 from ..indicators.buy_signals import BuySignalAnalyzer
 from ..indicators.sell_signals import SellSignalAnalyzer
 from ..utils.market_analyzer import get_market_analyzer
+from ..utils.logger import setup_logger
+
+# 로거 초기화
+logger = setup_logger(__name__)
 
 
 class StockAnalyzer:
@@ -86,10 +90,13 @@ class StockAnalyzer:
                 'data': 주가 데이터 DataFrame
             }
         """
+        logger.info(f"종목 분석 시작: {symbol}")
+
         # 데이터 가져오기
         df = self.fetcher.fetch_stock_data(symbol, start_date, end_date)
 
         if df is None or df.empty:
+            logger.error(f"종목 {symbol}: 데이터를 가져올 수 없습니다")
             return {
                 'symbol': symbol,
                 'error': '데이터를 가져올 수 없습니다.'
@@ -147,6 +154,8 @@ class StockAnalyzer:
             overall_recommendation = "🟡 관망 - 명확한 신호 없음"
             action = 'HOLD'
 
+        logger.info(f"종목 분석 완료: {symbol} ({stock_name}) - 액션: {action}, 매수점수: {buy_score:.1f}, 매도점수: {sell_score:.1f}")
+
         return {
             'symbol': symbol,
             'name': stock_name,
@@ -189,6 +198,7 @@ class StockAnalyzer:
         Returns:
             분석 결과 리스트
         """
+        logger.info(f"다중 종목 분석 시작: {len(symbols)}개 종목")
         results = []
 
         for symbol in symbols:
@@ -197,6 +207,8 @@ class StockAnalyzer:
             analysis = self.analyze_stock(symbol, start_date, end_date, buy_price, highest_price)
             results.append(analysis)
 
+        success_count = sum(1 for r in results if 'error' not in r)
+        logger.info(f"다중 종목 분석 완료: {success_count}/{len(symbols)}개 성공")
         return results
 
     def get_priority_stocks(

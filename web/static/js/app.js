@@ -176,24 +176,11 @@ function renderPriorities() {
 
     // 매수 우선순위
     const buyContainer = document.getElementById('buy-priorities');
-    buyContainer.innerHTML = reportData.buy_priorities.map((stock, index) => `
-        <div class="priority-item">
-            <div class="stock-header">
-                <div class="stock-name">${index + 1}. ${stock.name} (${stock.symbol})</div>
-                <div class="stock-price">${formatPrice(stock.current_price)}</div>
-            </div>
-            <div class="stock-info">
-                <span class="score">${stock.buy_score}점</span>
-                ${stock.recommendation}
-            </div>
-        </div>
-    `).join('');
-
-    // 매도 우선순위
-    const sellContainer = document.getElementById('sell-priorities');
-    sellContainer.innerHTML = reportData.sell_priorities.map((stock, index) => {
-        const profitClass = stock.profit_rate !== null && stock.profit_rate >= 0 ? 'profit-positive' : 'profit-negative';
-        const profitText = stock.profit_rate !== null ? ` | 수익률: <span class="${profitClass}">${formatPercentage(stock.profit_rate)}</span>` : '';
+    buyContainer.innerHTML = reportData.buy_priorities.map((stock, index) => {
+        const hasAdjustedScore = stock.market_adjusted_score !== undefined && stock.market_adjusted_score !== stock.buy_score;
+        const scoreDisplay = hasAdjustedScore
+            ? `<span class="score">${Math.round(stock.market_adjusted_score)}점</span><span style="font-size: 11px; color: #999; margin-left: 5px;">(원본: ${stock.buy_score}점)</span>`
+            : `<span class="score">${stock.buy_score}점</span>`;
 
         return `
             <div class="priority-item">
@@ -202,7 +189,32 @@ function renderPriorities() {
                     <div class="stock-price">${formatPrice(stock.current_price)}</div>
                 </div>
                 <div class="stock-info">
-                    <span class="score">${stock.sell_score}점</span>
+                    ${scoreDisplay}
+                    ${stock.recommendation}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    // 매도 우선순위
+    const sellContainer = document.getElementById('sell-priorities');
+    sellContainer.innerHTML = reportData.sell_priorities.map((stock, index) => {
+        const profitClass = stock.profit_rate !== null && stock.profit_rate >= 0 ? 'profit-positive' : 'profit-negative';
+        const profitText = stock.profit_rate !== null ? ` | 수익률: <span class="${profitClass}">${formatPercentage(stock.profit_rate)}</span>` : '';
+
+        const hasAdjustedScore = stock.market_adjusted_score !== undefined && stock.market_adjusted_score !== stock.sell_score;
+        const scoreDisplay = hasAdjustedScore
+            ? `<span class="score">${Math.round(stock.market_adjusted_score)}점</span><span style="font-size: 11px; color: #999; margin-left: 5px;">(원본: ${stock.sell_score}점)</span>`
+            : `<span class="score">${stock.sell_score}점</span>`;
+
+        return `
+            <div class="priority-item">
+                <div class="stock-header">
+                    <div class="stock-name">${index + 1}. ${stock.name} (${stock.symbol})</div>
+                    <div class="stock-price">${formatPrice(stock.current_price)}</div>
+                </div>
+                <div class="stock-info">
+                    ${scoreDisplay}
                     ${stock.recommendation}${profitText}
                 </div>
             </div>
@@ -344,7 +356,16 @@ function renderStockCard(stock) {
             <div class="signals">
                 <div class="signal-box">
                     <div class="signal-title">매수 신호</div>
-                    <div class="signal-score">${buyAnalysis.buy_score}점</div>
+                    <div class="signal-score">
+                        ${buyAnalysis.market_adjusted_score !== undefined && Math.round(buyAnalysis.market_adjusted_score) !== buyAnalysis.buy_score
+                            ? `${Math.round(buyAnalysis.market_adjusted_score)}점 <span style="font-size: 12px; color: #999;">(${buyAnalysis.buy_score})</span>`
+                            : `${buyAnalysis.buy_score}점`
+                        }
+                    </div>
+                    ${buyAnalysis.market_adjusted_score !== undefined && Math.round(buyAnalysis.market_adjusted_score) !== buyAnalysis.buy_score
+                        ? `<div style="font-size: 11px; color: #666; margin: 5px 0;">시장 조정 적용됨</div>`
+                        : ''
+                    }
                     <div class="signal-list">
                         ${buyAnalysis.buy_signals.length > 0 ? buyAnalysis.buy_signals.join('<br>') : '신호 없음'}
                     </div>
@@ -352,7 +373,16 @@ function renderStockCard(stock) {
                 </div>
                 <div class="signal-box">
                     <div class="signal-title">매도 신호</div>
-                    <div class="signal-score">${sellAnalysis.sell_score}점</div>
+                    <div class="signal-score">
+                        ${sellAnalysis.market_adjusted_score !== undefined && Math.round(sellAnalysis.market_adjusted_score) !== sellAnalysis.sell_score
+                            ? `${Math.round(sellAnalysis.market_adjusted_score)}점 <span style="font-size: 12px; color: #999;">(${sellAnalysis.sell_score})</span>`
+                            : `${sellAnalysis.sell_score}점`
+                        }
+                    </div>
+                    ${sellAnalysis.market_adjusted_score !== undefined && Math.round(sellAnalysis.market_adjusted_score) !== sellAnalysis.sell_score
+                        ? `<div style="font-size: 11px; color: #666; margin: 5px 0;">시장 조정 적용됨</div>`
+                        : ''
+                    }
                     <div class="signal-list">
                         ${sellAnalysis.sell_signals.length > 0 ? sellAnalysis.sell_signals.join('<br>') : '신호 없음'}
                     </div>
