@@ -3,6 +3,11 @@ import pandas as pd
 import pandas_ta as ta
 from typing import Dict, List, Optional
 from .price_levels import PriceLevelDetector
+from src.utils.logger import setup_logger
+from src.utils.helpers import safe_divide, safe_percentage, is_valid_number
+
+# 로거 설정
+logger = setup_logger(__name__)
 
 
 class SellSignalAnalyzer:
@@ -116,7 +121,7 @@ class SellSignalAnalyzer:
         buy_price: Optional[float]
     ) -> Optional[float]:
         """
-        수익률을 계산합니다.
+        안전한 수익률 계산
 
         Args:
             current_price: 현재 가격
@@ -125,10 +130,22 @@ class SellSignalAnalyzer:
         Returns:
             수익률 (소수)
         """
-        if buy_price is None or buy_price <= 0:
-            return None
+        try:
+            if buy_price is None or buy_price <= 0:
+                logger.debug("수익률 계산 불가: 매수가 정보 없음")
+                return None
 
-        return (current_price - buy_price) / buy_price
+            if not is_valid_number(current_price) or not is_valid_number(buy_price):
+                logger.warning("수익률 계산 불가: 유효하지 않은 가격 정보")
+                return None
+
+            profit_rate = safe_percentage(current_price, buy_price, default=None)
+            logger.debug(f"수익률 계산: {profit_rate*100:.2f}% (매수가: {buy_price:,.0f}, 현재가: {current_price:,.0f})")
+            return profit_rate
+
+        except Exception as e:
+            logger.error(f"수익률 계산 중 오류: {str(e)}")
+            return None
 
     def recommend_sell_strategy(
         self,

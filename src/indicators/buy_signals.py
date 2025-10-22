@@ -3,6 +3,11 @@ import pandas as pd
 import pandas_ta as ta
 from typing import Dict, List
 from .price_levels import PriceLevelDetector
+from src.utils.logger import setup_logger
+from src.utils.helpers import safe_divide, is_valid_number
+
+# 로거 설정
+logger = setup_logger(__name__)
 
 
 class BuySignalAnalyzer:
@@ -32,12 +37,42 @@ class BuySignalAnalyzer:
         self.price_detector = PriceLevelDetector()
 
     def calculate_rsi(self, df: pd.DataFrame) -> pd.Series:
-        """RSI를 계산합니다."""
-        if df is None or df.empty:
-            return pd.Series()
+        """
+        안전한 RSI 계산
 
-        rsi = ta.rsi(df['Close'], length=self.rsi_period)
-        return rsi
+        Args:
+            df: 주가 데이터 DataFrame
+
+        Returns:
+            RSI Series (실패 시 중립값 50.0으로 채움)
+        """
+        try:
+            if df is None or df.empty:
+                logger.warning("RSI 계산 불가: 데이터 없음")
+                return pd.Series()
+
+            if len(df) < self.rsi_period:
+                logger.warning(
+                    f"RSI 계산 불가: 데이터 부족 "
+                    f"(필요: {self.rsi_period}, 현재: {len(df)})"
+                )
+                return pd.Series([50.0] * len(df))
+
+            # RSI 계산
+            rsi = ta.rsi(df['Close'], length=self.rsi_period)
+
+            # NaN 값 처리
+            rsi = rsi.fillna(50.0)  # 중립값으로 채움
+
+            # 범위 검증 (0-100)
+            rsi = rsi.clip(0, 100)
+
+            logger.debug(f"RSI 계산 성공: 최근값 {rsi.iloc[-1]:.2f}")
+            return rsi
+
+        except Exception as e:
+            logger.error(f"RSI 계산 중 오류: {str(e)}")
+            return pd.Series([50.0] * len(df)) if df is not None else pd.Series()
 
     def check_volume_surge(self, df: pd.DataFrame, multiplier: float = 2.0) -> bool:
         """
@@ -50,13 +85,35 @@ class BuySignalAnalyzer:
         Returns:
             True if 거래량 급증
         """
-        if df is None or len(df) < 20:
+        try:
+            if df is None or len(df) < 20:
+                logger.debug("거래량 급증 체크 불가: 데이터 부족")
+                return False
+
+            current_volume = df['Volume'].iloc[-1]
+            avg_volume = df['Volume'].tail(20).mean()
+
+            # 유효성 검증
+            if not is_valid_number(current_volume) or not is_valid_number(avg_volume):
+                logger.warning("거래량 급증 체크 불가: 유효하지 않은 값")
+                return False
+
+            if avg_volume == 0:
+                logger.warning("거래량 급증 체크 불가: 평균 거래량이 0")
+                return False
+
+            is_surge = current_volume >= avg_volume * multiplier
+            if is_surge:
+                logger.info(
+                    f"거래량 급증 감지: 현재 {current_volume:,.0f} "
+                    f"(평균 {avg_volume:,.0f}의 {current_volume/avg_volume:.1f}배)"
+                )
+
+            return is_surge
+
+        except Exception as e:
+            logger.error(f"거래량 급증 체크 중 오류: {str(e)}")
             return False
-
-        current_volume = df['Volume'].iloc[-1]
-        avg_volume = df['Volume'].tail(20).mean()
-
-        return current_volume >= avg_volume * multiplier
 
     def check_golden_cross(self, df: pd.DataFrame) -> Dict[str, any]:
         """
