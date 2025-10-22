@@ -150,6 +150,20 @@ class JsonReportGenerator:
 
     def _serialize_sell_analysis(self, sell_analysis: Dict) -> Dict:
         """매도 분석 정보를 직렬화"""
+        # Trailing stop 정보 직렬화
+        trailing_stop = sell_analysis.get('trailing_stop', {})
+        serialized_trailing_stop = None
+        if trailing_stop:
+            serialized_trailing_stop = {
+                'trailing_stop_price': self._convert_to_python_type(trailing_stop.get('trailing_stop_price')),
+                'is_trailing': trailing_stop.get('is_trailing', False),
+                'stop_type': trailing_stop.get('stop_type', 'NONE'),
+                'trailing_triggered': trailing_stop.get('trailing_triggered', False),
+                'trailing_message': trailing_stop.get('trailing_message'),
+                'highest_price': self._convert_to_python_type(trailing_stop.get('highest_price')),
+                'loss_from_high': self._convert_to_python_type(trailing_stop.get('loss_from_high'))
+            }
+
         return {
             'sell_score': self._convert_to_python_type(sell_analysis.get('sell_score', 0)),
             'market_adjusted_score': self._convert_to_python_type(sell_analysis.get('market_adjusted_score', 0)),
@@ -157,8 +171,13 @@ class JsonReportGenerator:
             'sell_signals': sell_analysis.get('sell_signals', []),
             'sell_strategy': sell_analysis.get('sell_strategy', ''),
             'profit_rate': self._convert_to_python_type(sell_analysis.get('profit_rate')) if sell_analysis.get('profit_rate') is not None else None,
+            'loss_rate': self._convert_to_python_type(sell_analysis.get('loss_rate')) if sell_analysis.get('loss_rate') is not None else None,
             'volatility': self._convert_to_python_type(sell_analysis.get('volatility')) if sell_analysis.get('volatility') else None,
-            'at_shoulder': sell_analysis.get('at_shoulder', False)
+            'at_shoulder': sell_analysis.get('at_shoulder', False),
+            'stop_loss_triggered': sell_analysis.get('stop_loss_triggered', False),
+            'stop_loss_message': sell_analysis.get('stop_loss_message'),
+            'stop_loss_price': self._convert_to_python_type(sell_analysis.get('stop_loss_price')),
+            'trailing_stop': serialized_trailing_stop
         }
 
     def calculate_portfolio_summary(

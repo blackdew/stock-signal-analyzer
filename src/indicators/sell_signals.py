@@ -14,7 +14,8 @@ class SellSignalAnalyzer:
         profit_target_full: float = 0.30,
         profit_target_partial: float = 0.15,
         rsi_period: int = 14,
-        rsi_overbought: int = 70
+        rsi_overbought: int = 70,
+        stop_loss_pct: float = 0.07
     ):
         """
         Args:
@@ -23,12 +24,14 @@ class SellSignalAnalyzer:
             profit_target_partial: 분할 매도 권장 수익률
             rsi_period: RSI 계산 기간
             rsi_overbought: RSI 과매수 기준
+            stop_loss_pct: 손절 기준 (매수가 대비 하락률, 기본 7%)
         """
         self.shoulder_threshold = shoulder_threshold
         self.profit_target_full = profit_target_full
         self.profit_target_partial = profit_target_partial
         self.rsi_period = rsi_period
         self.rsi_overbought = rsi_overbought
+        self.stop_loss_pct = stop_loss_pct
         self.price_detector = PriceLevelDetector()
 
     def calculate_rsi(self, df: pd.DataFrame) -> pd.Series:
@@ -186,11 +189,88 @@ class SellSignalAnalyzer:
 
         return normalized
 
+    def calculate_trailing_stop(
+        self,
+        buy_price: float,
+        current_price: float,
+        highest_price: Optional[float] = None,
+        trailing_pct: float = 0.10
+    ) -> Dict[str, any]:
+        """
+        추적 손절가를 계산합니다.
+
+        Args:
+            buy_price: 매수 가격
+            current_price: 현재 가격
+            highest_price: 보유 기간 중 최고가 (None이면 현재가 사용)
+            trailing_pct: 추적 비율 (기본 10%)
+
+        Returns:
+            {
+                'trailing_stop_price': 추적 손절가,
+                'is_trailing': 추적 손절 활성화 여부,
+                'stop_type': 손절 타입 ('TRAILING' 또는 'FIXED'),
+                'trailing_triggered': 추적 손절 트리거 여부,
+                'trailing_message': 추적 손절 메시지
+            }
+        """
+        if buy_price is None or buy_price <= 0:
+            return {
+                'trailing_stop_price': None,
+                'is_trailing': False,
+                'stop_type': 'NONE',
+                'trailing_triggered': False,
+                'trailing_message': None
+            }
+
+        # 최고가가 없으면 현재가를 최고가로 사용
+        if highest_price is None:
+            highest_price = current_price
+
+        # 수익률 계산
+        profit_rate = (highest_price - buy_price) / buy_price
+
+        # 기본 손절가 (매수가 대비 -7%)
+        base_stop_loss = buy_price * (1 - self.stop_loss_pct)
+
+        if profit_rate > 0:
+            # 수익 중: 최고가 대비 trailing_pct 하락 시 손절
+            trailing_stop = highest_price * (1 - trailing_pct)
+
+            # 기본 손절가보다 높으면 추적 손절가 사용
+            final_stop = max(trailing_stop, base_stop_loss)
+
+            # 현재가가 추적 손절가 아래로 떨어졌는지 확인
+            trailing_triggered = current_price <= trailing_stop
+
+            # 손실률 계산 (최고가 대비)
+            loss_from_high = (current_price - highest_price) / highest_price
+
+            return {
+                'trailing_stop_price': final_stop,
+                'is_trailing': True,
+                'stop_type': 'TRAILING',
+                'trailing_triggered': trailing_triggered,
+                'trailing_message': f"🔻 추적 손절 발동 (최고가 대비 {loss_from_high*100:.1f}%)" if trailing_triggered else None,
+                'highest_price': highest_price,
+                'loss_from_high': loss_from_high
+            }
+        else:
+            # 손실 중: 기본 손절가만 사용
+            return {
+                'trailing_stop_price': base_stop_loss,
+                'is_trailing': False,
+                'stop_type': 'FIXED',
+                'trailing_triggered': False,
+                'trailing_message': None
+            }
+
     def analyze_sell_signals(
         self,
         df: pd.DataFrame,
         buy_price: Optional[float] = None,
-        market_trend: str = 'UNKNOWN'
+        market_trend: str = 'UNKNOWN',
+        highest_price: Optional[float] = None
     ) -> Dict[str, any]:
         """
         종합적인 매도 신호를 분석합니다.
@@ -199,6 +279,7 @@ class SellSignalAnalyzer:
             df: 주가 데이터 DataFrame
             buy_price: 매수 가격 (수익률 계산용, 선택사항)
             market_trend: 시장 추세 ('BULL', 'BEAR', 'SIDEWAYS', 'UNKNOWN')
+            highest_price: 보유 기간 중 최고가 (추적 손절 계산용, 선택사항)
 
         Returns:
             {
@@ -208,49 +289,89 @@ class SellSignalAnalyzer:
                 'volume_decrease': 거래량 감소 여부,
                 'dead_cross': 데드크로스 정보,
                 'profit_rate': 수익률 (buy_price가 있을 경우),
+                'loss_rate': 손실률 (buy_price가 있을 경우),
                 'volatility': 변동성,
                 'sell_strategy': 매도 전략 추천,
                 'sell_signals': 매도 신호 목록,
                 'sell_score': 매도 점수 (0-100),
                 'market_trend': 시장 추세,
-                'market_adjusted_score': 시장 필터 적용 후 점수
+                'market_adjusted_score': 시장 필터 적용 후 점수,
+                'stop_loss_triggered': 손절 발동 여부,
+                'stop_loss_message': 손절 메시지,
+                'stop_loss_price': 손절가,
+                'trailing_stop': 추적 손절 정보
             }
         """
         if df is None or df.empty:
             return {}
 
         result = {}
+        current_price = df['Close'].iloc[-1]
 
-        # 1. 어깨 위치 확인
+        # 1. 손절 로직 (최우선 체크)
+        result['stop_loss_triggered'] = False
+        result['stop_loss_message'] = None
+        result['stop_loss_price'] = None
+        result['loss_rate'] = None
+
+        # 기본 손절 체크
+        if buy_price is not None and buy_price > 0:
+            loss_rate = (current_price - buy_price) / buy_price
+            result['loss_rate'] = loss_rate
+            result['stop_loss_price'] = buy_price * (1 - self.stop_loss_pct)
+
+            # 손절가 도달 (기본 -7%)
+            if loss_rate <= -self.stop_loss_pct:
+                result['stop_loss_triggered'] = True
+                result['stop_loss_message'] = f"🚨 손절 발동 ({loss_rate*100:.1f}%)"
+
+        # 2. 추적 손절 (Trailing Stop) 체크
+        trailing_stop_info = self.calculate_trailing_stop(
+            buy_price=buy_price,
+            current_price=current_price,
+            highest_price=highest_price
+        )
+        result['trailing_stop'] = trailing_stop_info
+
+        # 추적 손절이 트리거되면 손절 발동으로 처리
+        if trailing_stop_info.get('trailing_triggered'):
+            result['stop_loss_triggered'] = True
+            result['stop_loss_message'] = trailing_stop_info.get('trailing_message')
+
+        # 3. 어깨 위치 확인
         shoulder_status = self.price_detector.is_at_shoulder(df, self.shoulder_threshold)
         result['shoulder_status'] = shoulder_status
 
-        # 2. RSI 확인
+        # 4. RSI 확인
         rsi_series = self.calculate_rsi(df)
         current_rsi = rsi_series.iloc[-1] if not rsi_series.empty else None
         result['rsi'] = current_rsi
         result['is_rsi_overbought'] = current_rsi > self.rsi_overbought if current_rsi else False
 
-        # 3. 거래량 확인
+        # 5. 거래량 확인
         result['volume_decrease'] = self.check_volume_decrease(df)
 
-        # 4. 데드크로스 확인
+        # 6. 데드크로스 확인
         result['dead_cross'] = self.check_dead_cross(df)
 
-        # 5. 수익률 계산
-        current_price = df['Close'].iloc[-1]
+        # 7. 수익률 계산
         profit_rate = self.calculate_profit_rate(current_price, buy_price)
         result['profit_rate'] = profit_rate
 
-        # 6. 변동성 계산
+        # 8. 변동성 계산
         volatility = self.calculate_volatility(df)
         result['volatility'] = volatility
 
-        # 7. 매도 전략 추천
+        # 9. 매도 전략 추천
         result['sell_strategy'] = self.recommend_sell_strategy(profit_rate, volatility)
 
-        # 8. 매도 신호 목록
+        # 10. 매도 신호 목록
         sell_signals = []
+
+        # 손절 신호가 있으면 맨 앞에 추가 (기본 손절 또는 추적 손절)
+        if result['stop_loss_triggered']:
+            sell_signals.append(result['stop_loss_message'])
+
         if shoulder_status.get('is_at_shoulder'):
             sell_signals.append("어깨 위치 도달")
         if result['is_rsi_overbought']:
@@ -263,20 +384,25 @@ class SellSignalAnalyzer:
 
         result['sell_signals'] = sell_signals
 
-        # 9. 매도 점수 계산 (0-100)
+        # 11. 매도 점수 계산 (0-100)
         score = 0
-        if shoulder_status.get('is_at_shoulder'):
-            score += 30
-        if result['is_rsi_overbought']:
-            score += 25
-        if result['volume_decrease']:
-            score += 20
-        if result['dead_cross'].get('is_dead_cross'):
-            score += 25
+
+        # 손절 발동 시 최고 우선순위 (100점)
+        if result['stop_loss_triggered']:
+            score = 100
+        else:
+            if shoulder_status.get('is_at_shoulder'):
+                score += 30
+            if result['is_rsi_overbought']:
+                score += 25
+            if result['volume_decrease']:
+                score += 20
+            if result['dead_cross'].get('is_dead_cross'):
+                score += 25
 
         result['sell_score'] = min(score, 100)
 
-        # 10. 시장 필터 적용
+        # 12. 시장 필터 적용
         result['market_trend'] = market_trend
         market_adjusted_score = score
 
@@ -313,6 +439,12 @@ class SellSignalAnalyzer:
         """
         if not analysis:
             return "분석 불가"
+
+        # 손절 트리거 시 최우선 표시
+        if analysis.get('stop_loss_triggered'):
+            loss_rate = analysis.get('loss_rate', 0)
+            recommendation = f"🚨 즉시 손절 필요 (손실률: {loss_rate*100:.1f}%)"
+            return recommendation
 
         # 시장 조정 점수를 우선 사용, 없으면 기본 점수 사용
         score = analysis.get('market_adjusted_score', analysis.get('sell_score', 0))

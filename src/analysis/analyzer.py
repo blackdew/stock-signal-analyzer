@@ -61,7 +61,8 @@ class StockAnalyzer:
         symbol: str,
         start_date: str,
         end_date: str,
-        buy_price: Optional[float] = None
+        buy_price: Optional[float] = None,
+        highest_price: Optional[float] = None
     ) -> Dict[str, any]:
         """
         주식을 종합적으로 분석합니다.
@@ -71,6 +72,7 @@ class StockAnalyzer:
             start_date: 시작일
             end_date: 종료일
             buy_price: 매수 가격 (선택사항, 수익률 계산용)
+            highest_price: 보유 중 최고가 (선택사항, 추적 손절 계산용)
 
         Returns:
             {
@@ -119,8 +121,8 @@ class StockAnalyzer:
         buy_analysis = self.buy_analyzer.analyze_buy_signals(df, market_trend)
         buy_recommendation = self.buy_analyzer.get_buy_recommendation(buy_analysis)
 
-        # 매도 신호 분석 (시장 추세 전달)
-        sell_analysis = self.sell_analyzer.analyze_sell_signals(df, buy_price, market_trend)
+        # 매도 신호 분석 (시장 추세 및 최고가 전달)
+        sell_analysis = self.sell_analyzer.analyze_sell_signals(df, buy_price, market_trend, highest_price)
         sell_recommendation = self.sell_analyzer.get_sell_recommendation(sell_analysis)
 
         # 종합 추천 (시장 조정 점수 기반 + 임계값 필터)
@@ -171,7 +173,8 @@ class StockAnalyzer:
         symbols: list,
         start_date: str,
         end_date: str,
-        buy_prices: Optional[Dict[str, float]] = None
+        buy_prices: Optional[Dict[str, float]] = None,
+        highest_prices: Optional[Dict[str, float]] = None
     ) -> list:
         """
         여러 종목을 한 번에 분석합니다.
@@ -181,6 +184,7 @@ class StockAnalyzer:
             start_date: 시작일
             end_date: 종료일
             buy_prices: 종목별 매수 가격 딕셔너리 (선택사항)
+            highest_prices: 종목별 최고가 딕셔너리 (선택사항)
 
         Returns:
             분석 결과 리스트
@@ -189,7 +193,8 @@ class StockAnalyzer:
 
         for symbol in symbols:
             buy_price = buy_prices.get(symbol) if buy_prices else None
-            analysis = self.analyze_stock(symbol, start_date, end_date, buy_price)
+            highest_price = highest_prices.get(symbol) if highest_prices else None
+            analysis = self.analyze_stock(symbol, start_date, end_date, buy_price, highest_price)
             results.append(analysis)
 
         return results

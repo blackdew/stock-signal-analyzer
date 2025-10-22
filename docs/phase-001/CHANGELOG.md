@@ -1,14 +1,17 @@
 # Phase 1 변경 로그 (Changelog)
 
-> **버전**: v1.1.0 (Phase 1 - Part 1)
-> **릴리스 날짜**: 2025-10-16
-> **작업 범위**: Task 1.1 ~ 1.3 (변동성 기반 동적 임계값)
+> **버전**: v1.1.0 (Phase 1 - Part 1-3)
+> **릴리스 날짜**: 2025-10-22
+> **작업 범위**: Task 1.1 ~ 3.3 (변동성 기반 동적 임계값, 시장 필터, 손절 로직)
 
 ---
 
 ## 🎯 개요
 
-Phase 1의 첫 번째 작업으로 **변동성 기반 동적 임계값** 기능을 구현했습니다. 기존의 정적 임계값(바닥 +15%, 천장 -15%)에서 벗어나, 종목별 변동성을 고려한 맞춤형 임계값을 적용하여 신호의 정확도를 높였습니다.
+Phase 1의 핵심 작업을 완료했습니다:
+1. **변동성 기반 동적 임계값** - 종목별 ATR을 활용한 맞춤형 매매 신호
+2. **시장 필터** - KOSPI 추세에 따른 매수/매도 점수 조정
+3. **손절 로직 강화** - 고정 손절 + 추적 손절 (Trailing Stop) 구현
 
 ---
 
@@ -280,11 +283,265 @@ print(f"동적 무릎 가격: {knee_info['dynamic_knee_price']}")
 
 ---
 
+## 🆕 Phase 1 - Part 2: 시장 필터 (2025-10-16)
+
+### 8. KOSPI 시장 추세 분석
+
+**파일**: `src/utils/market_analyzer.py` (신규)
+
+KOSPI 지수의 이동평균선을 기반으로 시장 국면을 자동 판단:
+
+**시장 추세 분류**:
+- **상승장 (BULL)**: MA20 > MA60, 차이 2% 이상
+- **하락장 (BEAR)**: MA20 < MA60, 차이 -2% 이하
+- **횡보장 (SIDEWAYS)**: MA20 ≈ MA60, 차이 ±2% 이내
+
+**주요 메서드**:
+```python
+def analyze_trend(self) -> str
+def calculate_volatility(self) -> str
+def get_market_summary(self) -> Dict
+```
+
+**캐싱 전략**:
+- 1시간 캐싱으로 중복 API 호출 방지
+- 싱글톤 패턴으로 메모리 효율화
+
+### 9. 매수 신호 시장 필터
+
+**파일**: `src/indicators/buy_signals.py`
+
+시장 상황에 따른 매수 점수 자동 조정:
+
+**조정 로직**:
+```python
+하락장 (BEAR):
+  - 강력 매수(80점 이상)가 아니면 50% 감점
+  - "⚠️ 시장 하락장 - 매수 신중" 메시지
+
+상승장 (BULL):
+  - 모든 매수 신호에 10% 가산점
+  - "📈 시장 상승장 - 매수 유리" 메시지
+
+횡보장 (SIDEWAYS):
+  - 점수 유지
+```
+
+**반환값 추가**:
+- `market_trend`: 시장 추세 ('BULL', 'BEAR', 'SIDEWAYS')
+- `market_adjusted_score`: 시장 필터 적용 후 점수
+
+### 10. 매도 신호 시장 필터
+
+**파일**: `src/indicators/sell_signals.py`
+
+시장 상황에 따른 매도 점수 자동 조정:
+
+**조정 로직**:
+```python
+상승장 (BULL):
+  - 강력 매도(80점 이상)가 아니면 30% 감점
+  - "📈 시장 상승장 - 매도 신중" 메시지 (보유 유리)
+
+하락장 (BEAR):
+  - 모든 매도 신호에 20% 가산점
+  - "⚠️ 시장 하락장 - 매도 고려" 메시지
+
+횡보장 (SIDEWAYS):
+  - 점수 유지
+```
+
+### 11. 웹 대시보드 시장 정보 카드
+
+**파일**: `web/static/js/app.js`, `web/dashboard.html`
+
+KOSPI 시장 상황을 한눈에 표시:
+
+**표시 정보**:
+- 시장 추세 (상승장/하락장/횡보장) + 아이콘
+- MA20-MA60 추세 차이 (%)
+- 시장 변동성 (LOW/MEDIUM/HIGH)
+- KOSPI 지수
+
+**시각화**:
+- 추세별 색상 코딩 (상승장: 녹색, 하락장: 빨간색, 횡보장: 주황색)
+- 그라데이션 배경과 테두리
+
+---
+
+## 🆕 Phase 1 - Part 3: 손절 로직 강화 (2025-10-22)
+
+### 12. 기본 손절 로직 (Fixed Stop Loss)
+
+**파일**: `src/indicators/sell_signals.py`
+
+매수가 대비 -7% 도달 시 자동 손절 신호:
+
+**구현 내용**:
+```python
+def analyze_sell_signals(..., buy_price=None):
+    if buy_price is not None:
+        loss_rate = (current_price - buy_price) / buy_price
+
+        if loss_rate <= -0.07:  # -7% 손절
+            result['stop_loss_triggered'] = True
+            result['sell_score'] = 100  # 최고 우선순위
+            sell_signals.insert(0, f"🚨 손절 발동 ({loss_rate*100:.1f}%)")
+```
+
+**반환값 추가**:
+- `stop_loss_triggered`: 손절 발동 여부
+- `stop_loss_message`: 손절 메시지
+- `stop_loss_price`: 손절가
+- `loss_rate`: 손실률
+
+**우선순위**:
+- 손절 신호가 있으면 매도 점수 100점으로 강제 설정
+- 다른 모든 매도 신호보다 우선
+
+### 13. 추적 손절 (Trailing Stop)
+
+**파일**: `src/indicators/sell_signals.py`
+
+수익 보호를 위한 동적 손절 시스템:
+
+**계산 로직**:
+```python
+def calculate_trailing_stop(
+    buy_price, current_price, highest_price, trailing_pct=0.10
+):
+    profit_rate = (highest_price - buy_price) / buy_price
+
+    if profit_rate > 0:  # 수익 중
+        # 최고가 대비 10% 하락 시 손절
+        trailing_stop = highest_price * (1 - trailing_pct)
+        final_stop = max(trailing_stop, buy_price * 0.93)
+    else:  # 손실 중
+        # 기본 손절가 사용
+        final_stop = buy_price * 0.93
+
+    return {
+        'trailing_stop_price': final_stop,
+        'is_trailing': profit_rate > 0,
+        'stop_type': 'TRAILING' | 'FIXED',
+        'trailing_triggered': current_price <= trailing_stop,
+        'highest_price': highest_price,
+        'loss_from_high': (current_price - highest_price) / highest_price
+    }
+```
+
+**작동 방식**:
+1. **수익 중**: 최고가를 기록하며 10% trailing
+2. **손실 중**: 기본 손절가(-7%) 사용
+3. **트리거**: 추적 손절가 도달 시 매도 신호
+
+**예시**:
+- 매수가: 100,000원
+- 최고가: 120,000원 (+20% 수익)
+- 추적 손절가: 108,000원 (최고가 -10%)
+- 현재가 107,000원 → 🔻 추적 손절 발동
+
+### 14. CSV 최고가 컬럼 지원
+
+**파일**: `src/portfolio/loader.py`
+
+포트폴리오 CSV에 최고가 추적 기능 추가:
+
+**CSV 형식 확장**:
+```csv
+종목코드,매수가격,수량,종목명,보유중최고가
+005930,71000,150,삼성전자,75000
+000660,120000,30,SK하이닉스,125000
+035420,195000,40,NAVER,  # 최고가 없음 (현재가 사용)
+```
+
+**load_csv() 변경**:
+- 반환값: `(symbols, buy_prices, quantities, highest_prices)`
+- '보유중최고가' 컬럼은 선택사항
+- 없으면 빈 dict 반환 → 현재가를 최고가로 사용
+
+**파이프라인 통합**:
+- `main.py`: CSV에서 최고가 로드
+- `analyzer.py`: `analyze_stock()`에 `highest_price` 파라미터 추가
+- `sell_signals.py`: 최고가를 사용하여 trailing stop 계산
+
+### 15. JSON 리포트 손절 정보
+
+**파일**: `src/report/json_generator.py`
+
+손절 및 추적 손절 정보를 JSON으로 직렬화:
+
+**_serialize_sell_analysis() 확장**:
+```python
+{
+  "sell_score": 100,
+  "market_adjusted_score": 100,
+  "loss_rate": -0.08,
+  "stop_loss_triggered": true,
+  "stop_loss_message": "🚨 손절 발동 (-8.0%)",
+  "stop_loss_price": 65100,
+  "trailing_stop": {
+    "trailing_stop_price": 108000,
+    "is_trailing": true,
+    "stop_type": "TRAILING",
+    "trailing_triggered": true,
+    "trailing_message": "🔻 추적 손절 발동 (최고가 대비 -10.8%)",
+    "highest_price": 120000,
+    "loss_from_high": -0.108
+  }
+}
+```
+
+### 16. 웹 대시보드 손절 표시
+
+**파일**: `web/static/js/app.js`
+
+손절 신호를 시각적으로 강조 표시:
+
+**UI 개선**:
+1. **종목 카드 테두리**:
+   - 손절 트리거 시 빨간색 3px 테두리
+
+2. **손절 경고 박스** (신규):
+   - 빨간색 그라데이션 배경
+   - 손절 메시지 (🚨 이모지)
+   - 손절가 표시
+   - 추적 손절 상태 및 최고가 표시
+
+**표시 예시**:
+```
+┌─────────────────────────────────────┐
+│ 🚨 손절 발동 (-8.0%)                │
+│ 손절가: ₩65,100                     │
+│ 🔻 추적 손절 활성화 | 최고가: ₩120,000 │
+└─────────────────────────────────────┘
+```
+
+---
+
+## 📊 영향 받는 파일 (전체)
+
+### 수정된 파일
+1. `src/indicators/price_levels.py` - ATR 및 동적 임계값
+2. `src/indicators/buy_signals.py` - 시장 필터 통합
+3. `src/indicators/sell_signals.py` - 시장 필터, 손절 로직, Trailing Stop
+4. `src/analysis/analyzer.py` - 변동성, 시장 분석, 최고가 통합
+5. `src/portfolio/loader.py` - CSV 최고가 컬럼 지원
+6. `src/report/json_generator.py` - 변동성, 시장, 손절 정보 직렬화
+7. `main.py` - 최고가 데이터 파이프라인
+8. `web/static/js/app.js` - 웹 대시보드 UI (변동성, 시장, 손절 표시)
+9. `CLAUDE.md` - 프로젝트 문서 업데이트
+
+### 새로 추가된 파일
+1. `src/utils/__init__.py` - 유틸리티 모듈 패키지
+2. `src/utils/market_analyzer.py` - KOSPI 시장 분석기
+3. `docs/phase-001/CHANGELOG.md` - 이 파일
+
+---
+
 ## 🔮 다음 단계 (Phase 1 나머지 작업)
 
 ### Week 1 남은 작업
-- [ ] Task 2.1-2.4: 시장 필터 추가 (KOSPI 추세 분석)
-- [ ] Task 3.1-3.3: 손절 로직 강화 (Trailing Stop)
 - [ ] Task 4.1-4.5: 예외 처리 및 로깅 개선
 
 ### Week 2 작업

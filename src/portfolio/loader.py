@@ -98,15 +98,15 @@ class PortfolioLoader:
         return symbol.isdigit() and len(symbol) == 6
 
     @staticmethod
-    def load_csv(filepath: str) -> Tuple[List[str], Dict[str, float], Dict[str, int]]:
+    def load_csv(filepath: str) -> Tuple[List[str], Dict[str, float], Dict[str, int], Dict[str, float]]:
         """
-        CSV 포트폴리오 파일을 읽어서 종목 코드, 매수 가격, 수량을 반환
+        CSV 포트폴리오 파일을 읽어서 종목 코드, 매수 가격, 수량, 최고가를 반환
 
         Args:
             filepath: CSV 파일 경로
 
         Returns:
-            (종목 코드 리스트, 매수 가격 딕셔너리, 수량 딕셔너리)
+            (종목 코드 리스트, 매수 가격 딕셔너리, 수량 딕셔너리, 최고가 딕셔너리)
 
         Raises:
             FileNotFoundError: 파일이 존재하지 않을 때
@@ -118,6 +118,7 @@ class PortfolioLoader:
         symbols = []
         buy_prices = {}
         quantities = {}
+        highest_prices = {}
 
         with open(filepath, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
@@ -131,6 +132,7 @@ class PortfolioLoader:
                     symbol = row['종목코드'].strip()
                     price_str = row['매수가격'].strip().replace(',', '')
                     quantity_str = row.get('수량', '').strip().replace(',', '')
+                    highest_str = row.get('보유중최고가', '').strip().replace(',', '')
 
                     if not symbol:
                         continue
@@ -145,6 +147,11 @@ class PortfolioLoader:
                     else:
                         quantities[symbol] = 1  # 기본값 1주
 
+                    # 최고가 읽기 (선택사항)
+                    if highest_str:
+                        highest_price = float(highest_str)
+                        highest_prices[symbol] = highest_price
+
                     symbols.append(symbol)
 
                 except (ValueError, KeyError) as e:
@@ -155,7 +162,7 @@ class PortfolioLoader:
         if not symbols:
             raise ValueError(f"CSV 파일에 유효한 종목이 없습니다: {filepath}")
 
-        return symbols, buy_prices, quantities
+        return symbols, buy_prices, quantities, highest_prices
 
     @staticmethod
     def find_latest_csv(directory: str) -> str:
@@ -230,9 +237,9 @@ class PortfolioLoader:
         """예제 CSV 포트폴리오 파일 생성"""
         with open(filepath, 'w', encoding='utf-8', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(['종목코드', '매수가격', '수량', '종목명'])
-            writer.writerow(['005930', '71000', '150', '삼성전자'])
-            writer.writerow(['000660', '120000', '30', 'SK하이닉스'])
-            writer.writerow(['035420', '195000', '40', 'NAVER'])
+            writer.writerow(['종목코드', '매수가격', '수량', '종목명', '보유중최고가'])
+            writer.writerow(['005930', '71000', '150', '삼성전자', '75000'])
+            writer.writerow(['000660', '120000', '30', 'SK하이닉스', '125000'])
+            writer.writerow(['035420', '195000', '40', 'NAVER', ''])  # 최고가 없음
 
         print(f"예제 CSV 포트폴리오 파일이 생성되었습니다: {filepath}")

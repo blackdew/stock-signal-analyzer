@@ -253,8 +253,13 @@ function renderStockCard(stock) {
     };
     const volatilityColor = volatilityColors[volatilityInfo.level] || '#999';
 
+    // 손절 트리거 여부 확인
+    const stopLossTriggered = sellAnalysis.stop_loss_triggered || false;
+    const stopLossMessage = sellAnalysis.stop_loss_message || '';
+    const trailingStop = sellAnalysis.trailing_stop || {};
+
     return `
-        <div class="stock-card action-${stock.action}">
+        <div class="stock-card action-${stock.action}" style="${stopLossTriggered ? 'border: 3px solid #F44336;' : ''}">
             <div class="stock-header-info">
                 <div class="stock-title">
                     <div class="stock-name-large">${stock.name}</div>
@@ -265,6 +270,25 @@ function renderStockCard(stock) {
                     <div class="price-value">${formatPrice(stock.current_price)}</div>
                 </div>
             </div>
+
+            ${stopLossTriggered ? `
+            <div style="background: linear-gradient(135deg, #F4433622, #F4433611); border-left: 4px solid #F44336; padding: 15px; margin: 10px 0; border-radius: 6px;">
+                <div style="font-size: 14px; font-weight: 700; color: #F44336; margin-bottom: 8px;">
+                    ${stopLossMessage}
+                </div>
+                ${sellAnalysis.stop_loss_price ? `
+                    <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                        손절가: ${formatPrice(sellAnalysis.stop_loss_price)}
+                    </div>
+                ` : ''}
+                ${trailingStop && trailingStop.is_trailing ? `
+                    <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                        ${trailingStop.stop_type === 'TRAILING' ? '🔻 추적 손절 활성화' : '고정 손절'}
+                        ${trailingStop.highest_price ? ` | 최고가: ${formatPrice(trailingStop.highest_price)}` : ''}
+                    </div>
+                ` : ''}
+            </div>
+            ` : ''}
 
             ${volatilityInfo.level ? `
             <div class="volatility-info" style="background: linear-gradient(135deg, ${volatilityColor}22, ${volatilityColor}11); border-left: 3px solid ${volatilityColor}; padding: 10px; margin: 10px 0; border-radius: 4px;">
