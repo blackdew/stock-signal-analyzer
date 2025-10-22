@@ -31,3 +31,11 @@ web/data/
 *.tmp
 *.bak
 *.swp
+
+# Test coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+*.cover
+.hypothesis/
