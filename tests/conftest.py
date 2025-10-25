@@ -268,3 +268,14 @@ def sample_config():
         'rsi_overbought': 70,
         'lookback_period': 60
     }
+
+
+@pytest.fixture
+def mock_stock_name():
+    """
+    테스트용 종목명
+
+    Returns:
+        str: 샘플 종목명
+    """
+    return "삼성전자"
