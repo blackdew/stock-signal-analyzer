@@ -18,6 +18,7 @@ class StockAnalyzer:
 
     def __init__(
         self,
+        fetcher=None,
         knee_threshold: float = 0.15,
         shoulder_threshold: float = 0.15,
         stop_loss_pct: float = 0.07,
@@ -31,6 +32,7 @@ class StockAnalyzer:
     ):
         """
         Args:
+            fetcher: StockDataFetcher 인스턴스 (None이면 자동 생성)
             knee_threshold: 무릎 판단 기준
             shoulder_threshold: 어깨 판단 기준
             stop_loss_pct: 손절가 비율
@@ -42,7 +44,7 @@ class StockAnalyzer:
             rsi_overbought: RSI 과매수 기준
             lookback_period: 바닥/천장 lookback 기간
         """
-        self.fetcher = StockDataFetcher()
+        self.fetcher = fetcher if fetcher is not None else StockDataFetcher()
         self.price_detector = PriceLevelDetector(lookback_period)
         self.buy_analyzer = BuySignalAnalyzer(
             knee_threshold,

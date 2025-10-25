@@ -8,6 +8,7 @@ import pytest
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+from unittest.mock import MagicMock
 
 
 @pytest.fixture
@@ -279,3 +280,134 @@ def mock_stock_name():
         str: 샘플 종목명
     """
     return "삼성전자"
+
+
+@pytest.fixture
+def mock_stock_data_fetcher():
+    """
+    Mock StockDataFetcher
+
+    Returns:
+        MagicMock: StockDataFetcher의 Mock 객체
+    """
+    mock = MagicMock()
+    mock.fetch_stock_data = MagicMock()
+    return mock
+
+
+@pytest.fixture
+def bear_market_data():
+    """
+    하락장 데이터 (별칭: sample_market_data_bear와 동일)
+
+    Returns:
+        DataFrame: 하락장 시장 데이터
+    """
+    days = 180
+    base_price = 2800
+    dates = pd.date_range(end=datetime.now(), periods=days, freq='D')
+
+    np.random.seed(200)
+
+    # 강한 하락 추세
+    returns = np.random.normal(-0.006, 0.015, days)
+    prices = base_price * np.exp(np.cumsum(returns))
+
+    highs = prices * (1 + np.abs(np.random.normal(0, 0.005, days)))
+    lows = prices * (1 - np.abs(np.random.normal(0, 0.005, days)))
+    closes = prices
+
+    base_volume = 600000000
+    volumes = base_volume * (1 + np.random.normal(0, 0.3, days))
+    volumes = np.maximum(volumes, 0)
+
+    df = pd.DataFrame({
+        'Date': dates,
+        'High': highs,
+        'Low': lows,
+        'Close': closes,
+        'Volume': volumes.astype(int)
+    })
+
+    df = df.set_index('Date')
+
+    return df
+
+
+@pytest.fixture
+def bull_market_data():
+    """
+    상승장 데이터 (별칭: sample_market_data_bull과 동일)
+
+    Returns:
+        DataFrame: 상승장 시장 데이터
+    """
+    days = 180
+    base_price = 2500
+    dates = pd.date_range(end=datetime.now(), periods=days, freq='D')
+
+    np.random.seed(100)
+
+    # 강한 상승 추세
+    returns = np.random.normal(0.008, 0.015, days)
+    prices = base_price * np.exp(np.cumsum(returns))
+
+    highs = prices * (1 + np.abs(np.random.normal(0, 0.005, days)))
+    lows = prices * (1 - np.abs(np.random.normal(0, 0.005, days)))
+    closes = prices
+
+    base_volume = 500000000
+    volumes = base_volume * (1 + np.random.normal(0, 0.2, days))
+    volumes = np.maximum(volumes, 0)
+
+    df = pd.DataFrame({
+        'Date': dates,
+        'High': highs,
+        'Low': lows,
+        'Close': closes,
+        'Volume': volumes.astype(int)
+    })
+
+    df = df.set_index('Date')
+
+    return df
+
+
+@pytest.fixture
+def high_volatility_stock_data():
+    """
+    고변동성 종목 데이터 (별칭: sample_stock_data_volatile과 유사)
+
+    Returns:
+        DataFrame: 고변동성 주가 데이터
+    """
+    days = 180
+    base_price = 50000
+    dates = pd.date_range(end=datetime.now(), periods=days, freq='D')
+
+    np.random.seed(456)
+
+    # 높은 변동성 (표준편차 5%)
+    returns = np.random.normal(0.001, 0.05, days)
+    prices = base_price * np.exp(np.cumsum(returns))
+
+    # High, Low 범위도 넓게
+    highs = prices * (1 + np.abs(np.random.normal(0, 0.03, days)))
+    lows = prices * (1 - np.abs(np.random.normal(0, 0.03, days)))
+    closes = prices
+
+    base_volume = 2000000
+    volumes = base_volume * (1 + np.random.normal(0, 0.5, days))
+    volumes = np.maximum(volumes, 0)
+
+    df = pd.DataFrame({
+        'Date': dates,
+        'High': highs,
+        'Low': lows,
+        'Close': closes,
+        'Volume': volumes.astype(int)
+    })
+
+    df = df.set_index('Date')
+
+    return df
