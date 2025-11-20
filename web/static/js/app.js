@@ -51,6 +51,9 @@ function renderDashboard() {
     // 시장 정보 표시
     renderMarketInfo();
 
+    // 글로벌 시장 정보 표시
+    renderGlobalMarketInfo();
+
     // 포트폴리오 요약
     renderPortfolioSummary();
 
@@ -139,10 +142,116 @@ function renderMarketInfo() {
     `;
 }
 
+// 글로벌 시장 정보 렌더링
+function renderGlobalMarketInfo() {
+    const globalMarket = reportData.global_market;
+    const section = document.getElementById('global-market-info');
+
+    if (!globalMarket || !section) {
+        return;
+    }
+
+    const { kosdaq, nasdaq, sp500, usd_krw, us_10y, summary } = globalMarket;
+
+    // 추세 색상
+    const getTrendColor = (trend) => {
+        if (trend === 'BULL' || trend === 'UP') return '#4CAF50';
+        if (trend === 'BEAR' || trend === 'DOWN') return '#F44336';
+        return '#FF9800';
+    };
+
+    const getChangeClass = (value) => value >= 0 ? 'positive' : 'negative';
+
+    section.style.display = 'block';
+    section.innerHTML = `
+        <div style="background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin: 20px 0;">
+            <h3 style="margin: 0 0 15px 0; font-size: 16px; color: #2d3748;">🌐 글로벌 시장 현황</h3>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 15px;">
+                <!-- KOSDAQ -->
+                ${kosdaq.success ? `
+                <div style="background: #f7fafc; padding: 12px; border-radius: 8px; border-left: 3px solid ${getTrendColor(kosdaq.trend)};">
+                    <div style="font-size: 11px; color: #718096; margin-bottom: 5px;">KOSDAQ</div>
+                    <div style="font-size: 16px; font-weight: 700; color: #2d3748; margin-bottom: 3px;">
+                        ${kosdaq.current.toFixed(2)}
+                    </div>
+                    <div style="font-size: 12px; font-weight: 600; color: ${getChangeClass(kosdaq.change_pct) === 'positive' ? '#48bb78' : '#f56565'};">
+                        ${formatPercentage(kosdaq.change_pct)}
+                    </div>
+                </div>
+                ` : ''}
+
+                <!-- NASDAQ -->
+                ${nasdaq.success ? `
+                <div style="background: #f7fafc; padding: 12px; border-radius: 8px; border-left: 3px solid ${getTrendColor(nasdaq.trend)};">
+                    <div style="font-size: 11px; color: #718096; margin-bottom: 5px;">NASDAQ</div>
+                    <div style="font-size: 16px; font-weight: 700; color: #2d3748; margin-bottom: 3px;">
+                        ${nasdaq.current.toFixed(2)}
+                    </div>
+                    <div style="font-size: 12px; font-weight: 600; color: ${getChangeClass(nasdaq.change_pct) === 'positive' ? '#48bb78' : '#f56565'};">
+                        ${formatPercentage(nasdaq.change_pct)}
+                    </div>
+                </div>
+                ` : ''}
+
+                <!-- S&P 500 -->
+                ${sp500.success ? `
+                <div style="background: #f7fafc; padding: 12px; border-radius: 8px; border-left: 3px solid ${getTrendColor(sp500.trend)};">
+                    <div style="font-size: 11px; color: #718096; margin-bottom: 5px;">S&P 500</div>
+                    <div style="font-size: 16px; font-weight: 700; color: #2d3748; margin-bottom: 3px;">
+                        ${sp500.current.toFixed(2)}
+                    </div>
+                    <div style="font-size: 12px; font-weight: 600; color: ${getChangeClass(sp500.change_pct) === 'positive' ? '#48bb78' : '#f56565'};">
+                        ${formatPercentage(sp500.change_pct)}
+                    </div>
+                </div>
+                ` : ''}
+
+                <!-- USD/KRW -->
+                ${usd_krw.success ? `
+                <div style="background: #f7fafc; padding: 12px; border-radius: 8px; border-left: 3px solid ${getTrendColor(usd_krw.trend)};">
+                    <div style="font-size: 11px; color: #718096; margin-bottom: 5px;">USD/KRW</div>
+                    <div style="font-size: 16px; font-weight: 700; color: #2d3748; margin-bottom: 3px;">
+                        ₩${usd_krw.current.toFixed(2)}
+                    </div>
+                    <div style="font-size: 12px; font-weight: 600; color: ${getChangeClass(usd_krw.change_pct) === 'positive' ? '#48bb78' : '#f56565'};">
+                        ${formatPercentage(usd_krw.change_pct)}
+                    </div>
+                </div>
+                ` : ''}
+
+                <!-- US 10Y -->
+                ${us_10y.success ? `
+                <div style="background: #f7fafc; padding: 12px; border-radius: 8px; border-left: 3px solid ${getTrendColor(us_10y.trend)};">
+                    <div style="font-size: 11px; color: #718096; margin-bottom: 5px;">미국 10년물</div>
+                    <div style="font-size: 16px; font-weight: 700; color: #2d3748; margin-bottom: 3px;">
+                        ${us_10y.current.toFixed(2)}%
+                    </div>
+                    <div style="font-size: 12px; font-weight: 600; color: ${getChangeClass(us_10y.change) === 'positive' ? '#48bb78' : '#f56565'};">
+                        ${us_10y.change >= 0 ? '+' : ''}${us_10y.change.toFixed(2)}%p
+                    </div>
+                </div>
+                ` : ''}
+            </div>
+
+            <!-- 요약 -->
+            <div style="padding: 10px; background: #edf2f7; border-radius: 6px; font-size: 12px; color: #4a5568; line-height: 1.6;">
+                ${summary}
+            </div>
+        </div>
+    `;
+}
+
 // 포트폴리오 요약 렌더링
 function renderPortfolioSummary() {
-    const summary = reportData.portfolio_summary;
     const section = document.getElementById('portfolio-summary');
+
+    // 포트폴리오 요약 섹션이 없으면 건너뜀
+    if (!section) {
+        return;
+    }
+
+    const summary = reportData.portfolio_summary;
 
     if (summary.stocks_with_buy_price === 0) {
         // 매수가 정보가 없으면 요약 섹션 숨김
@@ -403,8 +512,10 @@ function renderStockCard(stock) {
 
 // 차트 렌더링
 function renderChart(stock) {
-    const ctx = document.getElementById(`chart-${stock.symbol}`);
-    if (!ctx) return;
+    const canvas = document.getElementById(`chart-${stock.symbol}`);
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
 
     // 기존 차트 제거
     if (charts[stock.symbol]) {

@@ -14,11 +14,7 @@
 <body>
     <div class="container">
         <!-- 네비게이션 -->
-        <nav class="navigation">
-            <a href="dashboard.html" class="active">대시보드</a>
-            <a href="history.html">히스토리</a>
-            <a href="trends.html">추이 분석</a>
-        </nav>
+        <nav class="navigation"></nav>
 
         <!-- 헤더 -->
         <header class="header">
@@ -35,32 +31,8 @@
         <!-- 시장 정보 -->
         <div id="market-info" class="market-info"></div>
 
-        <!-- 포트폴리오 요약 -->
-        <section class="portfolio-summary" id="portfolio-summary" style="display: none;">
-            <h2>포트폴리오 요약</h2>
-            <div class="summary-cards">
-                <div class="summary-card">
-                    <div class="card-label">총 투자금</div>
-                    <div class="card-value" id="total-investment">-</div>
-                </div>
-                <div class="summary-card">
-                    <div class="card-label">평가금액</div>
-                    <div class="card-value" id="total-valuation">-</div>
-                </div>
-                <div class="summary-card">
-                    <div class="card-label">수익금액</div>
-                    <div class="card-value" id="total-profit">-</div>
-                </div>
-                <div class="summary-card">
-                    <div class="card-label">수익률</div>
-                    <div class="card-value" id="total-profit-rate">-</div>
-                </div>
-                <div class="summary-card">
-                    <div class="card-label">전체 종목</div>
-                    <div class="card-value" id="total-stocks">-</div>
-                </div>
-            </div>
-        </section>
+        <!-- 글로벌 시장 정보 -->
+        <div id="global-market-info" class="global-market-info" style="display: none;"></div>
 
         <!-- 우선순위 종목 -->
         <section class="priorities" id="priorities" style="display: none;">
@@ -89,9 +61,13 @@
 
     <script>
         // JavaScript 파일도 캐시 무효화 (cacheBuster already declared above)
+        document.write('<script src="static/js/navigation.js?t=' + cacheBuster + '"><\/script>');
         document.write('<script src="static/js/app.js?t=' + cacheBuster + '"><\/script>');
     </script>
     <script>
+        // 네비게이션 렌더링
+        renderNavigation('dashboard');
+
         // 페이지 로드 시 리포트 불러오기
         window.addEventListener('DOMContentLoaded', function() {
             if (typeof loadReport !== 'undefined') {

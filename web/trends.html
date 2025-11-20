@@ -7,17 +7,20 @@
     <script>
         var cacheBuster = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
         document.write('<link rel="stylesheet" href="static/css/style.css?t=' + cacheBuster + '">');
+        document.write('<script src="static/js/navigation.js?t=' + cacheBuster + '"><\/script>');
+    </script>
+    <script>
+        // 네비게이션 렌더링
+        document.addEventListener('DOMContentLoaded', function() {
+            renderNavigation('trends');
+        });
     </script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <div class="container">
         <!-- 네비게이션 -->
-        <nav class="navigation">
-            <a href="dashboard.html">대시보드</a>
-            <a href="history.html">히스토리</a>
-            <a href="trends.html" class="active">추이 분석</a>
-        </nav>
+        <nav class="navigation"></nav>
 
         <!-- 헤더 -->
         <header class="header">
@@ -135,6 +138,15 @@
             const select = document.getElementById('symbol-select');
             select.innerHTML = '<option value="">종목을 선택하세요</option>' +
                 symbols.map(s => `<option value="${s.symbol}">${s.name} (${s.symbol})</option>`).join('');
+
+            // 첫 번째 종목을 자동으로 선택
+            if (symbols.length > 0) {
+                // DOM 업데이트 후 실행되도록 setTimeout 사용
+                setTimeout(() => {
+                    select.value = symbols[0].symbol;
+                    loadTrends();
+                }, 100);
+            }
         }
 
         // 추이 데이터 불러오기

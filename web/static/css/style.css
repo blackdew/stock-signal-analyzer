@@ -7,10 +7,16 @@
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: #f5f7fa;
     color: #333;
     line-height: 1.6;
-    padding: 20px;
+    padding: 10px;
+}
+
+@media (min-width: 768px) {
+    body {
+        padding: 20px;
+    }
 }
 
 .container {
@@ -21,79 +27,115 @@ body {
 /* 네비게이션 */
 .navigation {
     background: white;
-    padding: 15px 30px;
-    border-radius: 15px;
-    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
-    margin-bottom: 20px;
+    padding: 12px 20px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    margin-bottom: 15px;
     display: flex;
-    gap: 20px;
+    gap: 10px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .navigation a {
     color: #666;
     text-decoration: none;
     font-weight: 600;
-    font-size: 15px;
-    padding: 10px 20px;
+    font-size: 14px;
+    padding: 8px 16px;
     border-radius: 8px;
-    transition: all 0.3s;
+    transition: all 0.2s;
+    white-space: nowrap;
 }
 
 .navigation a:hover {
-    background: #f8f9ff;
-    color: #667eea;
+    background: #f0f4f8;
+    color: #4a5568;
 }
 
 .navigation a.active {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: #4a5568;
     color: white;
+}
+
+@media (min-width: 768px) {
+    .navigation {
+        padding: 15px 30px;
+        gap: 15px;
+    }
+
+    .navigation a {
+        font-size: 15px;
+        padding: 10px 20px;
+    }
 }
 
 /* 헤더 */
 .header {
     background: white;
-    padding: 30px;
-    border-radius: 15px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-    margin-bottom: 30px;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    margin-bottom: 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 15px;
 }
 
 .header h1 {
-    color: #667eea;
-    font-size: 28px;
+    color: #2d3748;
+    font-size: 22px;
     font-weight: 700;
 }
 
 .header-info {
     display: flex;
     align-items: center;
-    gap: 15px;
+    gap: 10px;
+    flex-wrap: wrap;
 }
 
 .header-info span {
-    color: #666;
-    font-size: 14px;
+    color: #718096;
+    font-size: 13px;
 }
 
 #refresh-btn {
-    background: #667eea;
+    background: #4a5568;
     color: white;
     border: none;
-    padding: 10px 20px;
+    padding: 8px 16px;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
-    transition: all 0.3s;
+    transition: all 0.2s;
 }
 
 #refresh-btn:hover {
-    background: #5568d3;
-    transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+    background: #2d3748;
+    transform: translateY(-1px);
+}
+
+@media (min-width: 768px) {
+    .header {
+        padding: 25px 30px;
+    }
+
+    .header h1 {
+        font-size: 26px;
+    }
+
+    .header-info span {
+        font-size: 14px;
+    }
+
+    #refresh-btn {
+        padding: 10px 20px;
+        font-size: 14px;
+    }
 }
 
 /* 로딩 상태 */
@@ -108,202 +150,305 @@ body {
     font-weight: 600;
 }
 
-/* 포트폴리오 요약 */
+/* 포트폴리오 요약 & 통계 섹션 */
 .portfolio-summary {
     background: white;
-    padding: 30px;
-    border-radius: 15px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-    margin-bottom: 30px;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    margin-bottom: 20px;
 }
 
 .portfolio-summary h2 {
-    color: #333;
-    font-size: 22px;
-    margin-bottom: 20px;
-    font-weight: 700;
+    margin: 0 0 15px 0;
+    font-size: 18px;
+    color: #2d3748;
 }
 
 .summary-cards {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 20px;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
 }
 
 .summary-card {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    padding: 25px;
-    border-radius: 12px;
-    color: white;
-    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+    background: #f7fafc;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
 }
 
-.summary-card .card-label {
-    font-size: 13px;
-    opacity: 0.9;
-    margin-bottom: 10px;
+.card-label {
+    font-size: 12px;
+    color: #718096;
+    margin-bottom: 8px;
     font-weight: 500;
 }
 
-.summary-card .card-value {
-    font-size: 24px;
+.card-value {
+    font-size: 20px;
     font-weight: 700;
+    color: #2d3748;
+}
+
+.card-value.positive {
+    color: #48bb78;
+}
+
+.card-value.negative {
+    color: #f56565;
+}
+
+.card-value.action-buy {
+    color: #48bb78;
+}
+
+.card-value.action-sell {
+    color: #f56565;
+}
+
+.card-value.action-hold {
+    color: #ed8936;
+}
+
+@media (max-width: 640px) {
+    .summary-cards {
+        grid-template-columns: 1fr;
+    }
+
+    .card-value {
+        font-size: 18px;
+    }
 }
 
 /* 우선순위 */
 .priorities {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 30px;
-    margin-bottom: 30px;
+    grid-template-columns: 1fr;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+@media (min-width: 1024px) {
+    .priorities {
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
 }
 
 .priority-section {
     background: white;
-    padding: 30px;
-    border-radius: 15px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .priority-section h2 {
-    color: #333;
-    font-size: 20px;
-    margin-bottom: 20px;
+    color: #2d3748;
+    font-size: 18px;
+    margin-bottom: 15px;
     font-weight: 700;
 }
 
 .priority-item {
-    padding: 15px;
-    border-left: 4px solid #667eea;
-    background: #f8f9ff;
-    margin-bottom: 12px;
+    padding: 12px 15px;
+    border-left: 3px solid #4a5568;
+    background: #f7fafc;
+    margin-bottom: 10px;
     border-radius: 8px;
-    transition: all 0.3s;
+    transition: all 0.2s;
 }
 
 .priority-item:hover {
-    background: #eef1ff;
-    transform: translateX(5px);
+    background: #edf2f7;
+    transform: translateX(3px);
 }
 
 .priority-item .stock-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+    gap: 8px;
 }
 
 .priority-item .stock-name {
     font-weight: 700;
-    color: #333;
-    font-size: 16px;
+    color: #2d3748;
+    font-size: 15px;
 }
 
 .priority-item .stock-price {
-    color: #667eea;
+    color: #4a5568;
     font-weight: 600;
+    font-size: 14px;
 }
 
 .priority-item .stock-info {
-    font-size: 14px;
-    color: #666;
+    font-size: 13px;
+    color: #718096;
+    line-height: 1.5;
 }
 
 .priority-item .score {
     display: inline-block;
-    background: #667eea;
+    background: #4a5568;
     color: white;
-    padding: 3px 10px;
-    border-radius: 12px;
-    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
     font-weight: 600;
-    margin-right: 8px;
+    margin-right: 6px;
 }
 
 .priority-item .profit-positive {
-    color: #e74c3c;
+    color: #e53e3e;
     font-weight: 600;
 }
 
 .priority-item .profit-negative {
-    color: #3498db;
+    color: #3182ce;
     font-weight: 600;
+}
+
+@media (min-width: 768px) {
+    .priority-section {
+        padding: 25px;
+    }
+
+    .priority-section h2 {
+        font-size: 20px;
+        margin-bottom: 20px;
+    }
+
+    .priority-item {
+        padding: 15px;
+    }
+
+    .priority-item .stock-name {
+        font-size: 16px;
+    }
+
+    .priority-item .stock-info {
+        font-size: 14px;
+    }
 }
 
 /* 필터 버튼 */
 .filter-controls {
     display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
+    gap: 8px;
+    margin-bottom: 15px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 5px;
 }
 
 .filter-btn {
-    padding: 10px 20px;
-    border: 2px solid #667eea;
+    padding: 8px 16px;
+    border: 2px solid #cbd5e0;
     background: white;
-    color: #667eea;
+    color: #4a5568;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
-    transition: all 0.3s;
+    transition: all 0.2s;
+    white-space: nowrap;
 }
 
 .filter-btn:hover {
-    background: #f8f9ff;
+    background: #f7fafc;
+    border-color: #4a5568;
 }
 
 .filter-btn.active {
-    background: #667eea;
+    background: #4a5568;
     color: white;
+    border-color: #4a5568;
+}
+
+@media (min-width: 768px) {
+    .filter-controls {
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+
+    .filter-btn {
+        padding: 10px 20px;
+        font-size: 14px;
+    }
 }
 
 /* 종목 섹션 */
 .stocks-section {
     background: white;
-    padding: 30px;
-    border-radius: 15px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .stocks-section h2 {
-    color: #333;
-    font-size: 22px;
-    margin-bottom: 20px;
+    color: #2d3748;
+    font-size: 18px;
+    margin-bottom: 15px;
     font-weight: 700;
 }
 
 .stocks-container {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-    gap: 25px;
+    grid-template-columns: 1fr;
+    gap: 15px;
+}
+
+@media (min-width: 768px) {
+    .stocks-section {
+        padding: 25px;
+    }
+
+    .stocks-section h2 {
+        font-size: 20px;
+        margin-bottom: 20px;
+    }
+
+    .stocks-container {
+        grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+        gap: 20px;
+    }
 }
 
 /* 종목 카드 */
 .stock-card {
-    border: 2px solid #e8e8e8;
+    border: 1px solid #e2e8f0;
     border-radius: 12px;
-    padding: 20px;
+    padding: 16px;
     background: #fff;
-    transition: all 0.3s;
+    transition: all 0.2s;
 }
 
 .stock-card:hover {
-    border-color: #667eea;
-    box-shadow: 0 5px 20px rgba(102, 126, 234, 0.15);
-    transform: translateY(-3px);
+    border-color: #cbd5e0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    transform: translateY(-2px);
 }
 
 .stock-card.action-BUY {
-    border-left: 5px solid #27ae60;
+    border-left: 4px solid #38a169;
 }
 
 .stock-card.action-SELL {
-    border-left: 5px solid #e74c3c;
+    border-left: 4px solid #e53e3e;
 }
 
 .stock-card.action-HOLD {
-    border-left: 5px solid #95a5a6;
+    border-left: 4px solid #a0aec0;
+}
+
+@media (min-width: 768px) {
+    .stock-card {
+        padding: 20px;
+    }
 }
 
 .stock-header-info {
@@ -321,15 +466,15 @@ body {
 }
 
 .stock-name-large {
-    font-size: 20px;
+    font-size: 17px;
     font-weight: 700;
-    color: #333;
+    color: #2d3748;
 }
 
 .stock-symbol {
-    font-size: 13px;
-    color: #999;
-    margin-top: 3px;
+    font-size: 12px;
+    color: #a0aec0;
+    margin-top: 2px;
 }
 
 .stock-current-price {
@@ -337,29 +482,47 @@ body {
 }
 
 .price-label {
-    font-size: 12px;
-    color: #999;
+    font-size: 11px;
+    color: #a0aec0;
 }
 
 .price-value {
-    font-size: 22px;
+    font-size: 19px;
     font-weight: 700;
-    color: #667eea;
+    color: #4a5568;
+}
+
+@media (min-width: 768px) {
+    .stock-name-large {
+        font-size: 19px;
+    }
+
+    .stock-symbol {
+        font-size: 13px;
+    }
+
+    .price-label {
+        font-size: 12px;
+    }
+
+    .price-value {
+        font-size: 22px;
+    }
 }
 
 /* 가격 레벨 */
 .price-levels {
-    background: #f8f9ff;
-    padding: 15px;
+    background: #f7fafc;
+    padding: 12px;
     border-radius: 8px;
-    margin-bottom: 15px;
+    margin-bottom: 12px;
 }
 
 .price-level-item {
     display: flex;
     justify-content: space-between;
-    margin-bottom: 8px;
-    font-size: 14px;
+    margin-bottom: 6px;
+    font-size: 13px;
 }
 
 .price-level-item:last-child {
@@ -367,54 +530,94 @@ body {
 }
 
 .price-level-label {
-    color: #666;
+    color: #718096;
 }
 
 .price-level-value {
     font-weight: 600;
-    color: #333;
+    color: #2d3748;
 }
 
 .positive {
-    color: #e74c3c;
+    color: #e53e3e;
 }
 
 .negative {
-    color: #3498db;
+    color: #3182ce;
+}
+
+@media (min-width: 768px) {
+    .price-levels {
+        padding: 15px;
+        margin-bottom: 15px;
+    }
+
+    .price-level-item {
+        font-size: 14px;
+        margin-bottom: 8px;
+    }
 }
 
 /* 신호 분석 */
 .signals {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 15px;
-    margin-bottom: 15px;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+@media (min-width: 640px) {
+    .signals {
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin-bottom: 15px;
+    }
 }
 
 .signal-box {
-    background: #f8f9ff;
-    padding: 15px;
+    background: #f7fafc;
+    padding: 12px;
     border-radius: 8px;
 }
 
 .signal-title {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
-    color: #667eea;
-    margin-bottom: 10px;
-}
-
-.signal-score {
-    font-size: 24px;
-    font-weight: 700;
-    color: #333;
+    color: #4a5568;
     margin-bottom: 8px;
 }
 
+.signal-score {
+    font-size: 20px;
+    font-weight: 700;
+    color: #2d3748;
+    margin-bottom: 6px;
+}
+
 .signal-list {
-    font-size: 12px;
-    color: #666;
-    line-height: 1.8;
+    font-size: 11px;
+    color: #718096;
+    line-height: 1.6;
+}
+
+@media (min-width: 768px) {
+    .signal-box {
+        padding: 15px;
+    }
+
+    .signal-title {
+        font-size: 14px;
+    }
+
+    .signal-score {
+        font-size: 24px;
+        margin-bottom: 8px;
+    }
+
+    .signal-list {
+        font-size: 12px;
+        line-height: 1.8;
+    }
 }
 
 /* 차트 컨테이너 */
@@ -446,40 +649,24 @@ body {
 
 /* 추천 */
 .recommendation {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: #4a5568;
     color: white;
-    padding: 15px;
+    padding: 12px 15px;
     border-radius: 8px;
     text-align: center;
     font-weight: 600;
-    font-size: 15px;
+    font-size: 14px;
+    line-height: 1.5;
 }
 
-/* 반응형 */
-@media (max-width: 1200px) {
-    .stocks-container {
-        grid-template-columns: 1fr;
+@media (min-width: 768px) {
+    .recommendation {
+        padding: 15px;
+        font-size: 15px;
     }
 }
 
-@media (max-width: 768px) {
-    .priorities {
-        grid-template-columns: 1fr;
-    }
-
-    .summary-cards {
-        grid-template-columns: 1fr;
-    }
-
-    .header {
-        flex-direction: column;
-        gap: 15px;
-    }
-
-    .signals {
-        grid-template-columns: 1fr;
-    }
-}
+/* 기존 반응형 제거 (위에서 각 섹션별로 처리됨) */
 
 /* 에러 표시 */
 .error-card {
@@ -503,7 +690,7 @@ body {
 }
 
 .reports-table thead {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: #4a5568;
     color: white;
 }
 
@@ -535,21 +722,27 @@ body {
 }
 
 .btn-view {
-    background: #667eea;
+    background: #4a5568;
     color: white;
     border: none;
-    padding: 8px 16px;
+    padding: 7px 14px;
     border-radius: 6px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
-    transition: all 0.3s;
+    transition: all 0.2s;
 }
 
 .btn-view:hover {
-    background: #5568d3;
+    background: #2d3748;
     transform: translateY(-1px);
-    box-shadow: 0 3px 10px rgba(102, 126, 234, 0.3);
+}
+
+@media (min-width: 768px) {
+    .btn-view {
+        padding: 8px 16px;
+        font-size: 13px;
+    }
 }
 
 /* 차트 박스 (추이 분석용) */
@@ -570,39 +763,47 @@ body {
 
 /* select 스타일 */
 select {
-    padding: 10px 15px;
-    border: 2px solid #667eea;
+    padding: 8px 12px;
+    border: 2px solid #cbd5e0;
     border-radius: 8px;
     background: white;
-    color: #333;
-    font-size: 14px;
+    color: #2d3748;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: all 0.2s;
 }
 
 select:hover {
-    background: #f8f9ff;
+    background: #f7fafc;
+    border-color: #4a5568;
 }
 
 select:focus {
     outline: none;
-    border-color: #5568d3;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: #4a5568;
+    box-shadow: 0 0 0 3px rgba(74, 85, 104, 0.1);
+}
+
+@media (min-width: 768px) {
+    select {
+        padding: 10px 15px;
+        font-size: 14px;
+    }
 }
 
 /* 액션 색상 */
 .action-buy {
-    color: #27ae60;
+    color: #38a169;
     font-weight: 600;
 }
 
 .action-sell {
-    color: #e74c3c;
+    color: #e53e3e;
     font-weight: 600;
 }
 
 .action-hold {
-    color: #95a5a6;
+    color: #a0aec0;
     font-weight: 600;
 }

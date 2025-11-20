@@ -7,16 +7,19 @@
     <script>
         var cacheBuster = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
         document.write('<link rel="stylesheet" href="static/css/style.css?t=' + cacheBuster + '">');
+        document.write('<script src="static/js/navigation.js?t=' + cacheBuster + '"><\/script>');
+    </script>
+    <script>
+        // 네비게이션 렌더링
+        document.addEventListener('DOMContentLoaded', function() {
+            renderNavigation('history');
+        });
     </script>
 </head>
 <body>
     <div class="container">
         <!-- 네비게이션 -->
-        <nav class="navigation">
-            <a href="dashboard.html">대시보드</a>
-            <a href="history.html" class="active">히스토리</a>
-            <a href="trends.html">추이 분석</a>
-        </nav>
+        <nav class="navigation"></nav>
 
         <!-- 헤더 -->
         <header class="header">

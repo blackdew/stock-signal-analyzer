@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 import pandas as pd
 import numpy as np
+from src.utils.global_market_analyzer import GlobalMarketAnalyzer
 
 
 class JsonReportGenerator:
@@ -268,6 +269,13 @@ class JsonReportGenerator:
         # 포트폴리오 요약 계산
         portfolio_summary = self.calculate_portfolio_summary(analyses, buy_prices, quantities)
 
+        # 글로벌 시장 정보 가져오기
+        try:
+            global_market = GlobalMarketAnalyzer().get_market_overview()
+        except Exception as e:
+            print(f"글로벌 시장 정보 수집 실패: {e}")
+            global_market = None
+
         # 각 종목 분석 결과 직렬화
         stocks = [self.serialize_analysis(a) for a in analyses]
 
@@ -286,7 +294,7 @@ class JsonReportGenerator:
             reverse=True
         )[:5]
 
-        return {
+        report = {
             'meta': {
                 'title': title,
                 'generated_at': datetime.now().isoformat(),
@@ -320,6 +328,12 @@ class JsonReportGenerator:
                 for s in sell_priorities
             ]
         }
+
+        # 글로벌 시장 정보 추가
+        if global_market:
+            report['global_market'] = global_market
+
+        return report
 
     def save_json_report(
         self,
