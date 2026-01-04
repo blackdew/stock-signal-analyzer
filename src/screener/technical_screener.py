@@ -25,7 +25,7 @@ class TechnicalScreener:
         self,
         ma_period: int = 20,
         volume_increase_threshold: float = 0.20,  # 20% 증가
-        lookback_days: int = 60,  # 분석 기간 (20일 + 전월 20일)
+        lookback_days: int = 90,  # 분석 기간 (충분한 거래일 확보)
     ):
         """
         Args:

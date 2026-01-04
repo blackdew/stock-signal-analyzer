@@ -18,8 +18,8 @@ from src.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
-# 네이버 뉴스 검색 URL
-NAVER_NEWS_SEARCH_URL = "https://search.naver.com/search.naver"
+# 다음 뉴스 검색 URL (네이버는 JS 렌더링으로 스크래핑 불가)
+DAUM_NEWS_SEARCH_URL = "https://search.daum.net/search"
 
 # HTTP 헤더
 HEADERS = {
@@ -42,8 +42,9 @@ NEGATIVE_KEYWORDS = [
 ]
 
 # 재료 지속성 키워드
-LONG_TERM_KEYWORDS = ['공장증설', '대규모투자', '신사업진출', '인수합병', '정책수혜']
-MID_TERM_KEYWORDS = ['수주', '계약', '납품', '신제품', '특허']
+LONG_TERM_KEYWORDS = ['공장증설', '대규모투자', '신사업진출', '인수합병', '정책수혜',
+                      '반도체', 'AI', '2차전지', '증설', '투자', 'M&A']
+MID_TERM_KEYWORDS = ['수주', '계약', '납품', '신제품', '특허', '협력', '제휴', 'MOU']
 SHORT_TERM_KEYWORDS = ['테마', '급등', '작전', '루머', '관심']
 
 
@@ -66,48 +67,48 @@ class NewsAnalyzer:
         max_results: int = 10
     ) -> List[Dict[str, str]]:
         """
-        네이버 뉴스를 검색합니다.
+        다음 뉴스를 검색합니다.
 
         Args:
             query: 검색어
-            days: 검색 기간 (일)
+            days: 검색 기간 (일) - 현재 미지원
             max_results: 최대 결과 수
 
         Returns:
-            뉴스 리스트 [{'title': '', 'description': '', 'link': '', 'date': ''}]
+            뉴스 리스트 [{'title': '', 'description': '', 'link': ''}]
         """
         try:
             params = {
-                'where': 'news',
-                'query': query,
-                'sort': 1,  # 최신순
-                'pd': 4,    # 기간 지정
-                'ds': (datetime.now() - __import__('datetime').timedelta(days=days)).strftime('%Y.%m.%d'),
-                'de': datetime.now().strftime('%Y.%m.%d'),
+                'w': 'news',
+                'q': query,
+                'sort': 'recency',  # 최신순
             }
 
-            response = self.session.get(NAVER_NEWS_SEARCH_URL, params=params, timeout=10)
+            response = self.session.get(DAUM_NEWS_SEARCH_URL, params=params, timeout=10)
             response.raise_for_status()
 
             soup = BeautifulSoup(response.text, 'html.parser')
 
-            # 뉴스 항목 추출
-            news_items = soup.select('div.news_area')[:max_results]
-
             results = []
-            for item in news_items:
-                try:
-                    title_elem = item.select_one('a.news_tit')
-                    desc_elem = item.select_one('div.news_dsc')
+            seen_titles = set()
 
-                    if title_elem:
+            # 다음 뉴스 구조: v.daum.net 링크를 가진 a 태그
+            for a in soup.find_all('a', href=True):
+                href = a.get('href', '')
+                title = a.get_text(strip=True)
+
+                # v.daum.net 뉴스 링크이고, 적절한 길이의 제목인지 확인
+                if 'v.daum.net' in href and title and 15 < len(title) < 100:
+                    if title not in seen_titles:
+                        seen_titles.add(title)
                         results.append({
-                            'title': title_elem.get_text(strip=True),
-                            'link': title_elem.get('href', ''),
-                            'description': desc_elem.get_text(strip=True) if desc_elem else '',
+                            'title': title,
+                            'link': href,
+                            'description': '',
                         })
-                except Exception:
-                    continue
+
+                        if len(results) >= max_results:
+                            break
 
             return results
 
