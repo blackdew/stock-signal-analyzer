@@ -39,3 +39,6 @@ htmlcov/
 .pytest_cache/
 *.cover
 .hypothesis/
+
+# OpenDART cache
+*.pkl
