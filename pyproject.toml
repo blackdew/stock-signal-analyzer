@@ -5,10 +5,12 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "beautifulsoup4>=4.14.2",
     "finance-datareader>=0.9.96",
     "numpy>=2.2.6",
     "pandas>=2.3.3",
     "pandas-ta>=0.4.71b0",
+    "requests>=2.32.5",
 ]
 
 [dependency-groups]
