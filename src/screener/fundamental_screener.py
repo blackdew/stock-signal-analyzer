@@ -7,9 +7,13 @@
     - PBR < 1.2
 """
 
+import warnings
 import pandas as pd
 from typing import Optional, Dict, List, Any
 from src.utils.logger import setup_logger
+
+# FinanceDataReader의 FutureWarning 억제
+warnings.filterwarnings('ignore', category=FutureWarning, module='FinanceDataReader')
 
 logger = setup_logger(__name__)
 

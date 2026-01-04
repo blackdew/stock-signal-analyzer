@@ -8,6 +8,11 @@
     uv run python -m src.screener.main --skip-news  # 뉴스 분석 건너뛰기
 """
 
+import warnings
+# FinanceDataReader의 FutureWarning 억제
+warnings.filterwarnings('ignore', category=FutureWarning, module='FinanceDataReader')
+warnings.filterwarnings('ignore', category=FutureWarning, message='.*read_html.*')
+
 import argparse
 import sys
 from datetime import datetime
