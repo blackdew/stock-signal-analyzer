@@ -77,32 +77,32 @@ class InvestorFlowAnalyzer:
 
             # 테이블 찾기
             tables = soup.find_all('table', class_='type2')
-            if not tables:
+            if len(tables) < 2:
                 return None
 
-            # 첫 번째 테이블이 투자자별 매매동향
-            table = tables[0]
+            # 두 번째 테이블이 투자자별 매매동향 (첫 번째는 매매상위)
+            table = tables[1]
             rows = table.find_all('tr')
 
             data = []
             for row in rows:
                 cols = row.find_all('td')
-                if len(cols) < 6:
+                if len(cols) < 7:  # 최소 7개 컬럼 필요
                     continue
 
                 try:
-                    # 날짜
+                    # 날짜 (0번째 컬럼)
                     date_text = cols[0].get_text(strip=True)
                     if not date_text or '.' not in date_text:
                         continue
 
-                    # 외국인 순매수 (4번째 컬럼)
-                    foreign_text = cols[4].get_text(strip=True).replace(',', '')
-                    foreign_net = int(foreign_text) if foreign_text.lstrip('-').isdigit() else 0
-
-                    # 기관 순매수 (5번째 컬럼)
-                    institution_text = cols[5].get_text(strip=True).replace(',', '')
+                    # 기관 순매매량 (5번째 컬럼)
+                    institution_text = cols[5].get_text(strip=True).replace(',', '').replace('+', '')
                     institution_net = int(institution_text) if institution_text.lstrip('-').isdigit() else 0
+
+                    # 외국인 순매매량 (6번째 컬럼)
+                    foreign_text = cols[6].get_text(strip=True).replace(',', '').replace('+', '')
+                    foreign_net = int(foreign_text) if foreign_text.lstrip('-').isdigit() else 0
 
                     data.append({
                         'date': date_text,

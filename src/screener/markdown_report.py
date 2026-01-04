@@ -83,6 +83,7 @@ class MarkdownReportGenerator:
     ) -> List[str]:
         """
         개별 종목 리포트를 생성합니다.
+        재료 지속성이 '하'인 종목은 제외합니다.
 
         Args:
             stocks: 종목 리스트
@@ -96,12 +97,20 @@ class MarkdownReportGenerator:
 
         date_str = report_date.replace("-", "")
         paths = []
+        skipped = 0
 
         for stock in stocks:
             code = stock.get('code') or stock.get('Code') or stock.get('종목코드', '')
             name = stock.get('name') or stock.get('Name') or stock.get('종목명', '')
 
             if not code or not name:
+                continue
+
+            # 재료 지속성이 '하'인 종목은 건너뛰기
+            news_analysis = stock.get('news_analysis', {})
+            durability = news_analysis.get('material_durability', '하')
+            if durability == '하':
+                skipped += 1
                 continue
 
             # 파일명: 종목명_날짜.md (예: 삼성전자_20260105.md)
@@ -116,6 +125,9 @@ class MarkdownReportGenerator:
                 f.write(content)
 
             paths.append(str(filepath))
+
+        if skipped > 0:
+            logger.info(f"Skipped {skipped} stocks with low material durability")
 
         return paths
 
