@@ -42,3 +42,4 @@ htmlcov/
 
 # OpenDART cache
 *.pkl
+src/screener/cache/

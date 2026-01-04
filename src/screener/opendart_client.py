@@ -6,6 +6,7 @@
     - 기업 고유번호(corp_code) 조회
     - 3년치 재무제표 조회 (매출액, 영업이익, 부채비율)
     - 연속 적자 여부 확인
+    - 재무제표 캐싱 (분기별 갱신)
 """
 
 import requests
@@ -14,11 +15,16 @@ import io
 import xml.etree.ElementTree as ET
 import pandas as pd
 import time
+import pickle
+from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any
 from pathlib import Path
 from src.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
+
+# 캐시 유효 기간 (일) - 분기별 갱신
+FINANCIAL_CACHE_DAYS = 90
 
 # OpenDART API 설정
 OPENDART_API_KEY = 'bdea2d013558292c23243e5f25a2b7a09243627d'
@@ -31,7 +37,11 @@ class OpenDartClient:
     def __init__(self, api_key: str = OPENDART_API_KEY):
         self.api_key = api_key
         self.corp_codes: Dict[str, str] = {}  # 종목코드 -> corp_code 매핑
+        self.financial_cache: Dict[str, Dict] = {}  # 종목코드 -> 재무제표 캐시
+        self.cache_dir = Path(__file__).parent / 'cache'
+        self.cache_dir.mkdir(exist_ok=True)
         self._load_corp_codes()
+        self._load_financial_cache()
 
     def _load_corp_codes(self) -> None:
         """기업 고유번호 목록을 로드합니다."""
@@ -88,10 +98,49 @@ class OpenDartClient:
         """종목코드로 기업 고유번호를 조회합니다."""
         return self.corp_codes.get(stock_code)
 
+    def _load_financial_cache(self) -> None:
+        """재무제표 캐시를 로드합니다."""
+        cache_path = self.cache_dir / 'financial_cache.pkl'
+
+        if cache_path.exists():
+            try:
+                with open(cache_path, 'rb') as f:
+                    cache_data = pickle.load(f)
+
+                # 만료된 캐시 제거
+                now = datetime.now()
+                valid_cache = {}
+                expired_count = 0
+
+                for stock_code, data in cache_data.items():
+                    cached_at = data.get('cached_at')
+                    if cached_at and (now - cached_at).days < FINANCIAL_CACHE_DAYS:
+                        valid_cache[stock_code] = data
+                    else:
+                        expired_count += 1
+
+                self.financial_cache = valid_cache
+                logger.info(f"Financial cache loaded: {len(valid_cache)} stocks (expired: {expired_count})")
+
+            except Exception as e:
+                logger.warning(f"Failed to load financial cache: {e}")
+                self.financial_cache = {}
+
+    def _save_financial_cache(self) -> None:
+        """재무제표 캐시를 저장합니다."""
+        cache_path = self.cache_dir / 'financial_cache.pkl'
+
+        try:
+            with open(cache_path, 'wb') as f:
+                pickle.dump(self.financial_cache, f)
+        except Exception as e:
+            logger.warning(f"Failed to save financial cache: {e}")
+
     def get_financial_statements(
         self,
         stock_code: str,
-        years: int = 3
+        years: int = 3,
+        use_cache: bool = True
     ) -> Optional[Dict[str, Any]]:
         """
         최근 N년간 재무제표를 조회합니다.
@@ -99,6 +148,7 @@ class OpenDartClient:
         Args:
             stock_code: 종목코드 (예: '005930')
             years: 조회할 연도 수 (기본 3년)
+            use_cache: 캐시 사용 여부 (기본 True)
 
         Returns:
             재무제표 데이터 딕셔너리 또는 None
@@ -111,6 +161,12 @@ class OpenDartClient:
                 ]
             }
         """
+        # 캐시 확인
+        if use_cache and stock_code in self.financial_cache:
+            cached = self.financial_cache[stock_code]
+            logger.debug(f"Using cached financial data for {stock_code}")
+            return cached.get('data')
+
         corp_code = self.get_corp_code(stock_code)
         if not corp_code:
             logger.warning(f"Corp code not found for {stock_code}")
@@ -126,7 +182,7 @@ class OpenDartClient:
             year = current_year - i
             bsns_year = str(year)
 
-            # 연간 재무제표 조회 (11013: 연결재무제표, 11012: 별도재무제표)
+            # 연간 재무제표 조회 (11011: 사업보고서)
             data = self._fetch_financial_data(corp_code, bsns_year, '11011')
 
             if data:
@@ -135,7 +191,17 @@ class OpenDartClient:
             # API 호출 간격 조절
             time.sleep(0.1)
 
-        return financial_data if financial_data['years'] else None
+        result = financial_data if financial_data['years'] else None
+
+        # 캐시 저장
+        if result:
+            self.financial_cache[stock_code] = {
+                'data': result,
+                'cached_at': datetime.now()
+            }
+            self._save_financial_cache()
+
+        return result
 
     def _fetch_financial_data(
         self,

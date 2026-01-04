@@ -22,12 +22,17 @@ class MarkdownReportGenerator:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+        # 개별 종목 리포트 디렉토리
+        self.stocks_dir = self.output_dir / "stocks"
+        self.stocks_dir.mkdir(parents=True, exist_ok=True)
+
     def generate_report(
         self,
         stocks: List[Dict[str, Any]],
         screening_stats: Dict[str, Any],
         start_time: datetime,
         end_time: datetime,
+        generate_individual: bool = True,
     ) -> str:
         """
         스크리닝 리포트를 생성합니다.
@@ -37,6 +42,7 @@ class MarkdownReportGenerator:
             screening_stats: 스크리닝 통계
             start_time: 분석 시작 시간
             end_time: 분석 종료 시간
+            generate_individual: 개별 종목 리포트 생성 여부
 
         Returns:
             생성된 리포트 파일 경로
@@ -63,7 +69,86 @@ class MarkdownReportGenerator:
 
         logger.info(f"Report saved to: {filepath}")
 
+        # 개별 종목 리포트 생성
+        if generate_individual and stocks:
+            individual_paths = self.generate_individual_reports(stocks, report_date)
+            logger.info(f"Individual reports generated: {len(individual_paths)} files")
+
         return str(filepath)
+
+    def generate_individual_reports(
+        self,
+        stocks: List[Dict[str, Any]],
+        report_date: Optional[str] = None
+    ) -> List[str]:
+        """
+        개별 종목 리포트를 생성합니다.
+
+        Args:
+            stocks: 종목 리스트
+            report_date: 리포트 날짜 (None이면 오늘)
+
+        Returns:
+            생성된 파일 경로 리스트
+        """
+        if report_date is None:
+            report_date = datetime.now().strftime("%Y-%m-%d")
+
+        date_str = report_date.replace("-", "")
+        paths = []
+
+        for stock in stocks:
+            code = stock.get('code') or stock.get('Code') or stock.get('종목코드', '')
+            name = stock.get('name') or stock.get('Name') or stock.get('종목명', '')
+
+            if not code or not name:
+                continue
+
+            # 파일명: 종목명_날짜.md (예: 삼성전자_20260105.md)
+            safe_name = name.replace("/", "_").replace("\\", "_").replace(" ", "_")
+            filename = f"{safe_name}_{date_str}.md"
+            filepath = self.stocks_dir / filename
+
+            # 개별 리포트 내용 생성
+            content = self._build_individual_report(stock, report_date)
+
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(content)
+
+            paths.append(str(filepath))
+
+        return paths
+
+    def _build_individual_report(
+        self,
+        stock: Dict[str, Any],
+        report_date: str
+    ) -> str:
+        """개별 종목 리포트 내용을 생성합니다."""
+        lines = []
+
+        code = stock.get('code') or stock.get('Code') or stock.get('종목코드', '')
+        name = stock.get('name') or stock.get('Name') or stock.get('종목명', '')
+
+        # 헤더
+        lines.append(f"# {name} ({code}) 분석 리포트")
+        lines.append("")
+        lines.append(f"> 분석일: {report_date}")
+        lines.append("")
+
+        # 기본 정보 섹션
+        lines.extend(self._build_stock_section(1, stock))
+
+        # 면책 조항
+        lines.append("---")
+        lines.append("")
+        lines.append("## 면책 조항")
+        lines.append("")
+        lines.append("본 리포트는 투자 참고용이며, 실제 투자 결정은 본인의 판단에 따라야 합니다.")
+        lines.append("과거 데이터 기반 분석이므로 미래 수익을 보장하지 않습니다.")
+        lines.append("")
+
+        return "\n".join(lines)
 
     def _build_report_content(
         self,
