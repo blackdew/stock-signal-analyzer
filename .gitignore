@@ -1,3 +1,6 @@
+# claude 설정
+.claude/
+
 # Python-generated files
 __pycache__/
 *.py[oc]
@@ -43,3 +46,7 @@ htmlcov/
 # OpenDART cache
 *.pkl
 src/screener/cache/
+
+# Environment variables
+.env
+

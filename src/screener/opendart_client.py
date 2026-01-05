@@ -19,6 +19,10 @@ import pickle
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any
 from pathlib import Path
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 from src.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -27,8 +31,12 @@ logger = setup_logger(__name__)
 FINANCIAL_CACHE_DAYS = 90
 
 # OpenDART API 설정
-OPENDART_API_KEY = 'bdea2d013558292c23243e5f25a2b7a09243627d'
+# OpenDART API 설정
+OPENDART_API_KEY = os.getenv('OPENDART_API_KEY')
 OPENDART_BASE_URL = 'https://opendart.fss.or.kr/api'
+
+if not OPENDART_API_KEY:
+    logger.warning("OPENDART_API_KEY not found in environment variables.")
 
 
 class OpenDartClient:
