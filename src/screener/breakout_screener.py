@@ -17,6 +17,7 @@ import FinanceDataReader as fdr
 import time
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.utils.logger import setup_logger
 import config
 
@@ -377,46 +378,26 @@ class BreakoutScreener:
     def screen(
         self,
         stock_codes: List[str],
-        delay: float = 0.1
+        max_workers: int = 10,
+        use_parallel: bool = True
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         전고점 돌파 조건으로 종목을 필터링합니다.
 
         Args:
             stock_codes: 분석할 종목코드 리스트
-            delay: API 호출 간 지연 시간 (초)
+            max_workers: 병렬 처리 시 최대 워커 수 (기본: 10)
+            use_parallel: 병렬 처리 사용 여부 (기본: True)
 
         Returns:
             (통과 종목 DataFrame, 전체 분석 결과 DataFrame)
         """
-        logger.info(f"Breakout screening for {len(stock_codes)} stocks...")
+        logger.info(f"Breakout screening for {len(stock_codes)} stocks (parallel: {use_parallel}, workers: {max_workers})...")
 
-        results = []
-        passed_count = 0
-        failed_count = 0
-
-        for i, code in enumerate(stock_codes):
-            try:
-                analysis = self.analyze_stock(code)
-                if analysis:
-                    results.append(analysis)
-                    if analysis['passed']:
-                        passed_count += 1
-                    else:
-                        failed_count += 1
-
-                # 진행 상황 로깅
-                if (i + 1) % 50 == 0:
-                    logger.info(f"Progress: {i + 1}/{len(stock_codes)} (passed: {passed_count})")
-
-                # API 호출 간격
-                time.sleep(delay)
-
-            except Exception as e:
-                logger.error(f"Error analyzing {code}: {e}")
-                failed_count += 1
-
-        logger.info(f"Breakout screening result: {passed_count} passed, {failed_count} failed")
+        if use_parallel:
+            results = self._screen_parallel(stock_codes, max_workers)
+        else:
+            results = self._screen_sequential(stock_codes)
 
         if not results:
             return pd.DataFrame(), pd.DataFrame()
@@ -428,7 +409,75 @@ class BreakoutScreener:
         if not passed_df.empty:
             passed_df = passed_df.sort_values('breakout_score', ascending=False)
 
+        passed_count = len(passed_df)
+        logger.info(f"Breakout screening result: {passed_count} passed, {len(results) - passed_count} failed")
+
         return passed_df, all_df
+
+    def _screen_parallel(
+        self,
+        stock_codes: List[str],
+        max_workers: int = 10
+    ) -> List[Dict[str, Any]]:
+        """병렬 처리로 종목을 분석합니다."""
+        results = []
+        completed = 0
+        total = len(stock_codes)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 모든 작업 제출
+            future_to_code = {
+                executor.submit(self.analyze_stock, code): code
+                for code in stock_codes
+            }
+
+            # 완료된 작업 수집
+            for future in as_completed(future_to_code):
+                code = future_to_code[future]
+                completed += 1
+
+                try:
+                    analysis = future.result()
+                    if analysis:
+                        results.append(analysis)
+                except Exception as e:
+                    logger.debug(f"Error analyzing {code}: {e}")
+
+                # 진행 상황 로깅 (20% 단위)
+                if completed % max(1, total // 5) == 0:
+                    passed = sum(1 for r in results if r.get('passed', False))
+                    logger.info(f"Progress: {completed}/{total} ({completed*100//total}%) - passed: {passed}")
+
+        return results
+
+    def _screen_sequential(
+        self,
+        stock_codes: List[str],
+        delay: float = 0.1
+    ) -> List[Dict[str, Any]]:
+        """순차적으로 종목을 분석합니다."""
+        results = []
+        passed_count = 0
+
+        for i, code in enumerate(stock_codes):
+            try:
+                analysis = self.analyze_stock(code)
+                if analysis:
+                    results.append(analysis)
+                    if analysis['passed']:
+                        passed_count += 1
+
+                # 진행 상황 로깅
+                if (i + 1) % 50 == 0:
+                    logger.info(f"Progress: {i + 1}/{len(stock_codes)} (passed: {passed_count})")
+
+                # API 호출 간격
+                time.sleep(delay)
+
+            except Exception as e:
+                logger.debug(f"Error analyzing {code}: {e}")
+
+        return results
 
     def filter_by_market_cap(
         self,

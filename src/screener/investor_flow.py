@@ -12,6 +12,7 @@ import time
 from bs4 import BeautifulSoup
 from typing import Optional, Dict, List, Any, Tuple
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -179,7 +180,9 @@ class InvestorFlowAnalyzer:
     def screen(
         self,
         stock_codes: List[str],
-        require_both: bool = False
+        require_both: bool = False,
+        max_workers: int = 5,
+        use_parallel: bool = True
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         수급 조건으로 종목을 필터링합니다.
@@ -187,36 +190,28 @@ class InvestorFlowAnalyzer:
         Args:
             stock_codes: 분석할 종목코드 리스트
             require_both: True면 외국인+기관 모두 조건 충족 필요
+            max_workers: 병렬 처리 시 최대 워커 수 (기본: 5, 스크래핑이므로 낮게 설정)
+            use_parallel: 병렬 처리 사용 여부 (기본: True)
 
         Returns:
             (통과 종목 DataFrame, 전체 분석 결과 DataFrame)
         """
-        logger.info(f"Analyzing investor flow for {len(stock_codes)} stocks...")
+        logger.info(f"Analyzing investor flow for {len(stock_codes)} stocks (parallel: {use_parallel})...")
 
-        results = []
+        if use_parallel:
+            results = self._screen_parallel(stock_codes, max_workers)
+        else:
+            results = self._screen_sequential(stock_codes)
+
+        # 통과 여부 판정
         passed_codes = []
-
-        for i, code in enumerate(stock_codes):
-            try:
-                analysis = self.check_smart_money_flow(code)
-                results.append(analysis)
-
-                if require_both:
-                    if analysis['foreign_signal'] and analysis['institution_signal']:
-                        passed_codes.append(code)
-                else:
-                    if analysis['has_smart_money_flow']:
-                        passed_codes.append(code)
-
-                # 진행 상황
-                if (i + 1) % 20 == 0:
-                    logger.info(f"Investor flow progress: {i + 1}/{len(stock_codes)} (passed: {len(passed_codes)})")
-
-                # 요청 간 지연
-                time.sleep(self.delay)
-
-            except Exception as e:
-                logger.warning(f"Error analyzing {code}: {e}")
+        for analysis in results:
+            if require_both:
+                if analysis.get('foreign_signal') and analysis.get('institution_signal'):
+                    passed_codes.append(analysis['stock_code'])
+            else:
+                if analysis.get('has_smart_money_flow'):
+                    passed_codes.append(analysis['stock_code'])
 
         all_df = pd.DataFrame(results) if results else pd.DataFrame()
         passed_df = all_df[all_df['stock_code'].isin(passed_codes)] if not all_df.empty else pd.DataFrame()
@@ -224,6 +219,68 @@ class InvestorFlowAnalyzer:
         logger.info(f"Investor flow screening: {len(passed_codes)}/{len(stock_codes)} passed")
 
         return passed_df, all_df
+
+    def _screen_parallel(
+        self,
+        stock_codes: List[str],
+        max_workers: int = 5
+    ) -> List[Dict[str, Any]]:
+        """병렬 처리로 수급을 분석합니다."""
+        results = []
+        completed = 0
+        total = len(stock_codes)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_code = {
+                executor.submit(self.check_smart_money_flow, code): code
+                for code in stock_codes
+            }
+
+            for future in as_completed(future_to_code):
+                code = future_to_code[future]
+                completed += 1
+
+                try:
+                    analysis = future.result()
+                    if analysis:
+                        results.append(analysis)
+                except Exception as e:
+                    logger.debug(f"Error analyzing {code}: {e}")
+
+                # 진행 상황 로깅 (20% 단위)
+                if completed % max(1, total // 5) == 0:
+                    passed = sum(1 for r in results if r.get('has_smart_money_flow', False))
+                    logger.info(f"Investor flow progress: {completed}/{total} ({completed*100//total}%) - passed: {passed}")
+
+        return results
+
+    def _screen_sequential(
+        self,
+        stock_codes: List[str]
+    ) -> List[Dict[str, Any]]:
+        """순차적으로 수급을 분석합니다."""
+        results = []
+        passed_count = 0
+
+        for i, code in enumerate(stock_codes):
+            try:
+                analysis = self.check_smart_money_flow(code)
+                results.append(analysis)
+
+                if analysis.get('has_smart_money_flow'):
+                    passed_count += 1
+
+                # 진행 상황
+                if (i + 1) % 20 == 0:
+                    logger.info(f"Investor flow progress: {i + 1}/{len(stock_codes)} (passed: {passed_count})")
+
+                # 요청 간 지연
+                time.sleep(self.delay)
+
+            except Exception as e:
+                logger.warning(f"Error analyzing {code}: {e}")
+
+        return results
 
     def get_summary(self, analysis_df: pd.DataFrame) -> Dict[str, Any]:
         """
