@@ -88,6 +88,32 @@ CSV 파일 형식 (엑셀에서도 편집 가능):
 4. `--symbols` 옵션으로 지정한 종목들
 5. `config.py`의 `STOCK_SYMBOLS` 리스트
 
+### 스크리너 실행 (전 종목 스크리닝)
+
+```bash
+# 가치투자 전략 스크리닝 (기본)
+uv run python -m src.screener.main
+uv run python -m src.screener.main --sector "반도체"
+uv run python -m src.screener.main --skip-news
+
+# ⭐ NEW: 전고점 돌파 전략 스크리닝
+uv run python -m src.screener.main --strategy breakout
+uv run python -m src.screener.main --strategy breakout --min-market-cap 3000
+uv run python -m src.screener.main --strategy breakout --min-trading-value 100 --skip-news
+
+# 테스트 모드 (종목 수 제한)
+uv run python -m src.screener.main --strategy breakout --max-stocks 50
+```
+
+**스크리너 CLI 옵션:**
+| 옵션 | 설명 | 기본값 |
+|------|------|-------|
+| `--strategy` | 전략 선택 (`value` / `breakout`) | `value` |
+| `--min-market-cap` | 최소 시가총액 (억원) | 500 (value) / 2000 (breakout) |
+| `--min-trading-value` | 최소 거래대금 (억원, breakout 전용) | 50 |
+| `--skip-news` | 뉴스 분석 건너뛰기 | False |
+| `--max-stocks` | 최대 분석 종목 수 (테스트용) | 전체 |
+
 ### 의존성 관리
 ```bash
 # 패키지 추가
@@ -142,10 +168,20 @@ stock-signals/
 │   ├── utils/                  # ⭐ NEW: 유틸리티 모듈
 │   │   ├── __init__.py
 │   │   └── market_analyzer.py  # 시장 추세 분석 (KOSPI)
-│   └── report/
-│       ├── generator.py        # 텍스트 리포트 생성기
-│       ├── json_generator.py   # JSON 리포트 생성기 (웹 대시보드용)
-│       └── history_manager.py  # ⭐ NEW: 리포트 히스토리 관리
+│   ├── report/
+│   │   ├── generator.py        # 텍스트 리포트 생성기
+│   │   ├── json_generator.py   # JSON 리포트 생성기 (웹 대시보드용)
+│   │   └── history_manager.py  # ⭐ NEW: 리포트 히스토리 관리
+│   └── screener/               # ⭐ NEW: 전 종목 스크리닝 모듈
+│       ├── main.py             #    스크리너 메인 실행
+│       ├── fundamental_screener.py  # 펀더멘털 스크리닝 (PER/PBR)
+│       ├── technical_screener.py    # 기술적 스크리닝 (MA20, 거래량)
+│       ├── breakout_screener.py     # ⭐ NEW: 전고점 돌파 전략 스크리너
+│       ├── risk_filter.py      #    리스크 필터 (밸류트랩 제외)
+│       ├── investor_flow.py    #    수급 분석 (외국인/기관)
+│       ├── sector_analyzer.py  #    섹터 분석
+│       ├── news_analyzer.py    #    뉴스/재료 분석
+│       └── markdown_report.py  #    마크다운 리포트 생성
 └── pyproject.toml              # 프로젝트 의존성
 ```
 
@@ -310,6 +346,51 @@ else:
 - `config.py`에서 `ACTION_BUY_THRESHOLD`, `ACTION_SELL_THRESHOLD`, `ACTION_SCORE_DIFF_THRESHOLD` 수정 가능
 - 보수적 투자: 임계값을 높게 설정 (예: 40점, 차이 15점)
 - 적극적 투자: 임계값을 낮게 설정 (예: 20점, 차이 5점)
+
+### ⭐ 전고점 돌파 전략 (신규 기능)
+
+52주 신고가 근접 종목을 필터링하여 돌파 확률이 높은 종목을 발굴하는 전략입니다.
+
+**스크리닝 조건:**
+- 현재가가 52주 고점 대비 90~105% 범위
+- 시가총액 >= 2,000억원
+- 일평균 거래대금 >= 50억원
+
+**돌파 확률 점수 (0-100점):**
+| 항목 | 배점 | 기준 |
+|------|------|------|
+| 고점 근접도 | 40점 | 100% = 40점, 98% = 35점, 95% = 30점 |
+| 돌파 시도 횟수 | 30점 | 4회 이상 = 30점, 3회 = 25점 |
+| 거래대금 | 30점 | 200억 이상 = 30점, 100억 = 25점 |
+
+**돌파 시도 카운팅:**
+- 52주 고점의 95% 이상 도달 = 1회 돌파 시도
+- 연속 도달은 1회로 카운트
+- 3회 이상 시도 시 돌파 확률 상승
+
+**매도/손절 전략:**
+- **절대 손절**: 현재가 -5%
+- **상대 손절**: MA20 이탈 시
+- **분할 매도 목표**:
+  - 1차: 전고점 도달 (30%)
+  - 2차: 신고가 +5% (50%)
+  - 3차: 신고가 +10% (20%)
+
+**config.py 설정값:**
+```python
+WEEK52_LOOKBACK_DAYS = 252           # 52주 거래일
+BREAKOUT_HIGH_RANGE_MIN = 0.90       # 고점 대비 최소 90%
+BREAKOUT_HIGH_RANGE_MAX = 1.05       # 고점 대비 최대 105%
+BREAKOUT_ATTEMPT_THRESHOLD = 0.95    # 95% 이상 = 돌파 시도
+BREAKOUT_MIN_MARKET_CAP = 2000.0     # 최소 시가총액 (억원)
+BREAKOUT_MIN_AVG_TRADING_VALUE = 50.0  # 최소 거래대금 (억원)
+BREAKOUT_STOP_LOSS_PCT = 0.05        # 절대 손절 5%
+```
+
+**리포트 출력:**
+```
+reports/screening/breakout_report_YYYYMMDD_HHMMSS.md
+```
 
 ## ⭐ 리포트 히스토리 및 추이 분석 (Phase 2 신규 기능)
 
