@@ -16,6 +16,7 @@ from .investor_flow import InvestorFlowAnalyzer
 from .sector_analyzer import SectorAnalyzer
 from .opendart_client import OpenDartClient
 from .markdown_report import MarkdownReportGenerator
+from .breakout_screener import BreakoutScreener
 
 __all__ = [
     'FundamentalScreener',
@@ -25,4 +26,5 @@ __all__ = [
     'SectorAnalyzer',
     'OpenDartClient',
     'MarkdownReportGenerator',
+    'BreakoutScreener',
 ]

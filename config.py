@@ -53,3 +53,27 @@ LOGS_DIR = os.path.join(PROJECT_ROOT, "logs")
 # 포트폴리오 파일 설정
 DEFAULT_PORTFOLIO_FILE = os.path.join(PROJECT_ROOT, ".portfolio")
 MYPORTFOLIO_DIR = os.path.join(PROJECT_ROOT, "myportfolio")
+
+# ============================================
+# 전고점 돌파 전략 설정
+# ============================================
+
+# 52주 신고가 설정
+WEEK52_LOOKBACK_DAYS = 252  # 52주 = 약 252 거래일
+
+# 전고점 근접 범위 (90% ~ 105%)
+BREAKOUT_HIGH_RANGE_MIN = 0.90  # 52주 고점 대비 최소 비율
+BREAKOUT_HIGH_RANGE_MAX = 1.05  # 52주 고점 대비 최대 비율
+
+# 돌파 시도 설정
+BREAKOUT_ATTEMPT_THRESHOLD = 0.95  # 95% 이상 도달 시 돌파 시도로 간주
+BREAKOUT_ATTEMPT_LOOKBACK_DAYS = 60  # 최근 60일 내 시도 횟수 확인
+BREAKOUT_MIN_ATTEMPT_COUNT = 3  # 최소 3회 이상 시도 시 돌파 확률 상승
+
+# 유동성 필터
+BREAKOUT_MIN_MARKET_CAP = 2000.0  # 최소 시가총액 (억원)
+BREAKOUT_MIN_AVG_TRADING_VALUE = 50.0  # 최소 일평균 거래대금 (억원)
+
+# 손절/매도 설정
+BREAKOUT_STOP_LOSS_PCT = 0.05  # 절대 손절 -5%
+BREAKOUT_TRAILING_STOP_MA = 20  # 상대 손절: MA20 이탈

@@ -427,3 +427,238 @@ class MarkdownReportGenerator:
                 return f"{num:,.0f}"
         except (ValueError, TypeError):
             return "-"
+
+    # =====================================================
+    # 전고점 돌파 전략 리포트
+    # =====================================================
+
+    def generate_breakout_report(
+        self,
+        stocks: List[Dict[str, Any]],
+        screening_stats: Dict[str, Any],
+        start_time: datetime,
+        end_time: datetime,
+    ) -> str:
+        """
+        전고점 돌파 전략 스크리닝 리포트를 생성합니다.
+
+        Args:
+            stocks: 선정된 종목 리스트
+            screening_stats: 스크리닝 통계
+            start_time: 분석 시작 시간
+            end_time: 분석 종료 시간
+
+        Returns:
+            생성된 리포트 파일 경로
+        """
+        report_date = datetime.now().strftime("%Y-%m-%d")
+        report_time = datetime.now().strftime("%H:%M:%S")
+        elapsed = (end_time - start_time).total_seconds()
+
+        # 리포트 내용 생성
+        content = self._build_breakout_report_content(
+            stocks=stocks,
+            stats=screening_stats,
+            report_date=report_date,
+            report_time=report_time,
+            elapsed_seconds=elapsed,
+        )
+
+        # 파일 저장
+        filename = f"breakout_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+        filepath = self.output_dir / filename
+
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(content)
+
+        logger.info(f"Breakout report saved to: {filepath}")
+
+        return str(filepath)
+
+    def _build_breakout_report_content(
+        self,
+        stocks: List[Dict[str, Any]],
+        stats: Dict[str, Any],
+        report_date: str,
+        report_time: str,
+        elapsed_seconds: float,
+    ) -> str:
+        """전고점 돌파 리포트 내용을 구성합니다."""
+        lines = []
+
+        # 헤더
+        lines.append(f"# 전고점 돌파 전략 스크리닝 리포트 - {report_date}")
+        lines.append("")
+        lines.append(f"> 생성 시간: {report_time}")
+        lines.append(f"> 분석 소요 시간: {elapsed_seconds:.1f}초")
+        lines.append("")
+
+        # 요약
+        lines.append("## 요약")
+        lines.append("")
+        lines.append("| 항목 | 값 |")
+        lines.append("|------|-----|")
+        lines.append(f"| 전체 종목 수 | {stats.get('total_analyzed', 0):,}개 |")
+        lines.append(f"| 시가총액 필터 통과 | {stats.get('after_market_cap', 0):,}개 |")
+        lines.append(f"| 52주 신고가 근접 | {stats.get('after_breakout', 0):,}개 |")
+        lines.append(f"| **최종 선정** | **{len(stocks)}개** |")
+        lines.append("")
+
+        if not stocks:
+            lines.append("## 선정 종목 없음")
+            lines.append("")
+            lines.append("전고점 돌파 조건을 만족하는 종목이 없습니다.")
+            return "\n".join(lines)
+
+        # 선정 종목 리스트
+        lines.append("## 선정 종목 리스트")
+        lines.append("")
+
+        for i, stock in enumerate(stocks, 1):
+            lines.extend(self._build_breakout_stock_section(i, stock))
+            lines.append("")
+            lines.append("---")
+            lines.append("")
+
+        # 면책 조항
+        lines.append("## 면책 조항")
+        lines.append("")
+        lines.append("본 리포트는 투자 참고용이며, 실제 투자 결정은 본인의 판단에 따라야 합니다.")
+        lines.append("과거 데이터 기반 분석이므로 미래 수익을 보장하지 않습니다.")
+        lines.append("**전고점 돌파 실패 시 손절가(-5%)를 반드시 준수하세요.**")
+        lines.append("")
+
+        return "\n".join(lines)
+
+    def _build_breakout_stock_section(self, index: int, stock: Dict[str, Any]) -> List[str]:
+        """전고점 돌파 종목 섹션을 구성합니다."""
+        lines = []
+
+        code = stock.get('code', '')
+        name = stock.get('name', code)
+
+        lines.append(f"### {index}. {name} ({code})")
+        lines.append("")
+
+        # 기본 정보
+        lines.append("#### 기본 정보")
+        lines.append("")
+        lines.append("| 항목 | 값 |")
+        lines.append("|------|-----|")
+        lines.append(f"| 현재가 | {self._format_number(stock.get('current_price', 0))}원 |")
+        lines.append(f"| 52주 최고가 | {self._format_number(stock.get('high_52w', 0))}원 |")
+
+        high_date = stock.get('high_52w_date')
+        if high_date:
+            if hasattr(high_date, 'strftime'):
+                high_date_str = high_date.strftime('%Y-%m-%d')
+            else:
+                high_date_str = str(high_date)[:10]
+            lines.append(f"| 최고가 기록일 | {high_date_str} |")
+
+        pct_from_high = stock.get('pct_from_high', 0)
+        lines.append(f"| 고점 대비 | {pct_from_high*100:.1f}% |")
+        lines.append(f"| 돌파 확률 점수 | **{stock.get('breakout_score', 0)}점** |")
+        lines.append("")
+
+        # 돌파 분석
+        lines.append("#### 전고점 돌파 분석")
+        lines.append("")
+
+        attempt_count = stock.get('attempt_count', 0)
+        avg_trading_value = stock.get('avg_trading_value', 0)
+
+        if stock.get('in_breakout_zone', False):
+            lines.append(f"- :dart: **52주 신고가 근접 구간** (90~105%)")
+        else:
+            lines.append(f"- 고점 대비 {pct_from_high*100:.1f}% 위치")
+
+        lines.append(f"- 최근 60일 돌파 시도: **{attempt_count}회**")
+        if attempt_count >= 3:
+            lines.append(f"  - :fire: 3회 이상 시도 → 돌파 확률 상승")
+
+        lines.append(f"- 20일 평균 거래대금: **{avg_trading_value:.1f}억원**")
+        lines.append("")
+
+        # 매도/손절 전략
+        sell_strategy = stock.get('sell_strategy', {})
+        if sell_strategy:
+            lines.append("#### 매도/손절 전략")
+            lines.append("")
+
+            stop_loss = sell_strategy.get('stop_loss_price', 0)
+            stop_loss_pct = abs(sell_strategy.get('stop_loss_pct', 5))  # 절대값 사용
+            lines.append(f"- :octagonal_sign: **절대 손절가**: {self._format_number(stop_loss)}원 (-{stop_loss_pct:.0f}%)")
+
+            ma20 = stock.get('ma20', 0)
+            if ma20 > 0:
+                lines.append(f"- :chart_with_downwards_trend: **상대 손절**: MA20({self._format_number(ma20)}원) 이탈 시")
+
+            lines.append("")
+
+            targets = sell_strategy.get('sell_targets', [])
+            if targets:
+                lines.append("**분할 매도 목표:**")
+                lines.append("")
+                for target in targets:
+                    target_price = target.get('price', 0)
+                    ratio = target.get('ratio', 0)
+                    reason = target.get('reason', '')
+                    lines.append(f"- {reason}: {self._format_number(int(target_price))}원 ({ratio*100:.0f}%)")
+                lines.append("")
+
+        # 수급 현황
+        investor = stock.get('investor_flow', {})
+        if investor:
+            lines.append("#### 수급 현황")
+            lines.append("")
+            foreign_days = investor.get('foreign_net_buy_days', 0)
+            inst_days = investor.get('institution_net_buy_days', 0)
+            lines.append(f"- 외국인: 최근 5일 중 **{foreign_days}일** 순매수")
+            lines.append(f"- 기관: 최근 5일 중 **{inst_days}일** 순매수")
+            lines.append("")
+
+        # 뉴스/재료
+        news_analysis = stock.get('news_analysis', {})
+        if news_analysis:
+            lines.append("#### 핵심 재료")
+            lines.append("")
+
+            themes = news_analysis.get('key_themes', [])
+            if themes:
+                lines.append(f"- 테마: {', '.join(themes)}")
+
+            durability = news_analysis.get('material_durability', '하')
+            lines.append(f"- 재료 지속성: **{durability}**")
+            lines.append("")
+
+        # 리스크
+        overhang = stock.get('overhang_risks', [])
+        if overhang:
+            lines.append("#### 리스크 요인")
+            lines.append("")
+            for risk in overhang[:3]:
+                keyword = risk.get('keyword', risk.get('type', ''))
+                title = risk.get('title', '')[:50]
+                lines.append(f"- :warning: **{keyword}**: {title}...")
+            lines.append("")
+
+        # 종합 의견
+        lines.append("#### 종합 의견")
+        lines.append("")
+
+        score = stock.get('breakout_score', 0)
+        if score >= 70:
+            lines.append("돌파 확률이 높은 종목입니다. ")
+            lines.append(f"현재가({self._format_number(stock.get('current_price', 0))}원)에서 분할 매수 후, ")
+            lines.append(f"손절가({self._format_number(sell_strategy.get('stop_loss_price', 0))}원) 준수하여 리스크 관리하세요.")
+        elif score >= 50:
+            lines.append("돌파 가능성이 있으나, 추가 모니터링이 필요합니다. ")
+            lines.append("거래량 급증과 함께 돌파 시 진입을 고려하세요.")
+        else:
+            lines.append("현재 돌파 확률이 낮습니다. ")
+            lines.append("고점 근접 시 재검토하세요.")
+
+        lines.append("")
+
+        return lines

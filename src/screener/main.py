@@ -3,9 +3,14 @@
 전체 스크리닝 파이프라인을 실행합니다.
 
 실행 방법:
+    # 가치투자 스크리닝 (기본)
     uv run python -m src.screener.main
     uv run python -m src.screener.main --sector "반도체"
-    uv run python -m src.screener.main --skip-news  # 뉴스 분석 건너뛰기
+    uv run python -m src.screener.main --skip-news
+
+    # 전고점 돌파 전략 스크리닝
+    uv run python -m src.screener.main --strategy breakout
+    uv run python -m src.screener.main --strategy breakout --min-market-cap 3000
 """
 
 import warnings
@@ -18,6 +23,7 @@ import sys
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 import pandas as pd
+import FinanceDataReader as fdr
 
 from src.utils.logger import setup_logger
 from .fundamental_screener import FundamentalScreener
@@ -28,6 +34,8 @@ from .sector_analyzer import SectorAnalyzer
 from .news_analyzer import NewsAnalyzer
 from .opendart_client import get_opendart_client
 from .markdown_report import MarkdownReportGenerator
+from .breakout_screener import BreakoutScreener
+import config
 
 logger = setup_logger(__name__)
 
@@ -70,6 +78,11 @@ class StockScreener:
         self.sector_analyzer = SectorAnalyzer()
         self.news_analyzer = NewsAnalyzer()
         self.report_generator = MarkdownReportGenerator()
+
+        # 전고점 돌파 스크리너
+        self.breakout_screener = BreakoutScreener(
+            min_market_cap=min_market_cap,
+        )
 
         self.stats: Dict[str, Any] = {}
 
@@ -332,33 +345,246 @@ class StockScreener:
             end_time=end_time,
         )
 
+    def run_breakout_strategy(
+        self,
+        skip_news: bool = False,
+        max_stocks: Optional[int] = None,
+        min_trading_value: Optional[float] = None,
+    ) -> str:
+        """
+        전고점 돌파 전략 스크리닝을 실행합니다.
+
+        Args:
+            skip_news: 뉴스 분석 건너뛰기
+            max_stocks: 최대 분석 종목 수 (테스트용)
+            min_trading_value: 최소 거래대금 (억원)
+
+        Returns:
+            생성된 리포트 파일 경로
+        """
+        start_time = datetime.now()
+        logger.info("=" * 60)
+        logger.info("전고점 돌파 전략 스크리닝 시작")
+        logger.info("=" * 60)
+
+        # 거래대금 설정 업데이트
+        if min_trading_value:
+            self.breakout_screener.min_avg_trading_value = min_trading_value
+
+        # Step 1: 전 종목 로드 (fundamental_screener의 load_market_data 활용)
+        logger.info("\n[Step 1] 시장 데이터 로드")
+        market_data = self.fundamental_screener.load_market_data('KRX')
+
+        if market_data is None or market_data.empty:
+            logger.error("시장 데이터가 비어있습니다.")
+            return self._generate_empty_report(start_time)
+
+        self.stats['total_analyzed'] = len(market_data)
+        logger.info(f"전체 종목: {len(market_data)}개")
+
+        # Step 2: 시가총액 필터
+        logger.info(f"\n[Step 2] 시가총액 필터 (>= {self.breakout_screener.min_market_cap}억)")
+        filtered_df = self.breakout_screener.filter_by_market_cap(market_data)
+        self.stats['after_market_cap'] = len(filtered_df)
+
+        if filtered_df.empty:
+            logger.warning("시가총액 조건을 만족하는 종목이 없습니다.")
+            return self._generate_empty_report(start_time)
+
+        # 종목코드 컬럼 자동 감지
+        code_col = None
+        for col in ['종목코드', 'Code', 'Symbol']:
+            if col in filtered_df.columns:
+                code_col = col
+                break
+        if code_col is None:
+            logger.error(f"Code column not found in: {filtered_df.columns.tolist()[:10]}")
+            return self._generate_empty_report(start_time)
+
+        stock_codes = filtered_df[code_col].tolist()
+
+        if max_stocks:
+            stock_codes = stock_codes[:max_stocks]
+            logger.info(f"테스트 모드: {max_stocks}개 종목만 분석")
+
+        # Step 3: 전고점 돌파 스크리닝
+        logger.info(f"\n[Step 3] 전고점 돌파 스크리닝 ({len(stock_codes)}개 종목)")
+        breakout_passed, all_results = self.breakout_screener.screen(stock_codes)
+        self.stats['after_breakout'] = len(breakout_passed)
+
+        if breakout_passed.empty:
+            logger.warning("전고점 돌파 조건을 만족하는 종목이 없습니다.")
+            return self._generate_empty_report(start_time)
+
+        logger.info(f"전고점 근접 종목: {len(breakout_passed)}개")
+
+        # Step 4: 수급 검증 (선택)
+        logger.info("\n[Step 4] 수급 검증")
+        passed_codes = breakout_passed['code'].tolist()
+        investor_passed, investor_all = self.investor_flow.screen(passed_codes)
+        self.stats['after_investor'] = len(investor_passed)
+
+        # 수급 정보 병합
+        if not investor_all.empty:
+            breakout_passed = breakout_passed.merge(
+                investor_all[['stock_code', 'foreign_net_buy_days', 'institution_net_buy_days',
+                             'total_foreign_net', 'total_institution_net']],
+                left_on='code',
+                right_on='stock_code',
+                how='left'
+            )
+
+        logger.info(f"수급 검증 완료")
+
+        # Step 5: 종목명 병합
+        name_col = None
+        for col in ['종목명', 'Name']:
+            if col in filtered_df.columns:
+                name_col = col
+                break
+        if name_col and name_col in filtered_df.columns:
+            name_map = dict(zip(filtered_df[code_col], filtered_df[name_col]))
+            breakout_passed['name'] = breakout_passed['code'].map(name_map)
+        else:
+            breakout_passed['name'] = breakout_passed['code']
+
+        # Step 6: 뉴스 분석 (선택)
+        news_results = []
+        if not skip_news:
+            logger.info("\n[Step 5] 뉴스 분석")
+            stocks_for_news = [
+                {'code': row['code'], 'name': row.get('name', row['code'])}
+                for _, row in breakout_passed.iterrows()
+            ]
+            news_results = self.news_analyzer.batch_analyze(stocks_for_news)
+
+        # Step 7: 최종 결과 조합
+        logger.info("\n[Step 6] 리포트 생성")
+        final_stocks = self._combine_breakout_results(breakout_passed, news_results)
+
+        # 리포트 생성
+        end_time = datetime.now()
+        report_path = self.report_generator.generate_breakout_report(
+            stocks=final_stocks,
+            screening_stats=self.stats,
+            start_time=start_time,
+            end_time=end_time,
+        )
+
+        logger.info("\n" + "=" * 60)
+        logger.info(f"전고점 돌파 스크리닝 완료!")
+        logger.info(f"최종 선정: {len(final_stocks)}개 종목")
+        logger.info(f"리포트: {report_path}")
+        logger.info(f"소요 시간: {(end_time - start_time).total_seconds():.1f}초")
+        logger.info("=" * 60)
+
+        return report_path
+
+    def _combine_breakout_results(
+        self,
+        df: pd.DataFrame,
+        news_results: List[Dict],
+    ) -> List[Dict[str, Any]]:
+        """전고점 돌파 분석 결과를 조합합니다."""
+        stocks = []
+
+        # 뉴스 결과를 딕셔너리로 변환
+        news_dict = {n['stock_code']: n for n in news_results}
+
+        for _, row in df.iterrows():
+            code = row['code']
+            name = row.get('name', code)
+
+            stock = {
+                'code': code,
+                'name': name,
+                'current_price': row.get('current_price', 0),
+                'high_52w': row.get('high_52w', 0),
+                'high_52w_date': row.get('high_52w_date'),
+                'pct_from_high': row.get('pct_from_high', 0),
+                'in_breakout_zone': row.get('in_breakout_zone', False),
+                'attempt_count': row.get('attempt_count', 0),
+                'avg_trading_value': row.get('avg_trading_value', 0),
+                'breakout_score': row.get('breakout_score', 0),
+                'ma20': row.get('ma20', 0),
+                'sell_strategy': row.get('sell_strategy', {}),
+            }
+
+            # 수급 정보
+            if 'foreign_net_buy_days' in row:
+                stock['investor_flow'] = {
+                    'foreign_net_buy_days': row.get('foreign_net_buy_days', 0),
+                    'institution_net_buy_days': row.get('institution_net_buy_days', 0),
+                    'total_foreign_net': row.get('total_foreign_net', 0),
+                    'total_institution_net': row.get('total_institution_net', 0),
+                }
+
+            # 뉴스 분석
+            if code in news_dict:
+                stock['news_analysis'] = news_dict[code]
+                stock['overhang_risks'] = news_dict[code].get('overhang_risks', [])
+
+            stocks.append(stock)
+
+        # 점수순 정렬
+        stocks.sort(key=lambda x: x['breakout_score'], reverse=True)
+
+        return stocks
+
 
 def main():
     """메인 함수"""
     parser = argparse.ArgumentParser(description='주식 스크리너')
-    parser.add_argument('--sector', type=str, help='특정 섹터만 분석')
+
+    # 전략 선택
+    parser.add_argument('--strategy', type=str, default='value',
+                        choices=['value', 'breakout'],
+                        help='스크리닝 전략 (value: 가치투자, breakout: 전고점돌파)')
+
+    # 공통 옵션
     parser.add_argument('--skip-news', action='store_true', help='뉴스 분석 건너뛰기')
-    parser.add_argument('--skip-financial', action='store_true', help='재무 체크 건너뛰기 (테스트용)')
     parser.add_argument('--max-stocks', type=int, help='최대 분석 종목 수 (테스트용)')
-    parser.add_argument('--per-max', type=float, default=15.0, help='PER 상한')
-    parser.add_argument('--pbr-max', type=float, default=1.2, help='PBR 상한')
     parser.add_argument('--min-market-cap', type=float, default=500.0, help='최소 시가총액 (억원)')
 
+    # 가치투자 전략 옵션
+    parser.add_argument('--sector', type=str, help='특정 섹터만 분석 (value 전략)')
+    parser.add_argument('--skip-financial', action='store_true', help='재무 체크 건너뛰기 (테스트용)')
+    parser.add_argument('--per-max', type=float, default=15.0, help='PER 상한 (value 전략)')
+    parser.add_argument('--pbr-max', type=float, default=1.2, help='PBR 상한 (value 전략)')
+
+    # 전고점 돌파 전략 옵션
+    parser.add_argument('--min-trading-value', type=float, help='최소 거래대금 (억원, breakout 전략)')
+
     args = parser.parse_args()
+
+    # 전략에 따라 시가총액 기본값 조정
+    min_market_cap = args.min_market_cap
+    if args.strategy == 'breakout' and args.min_market_cap == 500.0:
+        min_market_cap = config.BREAKOUT_MIN_MARKET_CAP  # breakout은 2000억 기본
 
     screener = StockScreener(
         per_max=args.per_max,
         pbr_max=args.pbr_max,
-        min_market_cap=args.min_market_cap,
+        min_market_cap=min_market_cap,
     )
 
     try:
-        report_path = screener.run(
-            sector_filter=args.sector,
-            skip_news=args.skip_news,
-            skip_financial_check=args.skip_financial,
-            max_stocks=args.max_stocks,
-        )
+        if args.strategy == 'breakout':
+            # 전고점 돌파 전략
+            report_path = screener.run_breakout_strategy(
+                skip_news=args.skip_news,
+                max_stocks=args.max_stocks,
+                min_trading_value=args.min_trading_value,
+            )
+        else:
+            # 가치투자 전략 (기본)
+            report_path = screener.run(
+                sector_filter=args.sector,
+                skip_news=args.skip_news,
+                skip_financial_check=args.skip_financial,
+                max_stocks=args.max_stocks,
+            )
+
         print(f"\n리포트가 생성되었습니다: {report_path}")
 
     except KeyboardInterrupt:
