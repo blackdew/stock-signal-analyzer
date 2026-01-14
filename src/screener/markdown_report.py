@@ -17,14 +17,22 @@ class MarkdownReportGenerator:
     def __init__(self, output_dir: str = "reports/screening"):
         """
         Args:
-            output_dir: 리포트 저장 디렉토리
+            output_dir: 리포트 저장 디렉토리 (기본: reports/screening)
         """
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        # 개별 종목 리포트 디렉토리
-        self.stocks_dir = self.output_dir / "stocks"
-        self.stocks_dir.mkdir(parents=True, exist_ok=True)
+    def _get_strategy_dir(self, strategy: str) -> Path:
+        """전략별 디렉토리 경로를 반환하고 생성합니다."""
+        strategy_dir = self.output_dir / strategy
+        strategy_dir.mkdir(parents=True, exist_ok=True)
+        return strategy_dir
+
+    def _get_detailed_dir(self, strategy: str) -> Path:
+        """전략별 개별 종목 리포트 디렉토리를 반환하고 생성합니다."""
+        detailed_dir = self.output_dir / strategy / "detailed"
+        detailed_dir.mkdir(parents=True, exist_ok=True)
+        return detailed_dir
 
     def generate_report(
         self,
@@ -32,6 +40,7 @@ class MarkdownReportGenerator:
         screening_stats: Dict[str, Any],
         start_time: datetime,
         end_time: datetime,
+        strategy: str = "value",
         generate_individual: bool = True,
     ) -> str:
         """
@@ -42,6 +51,7 @@ class MarkdownReportGenerator:
             screening_stats: 스크리닝 통계
             start_time: 분석 시작 시간
             end_time: 분석 종료 시간
+            strategy: 전략 이름 (디렉토리 분류용)
             generate_individual: 개별 종목 리포트 생성 여부
 
         Returns:
@@ -60,9 +70,10 @@ class MarkdownReportGenerator:
             elapsed_seconds=elapsed,
         )
 
-        # 파일 저장
+        # 전략별 디렉토리에 저장
+        strategy_dir = self._get_strategy_dir(strategy)
         filename = f"screen_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
-        filepath = self.output_dir / filename
+        filepath = strategy_dir / filename
 
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(content)
@@ -71,7 +82,7 @@ class MarkdownReportGenerator:
 
         # 개별 종목 리포트 생성
         if generate_individual and stocks:
-            individual_paths = self.generate_individual_reports(stocks, report_date)
+            individual_paths = self.generate_individual_reports(stocks, report_date, strategy)
             logger.info(f"Individual reports generated: {len(individual_paths)} files")
 
         return str(filepath)
@@ -79,7 +90,8 @@ class MarkdownReportGenerator:
     def generate_individual_reports(
         self,
         stocks: List[Dict[str, Any]],
-        report_date: Optional[str] = None
+        report_date: Optional[str] = None,
+        strategy: str = "value"
     ) -> List[str]:
         """
         개별 종목 리포트를 생성합니다.
@@ -88,6 +100,7 @@ class MarkdownReportGenerator:
         Args:
             stocks: 종목 리스트
             report_date: 리포트 날짜 (None이면 오늘)
+            strategy: 전략 이름 (디렉토리 분류용)
 
         Returns:
             생성된 파일 경로 리스트
@@ -98,6 +111,9 @@ class MarkdownReportGenerator:
         date_str = report_date.replace("-", "")
         paths = []
         skipped = 0
+
+        # 전략별 detailed 디렉토리
+        detailed_dir = self._get_detailed_dir(strategy)
 
         for stock in stocks:
             code = stock.get('code') or stock.get('Code') or stock.get('종목코드', '')
@@ -116,7 +132,7 @@ class MarkdownReportGenerator:
             # 파일명: 종목명_날짜.md (예: 삼성전자_20260105.md)
             safe_name = name.replace("/", "_").replace("\\", "_").replace(" ", "_")
             filename = f"{safe_name}_{date_str}.md"
-            filepath = self.stocks_dir / filename
+            filepath = detailed_dir / filename
 
             # 개별 리포트 내용 생성
             content = self._build_individual_report(stock, report_date)
@@ -438,6 +454,7 @@ class MarkdownReportGenerator:
         screening_stats: Dict[str, Any],
         start_time: datetime,
         end_time: datetime,
+        strategy: str = "breakout",
     ) -> str:
         """
         전고점 돌파 전략 스크리닝 리포트를 생성합니다.
@@ -447,6 +464,7 @@ class MarkdownReportGenerator:
             screening_stats: 스크리닝 통계
             start_time: 분석 시작 시간
             end_time: 분석 종료 시간
+            strategy: 전략 이름 (디렉토리 분류용, 기본: breakout)
 
         Returns:
             생성된 리포트 파일 경로
@@ -464,9 +482,10 @@ class MarkdownReportGenerator:
             elapsed_seconds=elapsed,
         )
 
-        # 파일 저장
+        # 전략별 디렉토리에 저장
+        strategy_dir = self._get_strategy_dir(strategy)
         filename = f"breakout_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
-        filepath = self.output_dir / filename
+        filepath = strategy_dir / filename
 
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(content)
