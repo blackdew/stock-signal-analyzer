@@ -11,6 +11,7 @@
 | Phase 0 | 완료 | 기본 인프라 (config, fetcher, cache, rubric V2) |
 | Phase 1 | 완료 | 데이터 에이전트 (MarketDataAgent, FundamentalAgent, NewsAgent) |
 | Phase 2 | 완료 | 분석 에이전트 (StockAnalyzer, SectorAnalyzer, RankingAgent) |
+| Phase 4 | 완료 | 리포트 에이전트 (StockReportAgent, SectorReportAgent, SummaryAgent) |
 | Phase 3 | 대기 중 | Orchestrator 및 전체 파이프라인 연결 |
 
 ### 테스트 현황
@@ -86,6 +87,11 @@ uv run python -c "from src.core.rubric import RubricEngine; print(RubricEngine()
 - **SectorAnalyzer**: 섹터별 시가총액 가중 평균 점수
 - **RankingAgent**: 4개 그룹 순위, 최종 18개 종목, Top 3 선정
 
+### 리포트 에이전트
+- **StockReportAgent**: 개별 종목 마크다운 리포트 생성
+- **SectorReportAgent**: 섹터 분석 마크다운 리포트 생성
+- **SummaryAgent**: 종합 리포트 및 JSON 데이터 생성
+
 ## 프로젝트 구조
 
 ```
@@ -104,10 +110,14 @@ trading/
 │       │   ├── market_data_agent.py
 │       │   ├── fundamental_agent.py
 │       │   └── news_agent.py
-│       └── analysis/       # 분석 에이전트
-│           ├── stock_analyzer.py
-│           ├── sector_analyzer.py
-│           └── ranking_agent.py
+│       ├── analysis/       # 분석 에이전트
+│       │   ├── stock_analyzer.py
+│       │   ├── sector_analyzer.py
+│       │   └── ranking_agent.py
+│       └── report/         # 리포트 에이전트
+│           ├── stock_report_agent.py
+│           ├── sector_report_agent.py
+│           └── summary_agent.py
 ├── tests/                  # 테스트 (279개)
 ├── docs/
 │   └── architecture.md     # 아키텍처 문서

@@ -10,6 +10,7 @@
 - **Phase 0 완료**: 기본 인프라 구축 (config, fetcher, cache, rubric V2)
 - **Phase 1 완료**: 데이터 에이전트 (MarketDataAgent, FundamentalAgent, NewsAgent)
 - **Phase 2 완료**: 분석 에이전트 (StockAnalyzer, SectorAnalyzer, RankingAgent)
+- **Phase 4 완료**: 리포트 에이전트 (StockReportAgent, SectorReportAgent, SummaryAgent)
 - **대기 중**: Orchestrator (전체 파이프라인 연결)
 
 ## 실행 방법
@@ -39,6 +40,9 @@ uv run python -c "from src.agents.data import MarketDataAgent; print('MarketData
 
 # analysis agents 테스트
 uv run python -c "from src.agents.analysis import StockAnalyzer, SectorAnalyzer, RankingAgent; print('Analysis Agents OK')"
+
+# report agents 테스트
+uv run python -c "from src.agents.report import StockReportAgent, SectorReportAgent, SummaryAgent; print('Report Agents OK')"
 ```
 
 ### 메인 실행 (개발 중)
@@ -85,8 +89,11 @@ trading/
 │   │   │   ├── sector_analyzer.py      # 섹터 시가총액 가중 평균
 │   │   │   └── ranking_agent.py        # 4개 그룹 순위, 최종 18개, Top 3
 │   │   │
-│   │   └── report/              # (개발 중)
-│   │       └── __init__.py
+│   │   └── report/              # 리포트 에이전트
+│   │       ├── __init__.py
+│   │       ├── stock_report_agent.py   # 개별 종목 마크다운 리포트
+│   │       ├── sector_report_agent.py  # 섹터 분석 마크다운 리포트
+│   │       └── summary_agent.py        # 종합 리포트 및 JSON 데이터
 │   │
 │   └── output/                  # 출력 디렉토리
 │       ├── data/
@@ -325,6 +332,48 @@ print(result.final_top3) # Top 3 종목
   - 4개 그룹에서 각 3개 종목 선정 (KOSPI 9개 + KOSDAQ 3개 + 섹터 9개)
   - 중복 제거 후 최종 18개 종목 집계
   - Top 3 선정 (가중치: 총점 70%, 수급 15%, 성장성 15%)
+
+### src/agents/report/
+리포트 생성 에이전트 모듈.
+
+```python
+from src.agents.report import StockReportAgent, SectorReportAgent, SummaryAgent
+
+# 개별 종목 리포트 생성
+stock_report_agent = StockReportAgent()
+report_paths = await stock_report_agent.generate_reports(stock_results)
+# output/reports/stocks/ 에 마크다운 리포트 저장
+
+# 섹터 리포트 생성
+sector_report_agent = SectorReportAgent()
+sector_paths = await sector_report_agent.generate_reports(sector_results)
+# output/reports/sectors/ 에 마크다운 리포트 저장
+
+# 종합 리포트 생성
+summary_agent = SummaryAgent()
+summary_paths = await summary_agent.generate_summary(ranking_result)
+# output/reports/summary/ 에 종합 리포트 저장
+# output/data/ 에 JSON 데이터 저장
+```
+
+- **StockReportAgent**: 개별 종목 마크다운 리포트 생성
+  - StockAnalysisResult를 마크다운 리포트로 변환
+  - 병렬 리포트 생성 (asyncio.gather)
+  - 6개 카테고리별 상세 점수 및 판정 포함
+  - 투자 의견 자동 생성
+
+- **SectorReportAgent**: 섹터 분석 마크다운 리포트 생성
+  - SectorAnalysisResult를 마크다운 리포트로 변환
+  - 섹터별 시가총액 가중 평균 점수
+  - 상위 종목 테이블 및 강/약점 분석
+  - 섹터 전망 자동 생성
+
+- **SummaryAgent**: 종합 리포트 및 JSON 데이터 생성
+  - RankingResult를 종합 리포트로 변환
+  - Top 3 추천 종목 및 선정 이유
+  - 상위 섹터, 그룹별 선정 종목
+  - 최종 18개 종목 테이블
+  - JSON 데이터 저장 (API 연동용)
 
 ## 개발 가이드
 

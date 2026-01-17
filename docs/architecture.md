@@ -36,6 +36,13 @@
                                                     │
                                                     ▼
                                         ┌───────────────────┐
+                                        │   ReportAgents    │
+                                        │ Stock/Sector/     │
+                                        │ Summary           │
+                                        └───────────────────┘
+                                                    │
+                                                    ▼
+                                        ┌───────────────────┐
                                         │   Report Output   │
                                         │  (최종 18개/Top3) │
                                         └───────────────────┘
@@ -82,6 +89,14 @@ class BaseAgent(ABC):
 | StockAnalyzer | 개별 종목 점수 | 데이터 에이전트 결과 | StockAnalysisResult |
 | SectorAnalyzer | 섹터 점수 | StockAnalysisResult | SectorAnalysisResult |
 | RankingAgent | 최종 순위 | Stock/Sector 결과 | RankingResult |
+
+### 리포트 에이전트 구성
+
+| 에이전트 | 역할 | 입력 | 출력 |
+|----------|------|------|------|
+| StockReportAgent | 종목 리포트 | StockAnalysisResult | 마크다운 파일 |
+| SectorReportAgent | 섹터 리포트 | SectorAnalysisResult | 마크다운 파일 |
+| SummaryAgent | 종합 리포트 | RankingResult | 마크다운 + JSON |
 
 ## 데이터 흐름
 
@@ -181,11 +196,34 @@ NewsData ───────┘         ▼
 RankingResult
         │
         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     Report Agents                            │
+├─────────────────────────────────────────────────────────────┤
+│ ┌─────────────────────┐ ┌─────────────────────┐            │
+│ │ StockReportAgent    │ │ SectorReportAgent   │            │
+│ │ ├─ 종목 분석 결과    │ │ ├─ 섹터 분석 결과   │            │
+│ │ ├─ 6개 카테고리 점수 │ │ ├─ 시총 가중 평균   │            │
+│ │ ├─ 판정/의견 생성    │ │ ├─ 강/약점 분석     │            │
+│ │ └─ 병렬 생성        │ │ └─ 섹터 전망       │            │
+│ └─────────────────────┘ └─────────────────────┘            │
+│              ┌─────────────────────┐                        │
+│              │ SummaryAgent        │                        │
+│              │ ├─ Top 3 선정 이유   │                        │
+│              │ ├─ 그룹별 종목 요약  │                        │
+│              │ ├─ 최종 18개 테이블  │                        │
+│              │ └─ JSON 데이터 저장  │                        │
+│              └─────────────────────┘                        │
+└─────────────────────────────────────────────────────────────┘
+        │
+        ▼
 ┌─────────────────────────────────────────────┐
-│ output/reports/                             │
-│   ├── sectors/   (섹터별 리포트)            │
-│   ├── stocks/    (종목별 리포트)            │
-│   └── summary/   (최종 18개/Top3 요약)       │
+│ output/                                      │
+│   ├── data/                                  │
+│   │   └── analysis_YYYYMMDD.json (API용)    │
+│   └── reports/                               │
+│       ├── sectors/   (섹터별 리포트)         │
+│       ├── stocks/    (종목별 리포트)         │
+│       └── summary/   (종합리포트_YYYYMMDD)   │
 └─────────────────────────────────────────────┘
 ```
 
@@ -312,15 +350,16 @@ CacheManager
 - 전체 파이프라인 연결
 - CLI 인터페이스
 
-### Phase 4 (계획)
-- 웹 대시보드
-- 알림 시스템
-- 리포트 에이전트
+### Phase 4 (완료)
+- StockReportAgent: 개별 종목 마크다운 리포트
+- SectorReportAgent: 섹터 분석 마크다운 리포트
+- SummaryAgent: 종합 리포트 및 JSON 데이터
 
 ### Phase 5 (계획)
+- 웹 대시보드
+- 알림 시스템
 - 백테스팅 엔진
 - 포트폴리오 최적화
-- 자동 리밸런싱 제안
 
 ## 디렉토리 구조
 
@@ -348,8 +387,11 @@ src/
 │   │   ├── sector_analyzer.py     # 섹터 시가총액 가중 평균
 │   │   └── ranking_agent.py       # 4개 그룹 순위, 최종 18개, Top 3
 │   │
-│   └── report/                  # (개발 중) 리포트 에이전트
-│       └── __init__.py
+│   └── report/                  # 리포트 에이전트
+│       ├── __init__.py
+│       ├── stock_report_agent.py   # 개별 종목 마크다운 리포트
+│       ├── sector_report_agent.py  # 섹터 분석 마크다운 리포트
+│       └── summary_agent.py        # 종합 리포트 및 JSON 데이터
 │
 └── output/                      # 출력
     ├── data/cache/              # 캐시 저장소
