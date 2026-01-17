@@ -1,0 +1,5 @@
+{
+  "name": "AlphaInvest AI - Korean Market Analyst",
+  "description": "An AI-powered investment assistant that analyzes KOSPI/KOSDAQ sectors and stocks using a multi-agent rubric system.",
+  "requestFramePermissions": []
+}
