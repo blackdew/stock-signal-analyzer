@@ -45,10 +45,22 @@ class MarketData:
     current_price: Optional[float] = None
     price_change_pct: Optional[float] = None  # 전일 대비 등락률 (%)
 
-    # 기술적 지표
+    # 기술적 지표 (기존)
     ma20: Optional[float] = None
     ma60: Optional[float] = None
     rsi: Optional[float] = None
+
+    # 기술적 지표 (V2 추가)
+    macd: Optional[float] = None           # MACD 값
+    macd_signal: Optional[float] = None    # MACD 시그널 라인
+    adx: Optional[float] = None            # ADX (추세 강도)
+    atr: Optional[float] = None            # ATR (변동성)
+    atr_pct: Optional[float] = None        # ATR 퍼센트 (현재가 대비)
+
+    # 리스크 지표 (V2 추가)
+    beta: Optional[float] = None           # 베타 (시장 대비)
+    max_drawdown_pct: Optional[float] = None  # 최대 낙폭 (%)
+    return_20d: Optional[float] = None     # 20일 수익률 (%)
 
     # 수급 데이터 (최근 5일)
     foreign_net_buy: List[float] = field(default_factory=list)  # 외국인 순매수 (억원)
@@ -171,6 +183,18 @@ class MarketDataAgent(BaseAgent):
         # 7. 시가총액 조회
         market_cap, market_cap_rank = self._get_market_cap_info(symbol, market)
 
+        # V2 지표 추출
+        macd = float(latest["MACD"]) if pd.notna(latest.get("MACD")) else None
+        macd_signal = float(latest["MACD_Signal"]) if pd.notna(latest.get("MACD_Signal")) else None
+        adx = float(latest["ADX"]) if pd.notna(latest.get("ADX")) else None
+        atr = float(latest["ATR"]) if pd.notna(latest.get("ATR")) else None
+        atr_pct = (atr / current_price * 100) if atr and current_price else None
+        return_20d = float(latest["Return_20d"]) if pd.notna(latest.get("Return_20d")) else None
+        max_drawdown = float(latest["Max_Drawdown"]) if pd.notna(latest.get("Max_Drawdown")) else None
+
+        # 8. 베타 계산 (시장 대비)
+        beta = self._calculate_beta(df, symbol)
+
         # MarketData 생성
         market_data = MarketData(
             symbol=symbol,
@@ -183,6 +207,16 @@ class MarketDataAgent(BaseAgent):
             ma20=float(latest["MA20"]) if pd.notna(latest.get("MA20")) else None,
             ma60=float(latest["MA60"]) if pd.notna(latest.get("MA60")) else None,
             rsi=float(latest["RSI"]) if pd.notna(latest.get("RSI")) else None,
+            # V2 지표
+            macd=macd,
+            macd_signal=macd_signal,
+            adx=adx,
+            atr=atr,
+            atr_pct=round(atr_pct, 2) if atr_pct else None,
+            beta=beta,
+            max_drawdown_pct=round(max_drawdown, 2) if max_drawdown else None,
+            return_20d=round(return_20d, 2) if return_20d else None,
+            # 수급 데이터
             foreign_net_buy=foreign_net,
             institution_net_buy=inst_net,
             volume=volume,
@@ -202,6 +236,16 @@ class MarketDataAgent(BaseAgent):
             "ma20": market_data.ma20,
             "ma60": market_data.ma60,
             "rsi": market_data.rsi,
+            # V2 지표
+            "macd": market_data.macd,
+            "macd_signal": market_data.macd_signal,
+            "adx": market_data.adx,
+            "atr": market_data.atr,
+            "atr_pct": market_data.atr_pct,
+            "beta": market_data.beta,
+            "max_drawdown_pct": market_data.max_drawdown_pct,
+            "return_20d": market_data.return_20d,
+            # 수급 데이터
             "foreign_net_buy": market_data.foreign_net_buy,
             "institution_net_buy": market_data.institution_net_buy,
             "volume": market_data.volume,
@@ -214,7 +258,10 @@ class MarketDataAgent(BaseAgent):
 
     def _calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        기술적 지표를 계산합니다 (MA20, MA60, RSI).
+        기술적 지표를 계산합니다.
+
+        기본 지표: MA20, MA60, RSI
+        V2 추가 지표: MACD, ADX, ATR
         """
         if df is None or df.empty:
             return df
@@ -234,6 +281,49 @@ class MarketDataAgent(BaseAgent):
         except Exception as e:
             self._log_warning(f"RSI calculation failed: {e}")
             df["RSI"] = None
+
+        # MACD (12, 26, 9)
+        try:
+            macd_result = ta.macd(df["Close"], fast=12, slow=26, signal=9)
+            if macd_result is not None:
+                df["MACD"] = macd_result.iloc[:, 0]  # MACD line
+                df["MACD_Signal"] = macd_result.iloc[:, 2]  # Signal line
+        except Exception as e:
+            self._log_warning(f"MACD calculation failed: {e}")
+            df["MACD"] = None
+            df["MACD_Signal"] = None
+
+        # ADX (14일 기준)
+        try:
+            adx_result = ta.adx(df["High"], df["Low"], df["Close"], length=14)
+            if adx_result is not None:
+                df["ADX"] = adx_result.iloc[:, 0]  # ADX
+        except Exception as e:
+            self._log_warning(f"ADX calculation failed: {e}")
+            df["ADX"] = None
+
+        # ATR (14일 기준)
+        try:
+            df["ATR"] = ta.atr(df["High"], df["Low"], df["Close"], length=14)
+        except Exception as e:
+            self._log_warning(f"ATR calculation failed: {e}")
+            df["ATR"] = None
+
+        # 20일 수익률
+        try:
+            df["Return_20d"] = df["Close"].pct_change(periods=20) * 100
+        except Exception as e:
+            self._log_warning(f"20d return calculation failed: {e}")
+            df["Return_20d"] = None
+
+        # 최대 낙폭 (Maximum Drawdown) 계산
+        try:
+            rolling_max = df["Close"].rolling(window=60, min_periods=1).max()
+            drawdown = (df["Close"] - rolling_max) / rolling_max * 100
+            df["Max_Drawdown"] = drawdown.rolling(window=60, min_periods=1).min().abs()
+        except Exception as e:
+            self._log_warning(f"Max drawdown calculation failed: {e}")
+            df["Max_Drawdown"] = None
 
         return df
 
@@ -419,3 +509,58 @@ class MarketDataAgent(BaseAgent):
         )
 
         return ranking
+
+    def _calculate_beta(self, stock_df: pd.DataFrame, symbol: str) -> Optional[float]:
+        """
+        종목의 베타를 계산합니다 (KOSPI 대비).
+
+        베타 = Cov(종목 수익률, 시장 수익률) / Var(시장 수익률)
+
+        Args:
+            stock_df: 종목 주가 데이터프레임
+            symbol: 종목 코드
+
+        Returns:
+            베타 값 (None if 계산 실패)
+        """
+        try:
+            if fdr is None:
+                return None
+
+            # 종목 일간 수익률
+            stock_returns = stock_df["Close"].pct_change().dropna()
+            if len(stock_returns) < 60:
+                return None
+
+            # KOSPI 지수 데이터 가져오기
+            start_date = stock_df.index[0].strftime("%Y-%m-%d")
+            end_date = stock_df.index[-1].strftime("%Y-%m-%d")
+
+            kospi_df = fdr.DataReader("KS11", start_date, end_date)
+            if kospi_df is None or kospi_df.empty:
+                return None
+
+            # KOSPI 일간 수익률
+            kospi_returns = kospi_df["Close"].pct_change().dropna()
+
+            # 날짜 정렬 및 공통 날짜만 선택
+            common_dates = stock_returns.index.intersection(kospi_returns.index)
+            if len(common_dates) < 60:
+                return None
+
+            stock_r = stock_returns.loc[common_dates]
+            market_r = kospi_returns.loc[common_dates]
+
+            # 베타 계산
+            covariance = stock_r.cov(market_r)
+            market_variance = market_r.var()
+
+            if market_variance == 0:
+                return None
+
+            beta = covariance / market_variance
+            return round(beta, 2)
+
+        except Exception as e:
+            self._log_debug(f"Beta calculation failed for {symbol}: {e}")
+            return None

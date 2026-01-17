@@ -698,13 +698,19 @@ class TestRubricEngine:
             market_data=market_data,
         )
 
-        # 가중치 합계 = 30 + 25 + 25 + 20 = 100
+        # V2: 가중치 합계 = 25 + 20 + 20 + 15 + 10 + 10 = 100
         expected_total = (
             result.technical.weighted_score +
             result.supply.weighted_score +
             result.fundamental.weighted_score +
             result.market.weighted_score
         )
+
+        # V2에서는 risk와 relative_strength도 포함
+        if result.risk:
+            expected_total += result.risk.weighted_score
+        if result.relative_strength:
+            expected_total += result.relative_strength.weighted_score
 
         assert abs(result.total_score - expected_total) < 0.1
 

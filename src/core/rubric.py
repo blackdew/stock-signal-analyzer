@@ -41,9 +41,16 @@ class RubricResult:
     fundamental: CategoryScore
     market: CategoryScore
 
+    # 신규 카테고리 (V2)
+    risk: Optional[CategoryScore] = None              # 리스크 평가
+    relative_strength: Optional[CategoryScore] = None  # 상대 강도
+
     # 최종 결과
-    total_score: float  # 0-100 합계
-    grade: str  # Strong Buy, Buy, Hold, Sell, Strong Sell
+    total_score: float = 0.0  # 0-100 합계
+    grade: str = "Hold"       # Strong Buy, Buy, Hold, Sell, Strong Sell
+
+    # 버전 정보
+    rubric_version: str = "v2"  # v1: 4개 카테고리, v2: 6개 카테고리
 
 
 # =============================================================================
@@ -475,7 +482,14 @@ class RubricEngine:
         print(f"총점: {result.total_score}, 등급: {result.grade}")
     """
 
-    def __init__(self):
+    def __init__(self, use_v2: bool = True):
+        """
+        루브릭 엔진 초기화
+
+        Args:
+            use_v2: True면 V2 (6개 카테고리), False면 V1 (4개 카테고리)
+        """
+        self.use_v2 = use_v2
         self.weights = RUBRIC_WEIGHTS
 
     def calculate(
@@ -489,6 +503,15 @@ class RubricEngine:
         high_52w: Optional[float] = None,
         sector_return_5d: Optional[float] = None,
         target_price: Optional[float] = None,
+        # V2 추가 파라미터 (리스크 평가)
+        atr_pct: Optional[float] = None,
+        beta: Optional[float] = None,
+        max_drawdown_pct: Optional[float] = None,
+        # V2 추가 파라미터 (상대 강도)
+        sector_rank: Optional[int] = None,
+        sector_total: Optional[int] = None,
+        stock_return_20d: Optional[float] = None,
+        market_return_20d: Optional[float] = None,
     ) -> RubricResult:
         """
         루브릭 평가를 수행합니다.
@@ -503,25 +526,45 @@ class RubricEngine:
             high_52w: 52주 최고가 (선택)
             sector_return_5d: 섹터 5일 수익률 (선택)
             target_price: 애널리스트 목표가 (선택)
+            atr_pct: ATR 퍼센트 (V2, 선택)
+            beta: 베타 값 (V2, 선택)
+            max_drawdown_pct: 최대 낙폭 (V2, 선택)
+            sector_rank: 섹터 내 순위 (V2, 선택)
+            sector_total: 섹터 내 전체 종목 수 (V2, 선택)
+            stock_return_20d: 종목 20일 수익률 (V2, 선택)
+            market_return_20d: 시장 20일 수익률 (V2, 선택)
 
         Returns:
             RubricResult 객체
         """
-        # 1. 기술적 분석 점수 계산 (30점)
+        # 1. 기술적 분석 점수 계산 (V2: 25점, V1: 30점)
         technical = self._calculate_technical(market_data, low_52w, high_52w)
 
-        # 2. 수급 분석 점수 계산 (25점)
+        # 2. 수급 분석 점수 계산 (V2: 20점, V1: 25점)
         supply = self._calculate_supply(market_data)
 
-        # 3. 펀더멘털 분석 점수 계산 (25점)
+        # 3. 펀더멘털 분석 점수 계산 (V2: 20점, V1: 25점)
         fundamental = self._calculate_fundamental(fundamental_data)
 
-        # 4. 시장 환경 점수 계산 (20점)
+        # 4. 시장 환경 점수 계산 (V2: 15점, V1: 20점)
         market = self._calculate_market(
             news_data, market_data, sector_return_5d, target_price
         )
 
-        # 5. 총점 계산 (가중치 적용 점수의 합)
+        # V2 카테고리
+        risk = None
+        relative_strength = None
+
+        if self.use_v2:
+            # 5. 리스크 평가 (10점)
+            risk = self._calculate_risk(atr_pct, beta, max_drawdown_pct)
+
+            # 6. 상대 강도 (10점)
+            relative_strength = self._calculate_relative_strength(
+                sector_rank, sector_total, stock_return_20d, market_return_20d
+            )
+
+        # 총점 계산
         total_score = (
             technical.weighted_score +
             supply.weighted_score +
@@ -529,7 +572,10 @@ class RubricEngine:
             market.weighted_score
         )
 
-        # 6. 투자 등급 판정
+        if self.use_v2 and risk and relative_strength:
+            total_score += risk.weighted_score + relative_strength.weighted_score
+
+        # 투자 등급 판정
         grade = get_investment_grade(total_score)
 
         return RubricResult(
@@ -539,8 +585,11 @@ class RubricEngine:
             supply=supply,
             fundamental=fundamental,
             market=market,
+            risk=risk,
+            relative_strength=relative_strength,
             total_score=round(total_score, 1),
             grade=grade,
+            rubric_version="v2" if self.use_v2 else "v1",
         )
 
     def _calculate_technical(
@@ -549,8 +598,13 @@ class RubricEngine:
         low_52w: Optional[float],
         high_52w: Optional[float]
     ) -> CategoryScore:
-        """기술적 분석 점수 계산 (30점 만점)"""
-        weight = self.weights["technical"]  # 30
+        """
+        기술적 분석 점수 계산
+
+        V2 (25점): 추세(6) + RSI(6) + 지지/저항(6) + MACD(4) + ADX(3)
+        V1 (30점): 추세(10) + RSI(10) + 지지/저항(10)
+        """
+        weight = self.weights["technical"]
 
         # 데이터 추출
         ma20 = getattr(market_data, "ma20", None) if market_data else None
@@ -558,14 +612,51 @@ class RubricEngine:
         rsi = getattr(market_data, "rsi", None) if market_data else None
         current_price = getattr(market_data, "current_price", None) if market_data else None
 
-        # 세부 점수 계산
-        trend_score = calc_trend_score(ma20, ma60)  # 0-10
-        rsi_score = calc_rsi_score(rsi)  # 0-10
-        sr_score = calc_support_resistance_score(current_price, low_52w, high_52w)  # 0-10
+        # V2 추가 지표
+        macd = getattr(market_data, "macd", None) if market_data else None
+        macd_signal = getattr(market_data, "macd_signal", None) if market_data else None
+        adx = getattr(market_data, "adx", None) if market_data else None
 
-        # 정규화된 점수 (0-100)
-        raw_total = trend_score + rsi_score + sr_score  # 0-30
-        normalized_score = (raw_total / 30) * 100
+        if self.use_v2:
+            # V2: 5개 지표 (6+6+6+4+3 = 25점 기준 환산)
+            # 개별 점수를 비율로 환산 (만점 25점 기준)
+            trend_raw = calc_trend_score(ma20, ma60)  # 0-10
+            rsi_raw = calc_rsi_score(rsi)  # 0-10
+            sr_raw = calc_support_resistance_score(current_price, low_52w, high_52w)  # 0-10
+            macd_raw = calc_macd_score(macd, macd_signal)  # 0-5
+            adx_raw = calc_adx_score(adx)  # 0-5
+
+            # 비율 환산 (각 지표의 최대값에서의 비율로 계산)
+            trend_score = (trend_raw / 10) * 6  # 0-6
+            rsi_score_val = (rsi_raw / 10) * 6  # 0-6
+            sr_score = (sr_raw / 10) * 6  # 0-6
+            macd_score_val = (macd_raw / 5) * 4  # 0-4
+            adx_score_val = (adx_raw / 5) * 3  # 0-3
+
+            raw_total = trend_score + rsi_score_val + sr_score + macd_score_val + adx_score_val  # 0-25
+            normalized_score = (raw_total / 25) * 100
+
+            details = {
+                "trend": round(trend_score, 2),
+                "rsi": round(rsi_score_val, 2),
+                "support_resistance": round(sr_score, 2),
+                "macd": round(macd_score_val, 2),
+                "adx": round(adx_score_val, 2),
+            }
+        else:
+            # V1: 3개 지표 (10+10+10 = 30점)
+            trend_score = calc_trend_score(ma20, ma60)  # 0-10
+            rsi_score_val = calc_rsi_score(rsi)  # 0-10
+            sr_score = calc_support_resistance_score(current_price, low_52w, high_52w)  # 0-10
+
+            raw_total = trend_score + rsi_score_val + sr_score  # 0-30
+            normalized_score = (raw_total / 30) * 100
+
+            details = {
+                "trend": trend_score,
+                "rsi": rsi_score_val,
+                "support_resistance": sr_score,
+            }
 
         # 가중치 적용 점수
         weighted_score = (normalized_score / 100) * weight
@@ -575,11 +666,7 @@ class RubricEngine:
             score=round(normalized_score, 1),
             max_score=weight,
             weighted_score=round(weighted_score, 1),
-            details={
-                "trend": trend_score,
-                "rsi": rsi_score,
-                "support_resistance": sr_score,
-            }
+            details=details
         )
 
     def _calculate_supply(self, market_data: Optional[Any]) -> CategoryScore:
@@ -621,8 +708,13 @@ class RubricEngine:
         )
 
     def _calculate_fundamental(self, fundamental_data: Optional[Any]) -> CategoryScore:
-        """펀더멘털 분석 점수 계산 (25점 만점)"""
-        weight = self.weights["fundamental"]  # 25
+        """
+        펀더멘털 분석 점수 계산
+
+        V2 (20점): PER(4) + PBR(4) + ROE(4) + 성장률(5) + 부채비율(3)
+        V1 (25점): PER(10) + 성장률(10) + 부채비율(5)
+        """
+        weight = self.weights["fundamental"]
 
         # 데이터 추출
         per = getattr(fundamental_data, "per", None) if fundamental_data else None
@@ -630,14 +722,50 @@ class RubricEngine:
         op_growth = getattr(fundamental_data, "operating_profit_growth", None) if fundamental_data else None
         debt_ratio = getattr(fundamental_data, "debt_ratio", None) if fundamental_data else None
 
-        # 세부 점수 계산
-        per_score = calc_per_score(per, sector_avg_per)  # 0-10
-        growth_score = calc_growth_score(op_growth)  # 0-10
-        debt_score = calc_debt_score(debt_ratio)  # 0-5
+        # V2 추가 지표
+        pbr = getattr(fundamental_data, "pbr", None) if fundamental_data else None
+        sector_avg_pbr = getattr(fundamental_data, "sector_avg_pbr", None) if fundamental_data else None
+        roe = getattr(fundamental_data, "roe", None) if fundamental_data else None
 
-        # 정규화된 점수 (0-100)
-        raw_total = per_score + growth_score + debt_score  # 0-25
-        normalized_score = (raw_total / 25) * 100
+        if self.use_v2:
+            # V2: 5개 지표 (4+4+4+5+3 = 20점 기준)
+            per_raw = calc_per_score(per, sector_avg_per)  # 0-10
+            pbr_raw = calc_pbr_score(pbr, sector_avg_pbr)  # 0-5
+            roe_raw = calc_roe_score(roe)  # 0-5
+            growth_raw = calc_growth_score(op_growth)  # 0-10
+            debt_raw = calc_debt_score(debt_ratio)  # 0-5
+
+            # 비율 환산
+            per_score_val = (per_raw / 10) * 4  # 0-4
+            pbr_score_val = (pbr_raw / 5) * 4  # 0-4
+            roe_score_val = (roe_raw / 5) * 4  # 0-4
+            growth_score_val = (growth_raw / 10) * 5  # 0-5
+            debt_score_val = (debt_raw / 5) * 3  # 0-3
+
+            raw_total = per_score_val + pbr_score_val + roe_score_val + growth_score_val + debt_score_val  # 0-20
+            normalized_score = (raw_total / 20) * 100
+
+            details = {
+                "per": round(per_score_val, 2),
+                "pbr": round(pbr_score_val, 2),
+                "roe": round(roe_score_val, 2),
+                "growth": round(growth_score_val, 2),
+                "debt": round(debt_score_val, 2),
+            }
+        else:
+            # V1: 3개 지표 (10+10+5 = 25점)
+            per_score_val = calc_per_score(per, sector_avg_per)  # 0-10
+            growth_score_val = calc_growth_score(op_growth)  # 0-10
+            debt_score_val = calc_debt_score(debt_ratio)  # 0-5
+
+            raw_total = per_score_val + growth_score_val + debt_score_val  # 0-25
+            normalized_score = (raw_total / 25) * 100
+
+            details = {
+                "per": per_score_val,
+                "growth": growth_score_val,
+                "debt": debt_score_val,
+            }
 
         # 가중치 적용 점수
         weighted_score = (normalized_score / 100) * weight
@@ -647,11 +775,7 @@ class RubricEngine:
             score=round(normalized_score, 1),
             max_score=weight,
             weighted_score=round(weighted_score, 1),
-            details={
-                "per": per_score,
-                "growth": growth_score,
-                "debt": debt_score,
-            }
+            details=details
         )
 
     def _calculate_market(
@@ -692,6 +816,79 @@ class RubricEngine:
             }
         )
 
+    def _calculate_risk(
+        self,
+        atr_pct: Optional[float],
+        beta: Optional[float],
+        max_drawdown_pct: Optional[float]
+    ) -> CategoryScore:
+        """
+        리스크 평가 점수 계산 (10점 만점)
+
+        변동성(4점) + 베타(3점) + 하방리스크(3점)
+        """
+        weight = self.weights.get("risk", 10)
+
+        # 세부 점수 계산
+        volatility_score = calc_volatility_score(atr_pct)  # 0-4
+        beta_score = calc_beta_score(beta)  # 0-3
+        downside_score = calc_downside_risk_score(max_drawdown_pct)  # 0-3
+
+        # 정규화된 점수 (0-100)
+        raw_total = volatility_score + beta_score + downside_score  # 0-10
+        normalized_score = (raw_total / 10) * 100
+
+        # 가중치 적용 점수
+        weighted_score = (normalized_score / 100) * weight
+
+        return CategoryScore(
+            name="risk",
+            score=round(normalized_score, 1),
+            max_score=weight,
+            weighted_score=round(weighted_score, 1),
+            details={
+                "volatility": volatility_score,
+                "beta": beta_score,
+                "downside_risk": downside_score,
+            }
+        )
+
+    def _calculate_relative_strength(
+        self,
+        sector_rank: Optional[int],
+        sector_total: Optional[int],
+        stock_return: Optional[float],
+        market_return: Optional[float]
+    ) -> CategoryScore:
+        """
+        상대 강도 점수 계산 (10점 만점)
+
+        섹터내순위(5점) + 시장대비알파(5점)
+        """
+        weight = self.weights.get("relative_strength", 10)
+
+        # 세부 점수 계산
+        rank_score = calc_sector_rank_score(sector_rank, sector_total)  # 0-5
+        alpha_score = calc_alpha_score(stock_return, market_return)  # 0-5
+
+        # 정규화된 점수 (0-100)
+        raw_total = rank_score + alpha_score  # 0-10
+        normalized_score = (raw_total / 10) * 100
+
+        # 가중치 적용 점수
+        weighted_score = (normalized_score / 100) * weight
+
+        return CategoryScore(
+            name="relative_strength",
+            score=round(normalized_score, 1),
+            max_score=weight,
+            weighted_score=round(weighted_score, 1),
+            details={
+                "sector_rank": rank_score,
+                "alpha": alpha_score,
+            }
+        )
+
     def calculate_with_all_missing_data(self, symbol: str, name: str) -> RubricResult:
         """
         모든 데이터가 없는 경우의 평가 (중간값 반환)
@@ -704,3 +901,282 @@ class RubricEngine:
             모든 항목이 중간값인 RubricResult
         """
         return self.calculate(symbol=symbol, name=name)
+
+
+# =============================================================================
+# 점수 계산 함수들 - 리스크 평가 (10점) - 신규
+# =============================================================================
+
+
+def calc_volatility_score(atr_pct: Optional[float]) -> float:
+    """
+    ATR 기반 변동성 점수 계산 (4점 만점)
+
+    낮은 변동성일수록 안정적인 투자 대상으로 평가합니다.
+
+    Args:
+        atr_pct: ATR 퍼센트 (현재가 대비 ATR 비율, %)
+
+    Returns:
+        0.0 ~ 4.0 사이의 점수
+    """
+    if atr_pct is None:
+        return 2.0  # 데이터 없으면 중간값
+
+    if atr_pct <= 2:
+        return 4.0  # 저변동성 (안정적)
+    elif atr_pct <= 3:
+        return 3.0  # 보통
+    elif atr_pct <= 5:
+        return 2.0  # 고변동성
+    else:
+        return 1.0  # 초고변동성 (위험)
+
+
+def calc_beta_score(beta: Optional[float]) -> float:
+    """
+    베타 점수 계산 (3점 만점)
+
+    베타가 1에 가까울수록 시장과 유사한 움직임을 보여 안정적으로 평가합니다.
+
+    Args:
+        beta: 베타 값 (시장 대비 민감도)
+
+    Returns:
+        0.0 ~ 3.0 사이의 점수
+    """
+    if beta is None:
+        return 1.5  # 데이터 없으면 중간값
+
+    if 0.8 <= beta <= 1.2:
+        return 3.0  # 시장과 유사
+    elif 0.5 <= beta < 0.8:
+        return 2.5  # 방어적
+    elif 1.2 < beta <= 1.5:
+        return 2.0  # 공격적
+    elif beta < 0.5:
+        return 1.5  # 너무 방어적
+    else:
+        return 1.0  # 너무 공격적
+
+
+def calc_downside_risk_score(max_drawdown_pct: Optional[float]) -> float:
+    """
+    최대 낙폭 기반 하방 리스크 점수 계산 (3점 만점)
+
+    최대 낙폭이 작을수록 리스크가 낮다고 평가합니다.
+
+    Args:
+        max_drawdown_pct: 최대 낙폭 (%, 양수로 표현)
+
+    Returns:
+        0.0 ~ 3.0 사이의 점수
+    """
+    if max_drawdown_pct is None:
+        return 1.5  # 데이터 없으면 중간값
+
+    if max_drawdown_pct <= 10:
+        return 3.0  # 낮은 리스크
+    elif max_drawdown_pct <= 20:
+        return 2.0  # 보통
+    elif max_drawdown_pct <= 30:
+        return 1.0  # 높은 리스크
+    else:
+        return 0.0  # 매우 높은 리스크
+
+
+# =============================================================================
+# 점수 계산 함수들 - 상대 강도 (10점) - 신규
+# =============================================================================
+
+
+def calc_sector_rank_score(rank: Optional[int], total: Optional[int]) -> float:
+    """
+    섹터 내 순위 점수 계산 (5점 만점)
+
+    섹터 내에서 상위 순위일수록 높은 점수를 부여합니다.
+
+    Args:
+        rank: 섹터 내 순위 (1부터 시작)
+        total: 섹터 내 전체 종목 수
+
+    Returns:
+        0.0 ~ 5.0 사이의 점수
+    """
+    if rank is None or total is None or total == 0:
+        return 2.5  # 데이터 없으면 중간값
+
+    percentile = rank / total
+
+    if percentile <= 0.1:
+        return 5.0  # 상위 10%
+    elif percentile <= 0.25:
+        return 4.0  # 상위 25%
+    elif percentile <= 0.5:
+        return 3.0  # 상위 50%
+    elif percentile <= 0.75:
+        return 2.0  # 하위 50%
+    else:
+        return 1.0  # 하위 25%
+
+
+def calc_alpha_score(stock_return: Optional[float], market_return: Optional[float]) -> float:
+    """
+    시장 대비 알파 점수 계산 (5점 만점)
+
+    시장 대비 초과 수익률을 기반으로 점수를 부여합니다.
+
+    Args:
+        stock_return: 종목 수익률 (%)
+        market_return: 시장 수익률 (%)
+
+    Returns:
+        0.0 ~ 5.0 사이의 점수
+    """
+    if stock_return is None or market_return is None:
+        return 2.5  # 데이터 없으면 중간값
+
+    alpha = stock_return - market_return
+
+    if alpha >= 10:
+        return 5.0  # 시장 대비 +10%
+    elif alpha >= 5:
+        return 4.0  # 시장 대비 +5%
+    elif alpha >= 0:
+        return 3.0  # 시장과 유사
+    elif alpha >= -5:
+        return 2.0  # 시장 대비 -5%
+    else:
+        return 1.0  # 시장 대비 -10%
+
+
+# =============================================================================
+# 점수 계산 함수들 - 기술적 분석 확장 (MACD, ADX)
+# =============================================================================
+
+
+def calc_macd_score(macd: Optional[float], signal: Optional[float]) -> float:
+    """
+    MACD 점수 계산 (5점 만점)
+
+    MACD와 시그널 라인의 관계를 기반으로 추세를 평가합니다.
+
+    Args:
+        macd: MACD 값
+        signal: 시그널 라인 값
+
+    Returns:
+        0.0 ~ 5.0 사이의 점수
+    """
+    if macd is None or signal is None:
+        return 2.5  # 데이터 없으면 중간값
+
+    diff = macd - signal
+
+    if diff > 0 and macd > 0:
+        return 5.0  # 강한 상승 신호 (MACD > 0, MACD > Signal)
+    elif diff > 0 and macd <= 0:
+        return 4.0  # 상승 전환 (MACD < 0이지만 Signal 돌파)
+    elif diff == 0:
+        return 3.0  # 중립
+    elif diff < 0 and macd > 0:
+        return 2.0  # 하락 전환 (MACD > 0이지만 Signal 아래)
+    else:
+        return 1.0  # 강한 하락 신호 (MACD < 0, MACD < Signal)
+
+
+def calc_adx_score(adx: Optional[float]) -> float:
+    """
+    ADX 점수 계산 (5점 만점)
+
+    ADX(Average Directional Index)로 추세의 강도를 평가합니다.
+    ADX가 높을수록 명확한 추세가 있음을 의미합니다.
+
+    Args:
+        adx: ADX 값 (0-100)
+
+    Returns:
+        0.0 ~ 5.0 사이의 점수
+    """
+    if adx is None:
+        return 2.5  # 데이터 없으면 중간값
+
+    if adx >= 40:
+        return 5.0  # 매우 강한 추세
+    elif adx >= 30:
+        return 4.0  # 강한 추세
+    elif adx >= 20:
+        return 3.0  # 보통 추세
+    elif adx >= 15:
+        return 2.0  # 약한 추세
+    else:
+        return 1.0  # 추세 없음 (횡보)
+
+
+# =============================================================================
+# 점수 계산 함수들 - 밸류에이션 확장 (PBR, ROE)
+# =============================================================================
+
+
+def calc_pbr_score(pbr: Optional[float], sector_avg_pbr: Optional[float] = None) -> float:
+    """
+    PBR 점수 계산 (5점 만점)
+
+    업종 평균 PBR 대비 현재 PBR을 비교합니다.
+
+    Args:
+        pbr: 현재 PBR
+        sector_avg_pbr: 업종 평균 PBR (기본값 1.0)
+
+    Returns:
+        0.0 ~ 5.0 사이의 점수
+    """
+    if pbr is None:
+        return 2.5  # 데이터 없음
+    if pbr < 0:
+        return 0.0  # 자본잠식
+
+    if sector_avg_pbr is None or sector_avg_pbr <= 0:
+        sector_avg_pbr = 1.0  # 기본값
+
+    ratio = pbr / sector_avg_pbr
+
+    if ratio <= 0.5:
+        return 5.0  # 매우 저평가
+    elif ratio <= 0.7:
+        return 4.0  # 저평가
+    elif ratio <= 1.0:
+        return 3.0  # 적정
+    elif ratio <= 1.3:
+        return 2.0  # 고평가
+    else:
+        return 1.0  # 매우 고평가
+
+
+def calc_roe_score(roe: Optional[float]) -> float:
+    """
+    ROE 점수 계산 (5점 만점)
+
+    자기자본이익률(ROE)로 수익성을 평가합니다.
+
+    Args:
+        roe: ROE (%)
+
+    Returns:
+        0.0 ~ 5.0 사이의 점수
+    """
+    if roe is None:
+        return 2.5  # 데이터 없으면 중간값
+
+    if roe >= 20:
+        return 5.0  # 우수
+    elif roe >= 15:
+        return 4.0  # 양호
+    elif roe >= 10:
+        return 3.0  # 보통
+    elif roe >= 5:
+        return 2.0  # 미흡
+    elif roe >= 0:
+        return 1.0  # 저조
+    else:
+        return 0.0  # 적자
