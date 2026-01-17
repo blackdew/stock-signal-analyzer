@@ -7,8 +7,10 @@
 **섹터 순환 투자 전략 분석 시스템** - 한국 주식 시장의 섹터별 투자 기회를 분석하고 루브릭 기반 점수로 투자 등급을 산출하는 Python 애플리케이션입니다.
 
 ### 현재 상태
-- **Phase 0 완료**: 기본 인프라 구축 (config, fetcher, cache, rubric, agents)
-- **개발 진행 중**: Orchestrator, 전체 파이프라인 연결
+- **Phase 0 완료**: 기본 인프라 구축 (config, fetcher, cache, rubric V2)
+- **Phase 1 완료**: 데이터 에이전트 (MarketDataAgent, FundamentalAgent, NewsAgent)
+- **Phase 2 완료**: 분석 에이전트 (StockAnalyzer, SectorAnalyzer, RankingAgent)
+- **대기 중**: Orchestrator (전체 파이프라인 연결)
 
 ## 실행 방법
 
@@ -32,8 +34,11 @@ uv run python -c "from src.data.cache import CacheManager; c = CacheManager(); p
 # rubric 모듈 테스트
 uv run python -c "from src.core.rubric import RubricEngine; r = RubricEngine(); print(r.weights)"
 
-# agents 테스트
+# data agents 테스트
 uv run python -c "from src.agents.data import MarketDataAgent; print('MarketDataAgent OK')"
+
+# analysis agents 테스트
+uv run python -c "from src.agents.analysis import StockAnalyzer, SectorAnalyzer, RankingAgent; print('Analysis Agents OK')"
 ```
 
 ### 메인 실행 (개발 중)
@@ -55,27 +60,33 @@ trading/
 │   │
 │   ├── core/                    # 핵심 설정 및 엔진
 │   │   ├── __init__.py
-│   │   ├── config.py            # SECTORS, RUBRIC_WEIGHTS, INVESTMENT_GRADES
-│   │   ├── rubric.py            # RubricEngine (루브릭 평가 엔진)
-│   │   └── orchestrator.py      # (개발 중) 전체 파이프라인 조율
+│   │   ├── config.py            # SECTORS(11개), RUBRIC_WEIGHTS(V2), INVESTMENT_GRADES
+│   │   ├── rubric.py            # RubricEngine V2 (6개 카테고리)
+│   │   └── orchestrator.py      # (미구현) 전체 파이프라인 조율
 │   │
 │   ├── data/                    # 데이터 수집 및 캐싱
 │   │   ├── __init__.py
 │   │   ├── fetcher.py           # StockDataFetcher, StockInfo, StockData
 │   │   └── cache.py             # CacheManager, CacheTTL
 │   │
-│   ├── agents/                  # 에이전트 기반 데이터 수집
+│   ├── agents/                  # 에이전트 기반 수집 및 분석
 │   │   ├── __init__.py
 │   │   ├── base_agent.py        # BaseAgent (추상 클래스)
-│   │   ├── data/
+│   │   │
+│   │   ├── data/                # 데이터 수집 에이전트
 │   │   │   ├── __init__.py
 │   │   │   ├── market_data_agent.py    # 시장 데이터 수집
 │   │   │   ├── fundamental_agent.py    # 재무제표 수집
 │   │   │   └── news_agent.py           # 뉴스/센티먼트 수집
-│   │   ├── analysis/
-│   │   │   └── __init__.py      # (개발 중)
-│   │   └── report/
-│   │       └── __init__.py      # (개발 중)
+│   │   │
+│   │   ├── analysis/            # 분석 에이전트
+│   │   │   ├── __init__.py
+│   │   │   ├── stock_analyzer.py       # 개별 종목 루브릭 점수
+│   │   │   ├── sector_analyzer.py      # 섹터 시가총액 가중 평균
+│   │   │   └── ranking_agent.py        # 4개 그룹 순위, 최종 18개, Top 3
+│   │   │
+│   │   └── report/              # (개발 중)
+│   │       └── __init__.py
 │   │
 │   └── output/                  # 출력 디렉토리
 │       ├── data/
@@ -84,6 +95,12 @@ trading/
 │           ├── sectors/         # 섹터별 리포트
 │           ├── stocks/          # 종목별 리포트
 │           └── summary/         # 요약 리포트
+│
+├── tests/                       # 테스트 (279개)
+│   ├── core/                    # rubric V1, V2 테스트 (166개)
+│   ├── agents/
+│   │   ├── data/                # 데이터 에이전트 테스트 (64개)
+│   │   └── analysis/            # 분석 에이전트 테스트 (49개)
 │
 └── docs/
     └── architecture.md          # 아키텍처 설명
@@ -95,18 +112,37 @@ trading/
 프로젝트 전역 설정을 정의합니다.
 
 ```python
-# 분석 대상 섹터 및 대표 종목
+# 분석 대상 섹터 및 대표 종목 (11개 섹터)
 SECTORS = {
-    "반도체": ["005930", "000660", "042700"],  # 삼성전자, SK하이닉스, 한미반도체
-    "조선": ["010140", "009540", "042660"],    # 삼성중공업, 한국조선해양, 대우조선해양
+    "반도체": ["005930", "000660", "042700", "403870", "058470"],
+    "조선": ["010140", "009540", "042660", "003620", "010620"],
+    "방산": ["012450", "047810", "064350", "079550", "273640"],
+    "원전": ["034020", "009830", "071970", "267260", "004490"],
+    "전력기기": ["267260", "032560", "298040", "042670", "009450"],
+    "바이오": ["207940", "068270", "326030", "141080", "145020"],
+    "로봇": ["336260", "108490", "090710", "309930", "950140"],
+    "자동차": ["005380", "000270", "012330", "204320", "161390"],
+    "신재생에너지": ["009830", "112610", "117580", "093370", "281740"],
+    "지주": ["000810", "003550", "001040", "005490", "006400"],
+    "뷰티": ["090430", "285130", "263750", "078930", "051900"],
 }
 
-# 루브릭 가중치
+# 루브릭 가중치 V2 (6개 카테고리, 100점 만점)
 RUBRIC_WEIGHTS = {
-    "technical": 30,    # 기술적 분석
-    "supply": 25,       # 수급 분석
-    "fundamental": 25,  # 펀더멘털 분석
-    "market": 20,       # 시장 환경
+    "technical": 25,          # 기술적 분석 (추세, RSI, 지지/저항, MACD, ADX)
+    "supply": 20,             # 수급 분석 (외국인, 기관, 거래대금)
+    "fundamental": 20,        # 펀더멘털 분석 (PER, PBR, ROE, 성장률, 부채비율)
+    "market": 15,             # 시장 환경 분석 (뉴스, 섹터모멘텀, 애널리스트)
+    "risk": 10,               # 리스크 평가 (변동성, 베타, 하방리스크)
+    "relative_strength": 10,  # 상대 강도 (섹터내순위, 시장대비알파)
+}
+
+# 하위 호환성을 위한 기존 가중치 (V1)
+RUBRIC_WEIGHTS_V1 = {
+    "technical": 30,
+    "supply": 25,
+    "fundamental": 25,
+    "market": 20,
 }
 
 # 투자 등급 기준
@@ -180,12 +216,16 @@ stats = cache.get_stats()
 - `CacheTTL.FUNDAMENTAL`: 168시간 (재무제표, 7일)
 
 ### src/core/rubric.py
-루브릭 기반 투자 점수 산출 엔진.
+루브릭 기반 투자 점수 산출 엔진 (V2).
 
 ```python
 from src.core.rubric import RubricEngine, RubricResult
 
-engine = RubricEngine()
+# V2 엔진 (기본값)
+engine = RubricEngine(use_v2=True)
+
+# V1 엔진 (하위 호환)
+engine_v1 = RubricEngine(use_v2=False)
 
 result = engine.calculate(
     symbol="005930",
@@ -194,14 +234,30 @@ result = engine.calculate(
     fundamental_data=fundamental_data,
     news_data=news_data,
     low_52w=50000,
-    high_52w=80000
+    high_52w=80000,
+    # V2 추가 파라미터
+    atr_pct=3.5,
+    beta=1.1,
+    max_drawdown_pct=15.0,
+    sector_rank=2,
+    sector_total=10,
+    stock_return_20d=5.0,
+    market_return_20d=2.0,
 )
 
 print(f"총점: {result.total_score}, 등급: {result.grade}")
 # 출력: 총점: 65.3, 등급: Buy
 ```
 
-**평가 카테고리 (100점 만점):**
+**평가 카테고리 V2 (100점 만점):**
+- 기술적 분석 (25점): 추세(6) + RSI(6) + 지지/저항(6) + MACD(4) + ADX(3)
+- 수급 분석 (20점): 외국인(8) + 기관(8) + 거래대금(4)
+- 펀더멘털 분석 (20점): PER(4) + PBR(4) + ROE(4) + 성장률(5) + 부채비율(3)
+- 시장 환경 (15점): 뉴스(7.5) + 섹터모멘텀(3.75) + 애널리스트(3.75)
+- 리스크 평가 (10점): 변동성(4) + 베타(3) + 하방리스크(3)
+- 상대 강도 (10점): 섹터내순위(5) + 시장대비알파(5)
+
+**평가 카테고리 V1 (하위 호환, 100점 만점):**
 - 기술적 분석 (30점): 추세(10) + RSI(10) + 지지/저항(10)
 - 수급 분석 (25점): 외국인(10) + 기관(10) + 거래대금(5)
 - 펀더멘털 분석 (25점): PER(10) + 성장률(10) + 부채비율(5)
@@ -231,8 +287,44 @@ data = await agent.collect(["005930", "000660"])
 데이터 수집 에이전트 모듈.
 
 - **MarketDataAgent**: 시장 데이터 수집 (주가, 거래량, 기술적 지표)
-- **FundamentalAgent**: 재무제표 수집 (PER, PBR, 성장률, 부채비율)
+- **FundamentalAgent**: 재무제표 수집 (PER, PBR, ROE, 성장률, 부채비율)
 - **NewsAgent**: 뉴스 및 센티먼트 분석
+
+### src/agents/analysis/
+분석 에이전트 모듈.
+
+```python
+from src.agents.analysis import StockAnalyzer, SectorAnalyzer, RankingAgent
+
+# 개별 종목 분석
+stock_analyzer = StockAnalyzer()
+results = await stock_analyzer.analyze_symbols(["005930", "000660"])
+kospi_results = await stock_analyzer.analyze_kospi_top(20)
+
+# 섹터 분석 (시가총액 가중 평균)
+sector_analyzer = SectorAnalyzer()
+sector_results = await sector_analyzer.analyze()
+top3_sectors = sector_analyzer.get_top_sectors(sector_results, top_n=3)
+
+# 최종 순위 산정
+ranking_agent = RankingAgent()
+result = await ranking_agent.rank()
+print(result.final_18)   # 최종 18개 종목
+print(result.final_top3) # Top 3 종목
+```
+
+- **StockAnalyzer**: 개별 종목 루브릭 점수 산출
+  - 4개 그룹별 분석: KOSPI Top10, KOSPI 11~20, KOSDAQ Top10, 섹터별
+  - RubricEngine V2 기반 점수 계산
+
+- **SectorAnalyzer**: 섹터별 점수 산출
+  - 시가총액 가중 평균 점수 계산
+  - 상위 섹터 선정
+
+- **RankingAgent**: 최종 순위 산정
+  - 4개 그룹에서 각 3개 종목 선정 (KOSPI 9개 + KOSDAQ 3개 + 섹터 9개)
+  - 중복 제거 후 최종 18개 종목 집계
+  - Top 3 선정 (가중치: 총점 70%, 수급 15%, 성장성 15%)
 
 ## 개발 가이드
 

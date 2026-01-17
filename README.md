@@ -8,8 +8,16 @@
 
 | 단계 | 상태 | 설명 |
 |------|------|------|
-| Phase 0 | 완료 | 기본 인프라 (config, fetcher, cache, rubric, agents) |
-| Phase 1 | 진행 중 | Orchestrator 및 전체 파이프라인 연결 |
+| Phase 0 | 완료 | 기본 인프라 (config, fetcher, cache, rubric V2) |
+| Phase 1 | 완료 | 데이터 에이전트 (MarketDataAgent, FundamentalAgent, NewsAgent) |
+| Phase 2 | 완료 | 분석 에이전트 (StockAnalyzer, SectorAnalyzer, RankingAgent) |
+| Phase 3 | 대기 중 | Orchestrator 및 전체 파이프라인 연결 |
+
+### 테스트 현황
+- **총 279개 테스트**
+  - core (rubric V1, V2): 166개
+  - agents/data: 64개
+  - agents/analysis: 49개
 
 ## 기술 스택
 
@@ -47,14 +55,17 @@ uv run python -c "from src.core.rubric import RubricEngine; print(RubricEngine()
 ## 핵심 기능
 
 ### 섹터 기반 분석
-- 반도체, 조선 등 섹터별 대표 종목 분석
+- 11개 섹터 지원: 반도체, 조선, 방산, 원전, 전력기기, 바이오, 로봇, 자동차, 신재생에너지, 지주, 뷰티
+- 각 섹터별 5개 대표 종목 분석
 - 섹터 확장 용이 (config.py에서 관리)
 
-### 루브릭 평가 시스템
-- 기술적 분석 (30점): 추세, RSI, 지지/저항
-- 수급 분석 (25점): 외국인, 기관, 거래대금
-- 펀더멘털 분석 (25점): PER, 성장률, 부채비율
-- 시장 환경 (20점): 뉴스, 섹터모멘텀, 애널리스트
+### 루브릭 평가 시스템 V2 (100점)
+- 기술적 분석 (25점): 추세, RSI, 지지/저항, MACD, ADX
+- 수급 분석 (20점): 외국인, 기관, 거래대금
+- 펀더멘털 분석 (20점): PER, PBR, ROE, 성장률, 부채비율
+- 시장 환경 (15점): 뉴스, 섹터모멘텀, 애널리스트
+- 리스크 평가 (10점): 변동성, 베타, 하방리스크
+- 상대 강도 (10점): 섹터내순위, 시장대비알파
 
 ### 투자 등급 산출
 | 등급 | 점수 범위 |
@@ -65,28 +76,42 @@ uv run python -c "from src.core.rubric import RubricEngine; print(RubricEngine()
 | Sell | 20-39 |
 | Strong Sell | 0-19 |
 
-### 에이전트 기반 데이터 수집
-- MarketDataAgent: 시장 데이터 (주가, 거래량, 지표)
-- FundamentalAgent: 재무제표 (PER, PBR, 성장률)
-- NewsAgent: 뉴스 센티먼트
+### 데이터 에이전트
+- **MarketDataAgent**: 시장 데이터 (주가, 거래량, 기술적 지표)
+- **FundamentalAgent**: 재무제표 (PER, PBR, ROE, 성장률)
+- **NewsAgent**: 뉴스 센티먼트
+
+### 분석 에이전트
+- **StockAnalyzer**: 개별 종목 루브릭 점수 산출
+- **SectorAnalyzer**: 섹터별 시가총액 가중 평균 점수
+- **RankingAgent**: 4개 그룹 순위, 최종 18개 종목, Top 3 선정
 
 ## 프로젝트 구조
 
 ```
 trading/
 ├── src/
-│   ├── core/           # 설정 및 평가 엔진
-│   │   ├── config.py   # SECTORS, RUBRIC_WEIGHTS, INVESTMENT_GRADES
-│   │   └── rubric.py   # RubricEngine
-│   ├── data/           # 데이터 수집 및 캐싱
-│   │   ├── fetcher.py  # StockDataFetcher
-│   │   └── cache.py    # CacheManager
-│   └── agents/         # 에이전트 기반 수집
-│       ├── base_agent.py
-│       └── data/       # MarketDataAgent, FundamentalAgent, NewsAgent
+│   ├── core/               # 설정 및 평가 엔진
+│   │   ├── config.py       # SECTORS(11개), RUBRIC_WEIGHTS(V2)
+│   │   ├── rubric.py       # RubricEngine V2 (6개 카테고리)
+│   │   └── orchestrator.py # (미구현)
+│   ├── data/               # 데이터 수집 및 캐싱
+│   │   ├── fetcher.py      # StockDataFetcher
+│   │   └── cache.py        # CacheManager
+│   └── agents/
+│       ├── base_agent.py   # BaseAgent 추상 클래스
+│       ├── data/           # 데이터 수집 에이전트
+│       │   ├── market_data_agent.py
+│       │   ├── fundamental_agent.py
+│       │   └── news_agent.py
+│       └── analysis/       # 분석 에이전트
+│           ├── stock_analyzer.py
+│           ├── sector_analyzer.py
+│           └── ranking_agent.py
+├── tests/                  # 테스트 (279개)
 ├── docs/
-│   └── architecture.md # 아키텍처 문서
-├── CLAUDE.md           # Claude Code 가이드
+│   └── architecture.md     # 아키텍처 문서
+├── CLAUDE.md               # Claude Code 가이드
 └── pyproject.toml
 ```
 
