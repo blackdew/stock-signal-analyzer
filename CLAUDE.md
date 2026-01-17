@@ -11,7 +11,7 @@
 - **Phase 1 완료**: 데이터 에이전트 (MarketDataAgent, FundamentalAgent, NewsAgent)
 - **Phase 2 완료**: 분석 에이전트 (StockAnalyzer, SectorAnalyzer, RankingAgent)
 - **Phase 4 완료**: 리포트 에이전트 (StockReportAgent, SectorReportAgent, SummaryAgent)
-- **대기 중**: Orchestrator (전체 파이프라인 연결)
+- **Phase 5 완료**: Orchestrator 및 CLI (main.py)
 
 ## 실행 방법
 
@@ -45,9 +45,18 @@ uv run python -c "from src.agents.analysis import StockAnalyzer, SectorAnalyzer,
 uv run python -c "from src.agents.report import StockReportAgent, SectorReportAgent, SummaryAgent; print('Report Agents OK')"
 ```
 
-### 메인 실행 (개발 중)
+### 메인 실행
 ```bash
-# 현재 main.py는 기존 주식 신호 분석용 (향후 재작성 예정)
+# 전체 분석 실행
+uv run python main.py
+
+# 섹터 분석만
+uv run python main.py --sector-only
+
+# 캐시 없이 상세 로그
+uv run python main.py --no-cache -v
+
+# 도움말
 uv run python main.py --help
 ```
 
@@ -66,7 +75,8 @@ trading/
 │   │   ├── __init__.py
 │   │   ├── config.py            # SECTORS(11개), RUBRIC_WEIGHTS(V2), INVESTMENT_GRADES
 │   │   ├── rubric.py            # RubricEngine V2 (6개 카테고리)
-│   │   └── orchestrator.py      # (미구현) 전체 파이프라인 조율
+│   │   ├── orchestrator.py      # Orchestrator - 전체 파이프라인 조율
+│   │   └── logging_config.py    # 로깅 설정
 │   │
 │   ├── data/                    # 데이터 수집 및 캐싱
 │   │   ├── __init__.py
