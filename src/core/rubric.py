@@ -9,7 +9,7 @@ Rubric Engine
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from src.core.config import RUBRIC_WEIGHTS, get_grade_from_score
+from src.core.config import RUBRIC_WEIGHTS, RUBRIC_WEIGHTS_V1, get_grade_from_score
 
 
 # =============================================================================
@@ -490,7 +490,7 @@ class RubricEngine:
             use_v2: True면 V2 (6개 카테고리), False면 V1 (4개 카테고리)
         """
         self.use_v2 = use_v2
-        self.weights = RUBRIC_WEIGHTS
+        self.weights = RUBRIC_WEIGHTS if use_v2 else RUBRIC_WEIGHTS_V1
 
     def calculate(
         self,

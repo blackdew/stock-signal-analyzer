@@ -449,9 +449,9 @@ class TestRubricEngineV2:
         assert result.rubric_version == "v1"
         assert result.risk is None
         assert result.relative_strength is None
-        # V1 모드에서도 새 가중치(80점 만점)가 적용되어 40점이 됨
-        # (25+20+20+15 = 80점, 중간값 50% -> 40점)
-        assert result.total_score == 40.0
+        # V1 모드에서는 기존 가중치(100점 만점)가 적용되어 50점이 됨
+        # (30+25+25+20 = 100점, 중간값 50% -> 50점)
+        assert result.total_score == 50.0
 
     def test_v2_with_missing_risk_data(self):
         """V2 모드에서 리스크 데이터 없이 계산"""
