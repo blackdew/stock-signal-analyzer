@@ -60,6 +60,12 @@ uv run python main.py --no-cache -v
 uv run python main.py --help
 ```
 
+### 테스트 스크립트
+```bash
+# 리포트 생성 테스트 (날짜별 폴더 구조 검증)
+uv run scripts/test_report_generation.py
+```
+
 ## 프로젝트 구조
 
 ```
@@ -67,6 +73,10 @@ trading/
 ├── CLAUDE.md                    # 이 파일
 ├── README.md                    # 프로젝트 소개
 ├── pyproject.toml               # 의존성 정의
+│
+├── scripts/                     # 유틸리티 스크립트
+│   ├── performance_test.py      # 성능 테스트
+│   └── test_report_generation.py # 리포트 생성 테스트
 │
 ├── src/
 │   ├── __init__.py
@@ -108,10 +118,17 @@ trading/
 │   └── output/                  # 출력 디렉토리
 │       ├── data/
 │       │   └── cache/           # 캐시 파일 저장
-│       └── reports/
-│           ├── sectors/         # 섹터별 리포트
-│           ├── stocks/          # 종목별 리포트
-│           └── summary/         # 요약 리포트
+│       └── reports/             # 날짜별 리포트 폴더 (YYYY-MM-DD/)
+│
+├── output/                      # 실제 출력 디렉토리
+│   ├── data/                    # JSON 데이터 저장
+│   └── reports/
+│       └── YYYY-MM-DD/          # 날짜별 리포트 폴더
+│           ├── 01_sector_report.md   # 섹터 통합 리포트
+│           ├── 02_stocks/            # 종목별 리포트
+│           │   ├── 005930_삼성전자.md
+│           │   └── ...
+│           └── 03_final_report.md    # 최종 종합 리포트
 │
 ├── tests/                       # 테스트 (279개)
 │   ├── core/                    # rubric V1, V2 테스트 (166개)
@@ -348,22 +365,23 @@ print(result.final_top3) # Top 3 종목
 
 ```python
 from src.agents.report import StockReportAgent, SectorReportAgent, SummaryAgent
+from pathlib import Path
 
-# 개별 종목 리포트 생성
-stock_report_agent = StockReportAgent()
-report_paths = await stock_report_agent.generate_reports(stock_results)
-# output/reports/stocks/ 에 마크다운 리포트 저장
+# 날짜별 출력 디렉토리 설정
+date_report_dir = Path("output/reports/2025-01-18")
 
-# 섹터 리포트 생성
-sector_report_agent = SectorReportAgent()
-sector_paths = await sector_report_agent.generate_reports(sector_results)
-# output/reports/sectors/ 에 마크다운 리포트 저장
+# 섹터 통합 리포트 생성 (01_sector_report.md)
+sector_report_agent = SectorReportAgent(output_dir=date_report_dir)
+sector_path = await sector_report_agent.generate_unified_report(sector_results)
 
-# 종합 리포트 생성
-summary_agent = SummaryAgent()
+# 개별 종목 리포트 생성 (02_stocks/)
+stocks_dir = date_report_dir / "02_stocks"
+stock_report_agent = StockReportAgent(output_dir=stocks_dir)
+stock_paths = await stock_report_agent.generate_reports(stock_results)
+
+# 종합 리포트 생성 (03_final_report.md)
+summary_agent = SummaryAgent(summary_dir=date_report_dir, data_dir=Path("output/data"))
 summary_paths = await summary_agent.generate_summary(ranking_result)
-# output/reports/summary/ 에 종합 리포트 저장
-# output/data/ 에 JSON 데이터 저장
 ```
 
 - **StockReportAgent**: 개별 종목 마크다운 리포트 생성
@@ -371,19 +389,36 @@ summary_paths = await summary_agent.generate_summary(ranking_result)
   - 병렬 리포트 생성 (asyncio.gather)
   - 6개 카테고리별 상세 점수 및 판정 포함
   - 투자 의견 자동 생성
+  - 출력: `02_stocks/{종목코드}_{종목명}.md`
 
 - **SectorReportAgent**: 섹터 분석 마크다운 리포트 생성
   - SectorAnalysisResult를 마크다운 리포트로 변환
+  - `generate_unified_report()`: 모든 섹터를 하나의 통합 리포트로 생성
+  - `generate_reports()`: 섹터별 개별 리포트 생성 (기존 방식)
   - 섹터별 시가총액 가중 평균 점수
   - 상위 종목 테이블 및 강/약점 분석
-  - 섹터 전망 자동 생성
+  - 출력: `01_sector_report.md`
 
 - **SummaryAgent**: 종합 리포트 및 JSON 데이터 생성
   - RankingResult를 종합 리포트로 변환
   - Top 3 추천 종목 및 선정 이유
   - 상위 섹터, 그룹별 선정 종목
   - 최종 18개 종목 테이블
-  - JSON 데이터 저장 (API 연동용)
+  - 출력: `03_final_report.md`, `output/data/analysis_{날짜}.json`
+
+### 리포트 출력 구조
+
+Orchestrator 실행 시 날짜별 폴더에 다음 구조로 리포트가 생성됩니다:
+
+```
+output/reports/YYYY-MM-DD/
+├── 01_sector_report.md      # 섹터 통합 분석 리포트
+├── 02_stocks/               # 종목별 상세 리포트
+│   ├── 005930_삼성전자.md
+│   ├── 000660_SK하이닉스.md
+│   └── ...
+└── 03_final_report.md       # 최종 종합 리포트 (Top 3, 18개 종목)
+```
 
 ## 개발 가이드
 
