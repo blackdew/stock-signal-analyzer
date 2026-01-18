@@ -121,7 +121,7 @@ class TestRankingResult:
         assert result.kosdaq_top10 == []
         assert result.sector_top == []
         assert result.final_18 == []
-        assert result.final_top3 == []
+        assert result.final_top5 == []
         assert result.top_sectors == []
 
     def test_to_dict(self, mock_18_stocks, mock_sector_results):
@@ -132,7 +132,7 @@ class TestRankingResult:
             kosdaq_top10=mock_18_stocks[6:9],
             sector_top=mock_18_stocks[9:18],
             final_18=mock_18_stocks,
-            final_top3=mock_18_stocks[:3],
+            final_top5=mock_18_stocks[:3],
             top_sectors=mock_sector_results,
         )
 
@@ -143,7 +143,7 @@ class TestRankingResult:
         assert len(d["kosdaq_top10"]) == 3
         assert len(d["sector_top"]) == 9
         assert len(d["final_18"]) == 18
-        assert len(d["final_top3"]) == 3
+        assert len(d["final_top5"]) == 3
         assert len(d["top_sectors"]) == 3
 
     def test_get_summary(self, mock_18_stocks, mock_sector_results):
@@ -154,7 +154,7 @@ class TestRankingResult:
             kosdaq_top10=mock_18_stocks[6:9],
             sector_top=mock_18_stocks[9:18],
             final_18=mock_18_stocks,
-            final_top3=mock_18_stocks[:3],
+            final_top5=mock_18_stocks[:3],
             top_sectors=mock_sector_results,
         )
 
@@ -162,7 +162,7 @@ class TestRankingResult:
 
         assert summary["total_candidates"] == 18
         assert summary["top_sectors"] == ["반도체", "조선", "바이오"]
-        assert len(summary["top3_stocks"]) == 3
+        assert len(summary["top5_stocks"]) == 3
         assert summary["group_counts"]["kospi_top10"] == 3
 
 
@@ -219,21 +219,23 @@ class TestRankingAgent:
         # 2개만 있으면 2개만 반환
         assert len(top3) == 2
 
-    def test_select_final_top3(self, agent, mock_18_stocks):
-        """최종 Top 3 선정 테스트"""
-        top3 = agent.select_final_top3(mock_18_stocks)
+    def test_select_final_top5(self, agent, mock_18_stocks):
+        """최종 Top 5 선정 테스트"""
+        top5 = agent.select_final_top5(mock_18_stocks)
 
-        assert len(top3) == 3
+        assert len(top5) == 5
 
         # 최종 점수 계산 로직 검증
         # final_score = total * 0.7 + supply_normalized * 0.15 + fundamental_normalized * 0.15
         # stock_0: 90 * 0.7 + (18 * 5) * 0.15 + (18 * 5) * 0.15 = 63 + 13.5 + 13.5 = 90
         # stock_1: 89 * 0.7 + (17.5 * 5) * 0.15 + (17.7 * 5) * 0.15 ≈ 62.3 + 13.1 + 13.3 = 88.7
-        assert top3[0].symbol == "stock_0"
-        assert top3[1].symbol == "stock_1"
-        assert top3[2].symbol == "stock_2"
+        assert top5[0].symbol == "stock_0"
+        assert top5[1].symbol == "stock_1"
+        assert top5[2].symbol == "stock_2"
+        assert top5[3].symbol == "stock_3"
+        assert top5[4].symbol == "stock_4"
 
-    def test_select_final_top3_tiebreaker(self, agent):
+    def test_select_final_top5_tiebreaker(self, agent):
         """동점 처리 테스트"""
         tied_stocks = [
             StockAnalysisResult(
@@ -250,7 +252,7 @@ class TestRankingAgent:
             ),
         ]
 
-        top3 = agent.select_final_top3(tied_stocks)
+        top3 = agent.select_final_top5(tied_stocks)
 
         # b와 c는 동점이지만 b가 시총이 더 높음
         # b: supply=16, market_cap=2000
@@ -278,7 +280,7 @@ class TestRankingAgent:
         assert len(result.kospi_11_20) == 3
         assert len(result.kosdaq_top10) == 3
         assert len(result.sector_top) == 9  # 3 sectors * 3 stocks
-        assert len(result.final_top3) == 3
+        assert len(result.final_top5) == 5
         assert len(result.top_sectors) == 3
 
     @pytest.mark.asyncio
@@ -329,7 +331,7 @@ class TestRankingAgent:
         result = await agent.collect([])
 
         assert "final_18" in result
-        assert "final_top3" in result
+        assert "final_top5" in result
         assert "top_sectors" in result
 
 
@@ -358,7 +360,7 @@ class TestFinalScoreCalculation:
             # 합계: 56 + 12 + 10.5 = 78.5
         )
 
-        # select_final_top3에서 사용하는 내부 final_score 함수 테스트
+        # select_final_top5에서 사용하는 내부 final_score 함수 테스트
         def final_score(s):
             supply_normalized = s.supply_score * 5
             fundamental_normalized = s.fundamental_score * 5
@@ -424,7 +426,7 @@ class TestRankingAgentEdgeCases:
         top3 = agent.select_top_from_group([], top_n=3)
         assert top3 == []
 
-    def test_select_final_top3_less_than_3(self, agent):
+    def test_select_final_top5_less_than_3(self, agent):
         """3개 미만 종목에서 Top 3 선정"""
         stocks = [
             StockAnalysisResult(
@@ -433,7 +435,7 @@ class TestRankingAgentEdgeCases:
             ),
         ]
 
-        top3 = agent.select_final_top3(stocks)
+        top3 = agent.select_final_top5(stocks)
         assert len(top3) == 1
 
     @pytest.mark.asyncio
@@ -448,7 +450,7 @@ class TestRankingAgentEdgeCases:
         result = await agent.rank()
 
         assert result.final_18 == []
-        assert result.final_top3 == []
+        assert result.final_top5 == []
 
     @pytest.mark.asyncio
     async def test_get_group_details(self, agent, mock_kospi_results, mock_kosdaq_results, mock_sector_results):

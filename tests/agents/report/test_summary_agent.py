@@ -130,7 +130,7 @@ def mock_ranking_result(mock_stocks, mock_sectors):
         kosdaq_top10=[],
         sector_top=[],
         final_18=mock_stocks,
-        final_top3=mock_stocks,
+        final_top5=mock_stocks,
         top_sectors=mock_sectors,
     )
 
@@ -189,8 +189,8 @@ class TestSummaryAgent:
 
         reason = agent._generate_selection_reason(mock_stocks[0], 1)
 
-        assert "최고 점수" in reason or "선정" in reason
-        assert "수급" in reason  # 수급 점수가 높음
+        assert "1위 선정" in reason
+        assert "반도체" in reason  # 섹터 정보가 포함됨
 
     def test_generate_selection_reason_with_strengths(self, mock_stocks):
         """선정 이유 생성 테스트 - 강점 포함"""
@@ -234,7 +234,7 @@ class TestSummaryAgent:
         assert "generated_at" in data
         assert "sector_rankings" in data
         assert "top_sectors" in data
-        assert "final_top3" in data
+        assert "final_top5" in data
         assert "all_selected" in data
         assert "summary" in data
 
@@ -243,22 +243,22 @@ class TestSummaryAgent:
         assert "조선" in data["top_sectors"]
         assert "방산" in data["top_sectors"]
 
-    def test_render_top3_table(self, mock_stocks):
-        """Top 3 테이블 렌더링 테스트"""
+    def test_render_top5_table(self, mock_stocks):
+        """Top 5 테이블 렌더링 테스트"""
         agent = SummaryAgent()
 
-        table = agent._render_top3_table(mock_stocks)
+        table = agent._render_top5_table(mock_stocks)
 
         assert "삼성전자" in table
         assert "SK하이닉스" in table
         assert "005930" in table
         assert "Strong Buy" in table
 
-    def test_render_top3_details(self, mock_stocks):
-        """Top 3 상세 분석 렌더링 테스트"""
+    def test_render_top5_details(self, mock_stocks):
+        """Top 5 상세 분석 렌더링 테스트"""
         agent = SummaryAgent()
 
-        details = agent._render_top3_details(mock_stocks)
+        details = agent._render_top5_details(mock_stocks)
 
         assert "1위" in details
         assert "2위" in details
@@ -304,8 +304,8 @@ class TestSummaryAgent:
 
         # 필수 섹션 존재 확인
         assert "투자 종합 분석 리포트" in md
-        assert "Top 3 추천 종목" in md
-        assert "Top 3 상세 분석" in md
+        assert "Top 5 추천 종목" in md
+        assert "Top 5 상세 분석" in md
         assert "상위 섹터" in md
         assert "그룹별 선정 종목" in md
         assert "최종" in md
@@ -327,7 +327,7 @@ class TestSummaryAgent:
         # JSON 구조 확인
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-            assert "final_top3" in data
+            assert "final_top5" in data
             assert "all_selected" in data
 
     @pytest.mark.asyncio
@@ -336,17 +336,17 @@ class TestSummaryAgent:
         summary_dir, data_dir = temp_dirs
         agent = SummaryAgent(summary_dir=summary_dir, data_dir=data_dir)
 
-        filepath = await agent._save_markdown_report(mock_ranking_result, "20250118")
+        filepath = await agent._save_markdown_report(mock_ranking_result)
 
         # 파일 생성 확인
         assert Path(filepath).exists()
-        assert "종합리포트_20250118.md" in filepath
+        assert "03_final_report.md" in filepath
 
         # 파일 내용 확인
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
             assert "삼성전자" in content
-            assert "Top 3" in content
+            assert "Top 5" in content
 
     @pytest.mark.asyncio
     async def test_generate_summary(self, mock_ranking_result, temp_dirs):

@@ -141,9 +141,9 @@ class SummaryAgent(BaseAgent):
             "sector_stocks": self._group_by_sector(ranking_result.sector_top),
 
             # 최종 선정
-            "final_top3": [
+            "final_top5": [
                 self._build_stock_detail(s, i + 1)
-                for i, s in enumerate(ranking_result.final_top3)
+                for i, s in enumerate(ranking_result.final_top5)
             ],
 
             # 전체 18개 요약
@@ -210,51 +210,51 @@ class SummaryAgent(BaseAgent):
         rank: int,
     ) -> str:
         """
-        Top 3 선정 이유를 생성합니다.
+        Top 5 선정 이유를 종목별로 차별화하여 생성합니다.
         """
-        reasons = []
-
-        # 순위별 기본 멘트
-        rank_prefix = {
-            1: "최고 점수를 기록하며",
-            2: "2위의 높은 점수로",
-            3: "3위의 우수한 점수로",
+        # 카테고리별 점수와 만점 비율 계산
+        categories = {
+            "기술적 분석": (stock.technical_score, 25, "차트 흐름이 우수"),
+            "수급": (stock.supply_score, 20, "외국인/기관 매수세 유입"),
+            "펀더멘털": (stock.fundamental_score, 20, "재무 건전성 양호"),
+            "시장 환경": (stock.market_score, 15, "업종 모멘텀 긍정적"),
+            "리스크": (stock.risk_score, 10, "변동성 대비 안정적"),
+            "상대 강도": (stock.relative_strength_score, 10, "섹터 내 상위권"),
         }
-        reasons.append(rank_prefix.get(rank, f"{rank}위로") + f" 선정되었습니다.")
 
-        # 강점 분석
-        strengths = []
+        # 만점 대비 비율로 정렬하여 가장 강한 카테고리 찾기
+        sorted_cats = sorted(
+            categories.items(),
+            key=lambda x: x[1][0] / x[1][1],
+            reverse=True
+        )
 
-        # 수급 강점 (20점 만점)
-        if stock.supply_score >= 16:
-            strengths.append("외국인/기관 수급이 매우 양호")
-        elif stock.supply_score >= 12:
-            strengths.append("외국인/기관 수급이 양호")
+        # 상위 2개 강점 카테고리
+        top_strengths = []
+        for cat_name, (score, max_score, desc) in sorted_cats[:2]:
+            ratio = score / max_score
+            if ratio >= 0.6:  # 60% 이상인 경우만 강점으로 표시
+                top_strengths.append(desc)
 
-        # 기술적 강점 (25점 만점)
-        if stock.technical_score >= 20:
-            strengths.append("기술적 지표가 강한 상승세")
-        elif stock.technical_score >= 15:
-            strengths.append("기술적 지표가 상승 추세")
+        # 순위별 차별화된 도입부
+        rank_intros = {
+            1: f"종합 점수 {stock.total_score:.1f}점으로 1위 선정.",
+            2: f"총점 {stock.total_score:.1f}점을 기록하며 2위 선정.",
+            3: f"{stock.total_score:.1f}점으로 상위 3위에 진입.",
+            4: f"총점 {stock.total_score:.1f}점으로 4위 선정.",
+            5: f"{stock.total_score:.1f}점을 기록하며 Top 5에 포함.",
+        }
+        intro = rank_intros.get(rank, f"{stock.total_score:.1f}점으로 {rank}위 선정.")
 
-        # 펀더멘털 강점 (20점 만점)
-        if stock.fundamental_score >= 16:
-            strengths.append("펀더멘털이 매우 우수")
-        elif stock.fundamental_score >= 12:
-            strengths.append("펀더멘털이 양호")
+        # 섹터 정보 포함
+        sector_info = f"[{stock.sector}]" if stock.sector else ""
 
-        # 시장 환경 강점 (15점 만점)
-        if stock.market_score >= 12:
-            strengths.append("시장 센티먼트가 긍정적")
-
-        # 리스크 평가 (10점 만점)
-        if stock.risk_score >= 8:
-            strengths.append("변동성이 낮아 안정적")
-
-        if strengths:
-            reasons.append("주요 강점: " + ", ".join(strengths) + ".")
-
-        return " ".join(reasons)
+        # 강점이 있으면 추가
+        if top_strengths:
+            strength_text = ", ".join(top_strengths)
+            return f"{sector_info} {intro} {strength_text}."
+        else:
+            return f"{sector_info} {intro}"
 
     async def _save_markdown_report(
         self,
@@ -278,11 +278,11 @@ class SummaryAgent(BaseAgent):
         """
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-        # Top 3 테이블
-        top3_table = self._render_top3_table(ranking_result.final_top3)
+        # Top 5 테이블
+        top5_table = self._render_top5_table(ranking_result.final_top5)
 
-        # Top 3 상세 분석
-        top3_details = self._render_top3_details(ranking_result.final_top3)
+        # Top 5 상세 분석
+        top5_details = self._render_top5_details(ranking_result.final_top5)
 
         # 상위 섹터 테이블
         top_sectors_table = self._render_sectors_table(ranking_result.top_sectors)
@@ -293,6 +293,9 @@ class SummaryAgent(BaseAgent):
         # 최종 18개 종목 테이블
         final_18_table = self._render_final_18_table(ranking_result.final_18)
 
+        # 시장 요약 생성
+        market_summary = self._render_market_summary(ranking_result)
+
         md = f"""# 투자 종합 분석 리포트
 
 > 생성일시: {now}
@@ -300,15 +303,21 @@ class SummaryAgent(BaseAgent):
 
 ---
 
-## 🏆 Top 3 추천 종목
+## 📈 당일 시장 요약
 
-{top3_table}
+{market_summary}
 
 ---
 
-## 📊 Top 3 상세 분석
+## 🏆 Top 5 추천 종목
 
-{top3_details}
+{top5_table}
+
+---
+
+## 📊 Top 5 상세 분석
+
+{top5_details}
 
 ---
 
@@ -371,9 +380,9 @@ class SummaryAgent(BaseAgent):
 """
         return md
 
-    def _render_top3_table(self, stocks: List[StockAnalysisResult]) -> str:
+    def _render_top5_table(self, stocks: List[StockAnalysisResult]) -> str:
         """
-        Top 3 테이블을 렌더링합니다.
+        Top 5 테이블을 렌더링합니다.
         """
         lines = [
             "| 순위 | 종목명 | 종목코드 | 섹터 | 총점 | 등급 |",
@@ -389,9 +398,9 @@ class SummaryAgent(BaseAgent):
 
         return "\n".join(lines)
 
-    def _render_top3_details(self, stocks: List[StockAnalysisResult]) -> str:
+    def _render_top5_details(self, stocks: List[StockAnalysisResult]) -> str:
         """
-        Top 3 상세 분석을 렌더링합니다.
+        Top 5 상세 분석을 렌더링합니다.
         """
         details = []
 
@@ -527,3 +536,53 @@ class SummaryAgent(BaseAgent):
             return f"{market_cap / 10000:.1f}조원"
         else:
             return f"{market_cap:,.0f}억원"
+
+    def _render_market_summary(self, ranking_result: RankingResult) -> str:
+        """
+        당일 시장 요약을 렌더링합니다.
+        """
+        # 전체 분석 종목의 평균 점수 계산
+        all_stocks = ranking_result.final_18
+        if not all_stocks:
+            return "분석된 종목이 없습니다."
+
+        avg_score = sum(s.total_score for s in all_stocks) / len(all_stocks)
+
+        # 등급별 분포 계산
+        grade_counts = {}
+        for stock in all_stocks:
+            grade = stock.investment_grade
+            grade_counts[grade] = grade_counts.get(grade, 0) + 1
+
+        # 상위 섹터 정보
+        top_sector_names = [s.sector_name for s in ranking_result.top_sectors[:3]]
+
+        # 시장 분위기 판단
+        if avg_score >= 70:
+            market_sentiment = "🟢 **강세장** - 전반적으로 매수 신호가 우세합니다."
+        elif avg_score >= 55:
+            market_sentiment = "🟡 **중립** - 종목별 선별 투자가 필요합니다."
+        else:
+            market_sentiment = "🔴 **약세장** - 신중한 접근이 권장됩니다."
+
+        # 테이블 형식으로 정리
+        lines = [
+            market_sentiment,
+            "",
+            "| 항목 | 내용 |",
+            "|------|------|",
+            f"| 분석 종목 수 | {len(all_stocks)}개 |",
+            f"| 평균 점수 | {avg_score:.1f}점 |",
+            f"| 상위 섹터 | {', '.join(top_sector_names)} |",
+        ]
+
+        # 등급 분포 추가
+        grade_order = ["Strong Buy", "Buy", "Hold", "Sell", "Strong Sell"]
+        grade_dist = []
+        for grade in grade_order:
+            if grade in grade_counts:
+                grade_dist.append(f"{grade}: {grade_counts[grade]}개")
+        if grade_dist:
+            lines.append(f"| 등급 분포 | {', '.join(grade_dist)} |")
+
+        return "\n".join(lines)

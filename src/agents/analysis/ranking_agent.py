@@ -41,7 +41,7 @@ class RankingResult:
     sector_top: List[StockAnalysisResult] = field(default_factory=list)
 
     final_18: List[StockAnalysisResult] = field(default_factory=list)
-    final_top3: List[StockAnalysisResult] = field(default_factory=list)
+    final_top5: List[StockAnalysisResult] = field(default_factory=list)
 
     top_sectors: List[SectorAnalysisResult] = field(default_factory=list)
 
@@ -53,7 +53,7 @@ class RankingResult:
             "kosdaq_top10": [s.to_dict() for s in self.kosdaq_top10],
             "sector_top": [s.to_dict() for s in self.sector_top],
             "final_18": [s.to_dict() for s in self.final_18],
-            "final_top3": [s.to_dict() for s in self.final_top3],
+            "final_top5": [s.to_dict() for s in self.final_top5],
             "top_sectors": [s.to_dict() for s in self.top_sectors],
         }
 
@@ -62,9 +62,9 @@ class RankingResult:
         return {
             "total_candidates": len(self.final_18),
             "top_sectors": [s.sector_name for s in self.top_sectors],
-            "top3_stocks": [
+            "top5_stocks": [
                 {"symbol": s.symbol, "name": s.name, "score": s.total_score}
-                for s in self.final_top3
+                for s in self.final_top5
             ],
             "group_counts": {
                 "kospi_top10": len(self.kospi_top10),
@@ -192,11 +192,11 @@ class RankingAgent(BaseAgent):
 
         result.final_18 = unique_stocks[:18]
 
-        # 5. 최종 Top 3 선정
-        self._log_info("Selecting final top 3")
-        result.final_top3 = self.select_final_top3(result.final_18)
+        # 5. 최종 Top 5 선정
+        self._log_info("Selecting final top 5")
+        result.final_top5 = self.select_final_top5(result.final_18)
 
-        self._log_info(f"Ranking complete: {len(result.final_18)} stocks, top 3 selected")
+        self._log_info(f"Ranking complete: {len(result.final_18)} stocks, top 5 selected")
         return result
 
     def select_top_from_group(
@@ -223,12 +223,12 @@ class RankingAgent(BaseAgent):
 
         return sorted_stocks[:top_n]
 
-    def select_final_top3(
+    def select_final_top5(
         self,
         all_selected: List[StockAnalysisResult]
     ) -> List[StockAnalysisResult]:
         """
-        최종 Top 3를 선정합니다.
+        최종 Top 5를 선정합니다.
 
         선정 기준:
         - 총점 (70% 가중치)
@@ -244,7 +244,7 @@ class RankingAgent(BaseAgent):
             all_selected: 선정된 종목 리스트
 
         Returns:
-            Top 3 StockAnalysisResult 리스트
+            Top 5 StockAnalysisResult 리스트
         """
         def final_score(stock: StockAnalysisResult) -> float:
             """
@@ -279,7 +279,7 @@ class RankingAgent(BaseAgent):
         # 1차: 최종 점수 내림차순, 2차: 동점자 처리
         scored_stocks.sort(key=lambda x: (x[1], x[2]), reverse=True)
 
-        return [stock for stock, _, _ in scored_stocks[:3]]
+        return [stock for stock, _, _ in scored_stocks[:5]]
 
     async def get_group_details(self) -> Dict[str, List[Dict[str, Any]]]:
         """
