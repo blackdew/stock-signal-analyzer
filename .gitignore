@@ -15,6 +15,9 @@ wheels/
 # Reports
 reports/
 
+# Output (reports, data, cache)
+output/
+
 # Logs
 logs/
 
