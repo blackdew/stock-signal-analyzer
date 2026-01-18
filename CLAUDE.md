@@ -113,7 +113,8 @@ trading/
 │   │       ├── __init__.py
 │   │       ├── stock_report_agent.py   # 개별 종목 마크다운 리포트
 │   │       ├── sector_report_agent.py  # 섹터 분석 마크다운 리포트
-│   │       └── summary_agent.py        # 종합 리포트 및 JSON 데이터
+│   │       ├── summary_agent.py        # 종합 리포트 및 JSON 데이터
+│   │       └── weekly_sector_report_agent.py  # 주간 섹터 분석 리포트
 │   │
 │   └── output/                  # 출력 디렉토리
 │       ├── data/
@@ -364,7 +365,7 @@ print(result.final_top5) # Top 5 종목
 리포트 생성 에이전트 모듈.
 
 ```python
-from src.agents.report import StockReportAgent, SectorReportAgent, SummaryAgent
+from src.agents.report import StockReportAgent, SectorReportAgent, SummaryAgent, WeeklySectorReportAgent
 from pathlib import Path
 
 # 날짜별 출력 디렉토리 설정
@@ -406,18 +407,29 @@ summary_paths = await summary_agent.generate_summary(ranking_result)
   - 최종 18개 종목 테이블
   - 출력: `03_final_report.md`, `output/data/analysis_{날짜}.json`
 
+- **WeeklySectorReportAgent**: 주간 섹터 분석 리포트 생성
+  - 13개 섹터 분석 리포트 생성
+  - 섹터별 주요 이슈/동향 섹션
+  - 다음 주 시황 전망 템플릿
+  - 주간 투자 전략 제안 섹션
+  - 출력: `output/reports/weekly/YYYY-WXX_sector_report.md`
+
 ### 리포트 출력 구조
 
 Orchestrator 실행 시 날짜별 폴더에 다음 구조로 리포트가 생성됩니다:
 
 ```
-output/reports/YYYY-MM-DD/
-├── 01_sector_report.md      # 섹터 통합 분석 리포트
-├── 02_stocks/               # 종목별 상세 리포트
-│   ├── 005930_삼성전자.md
-│   ├── 000660_SK하이닉스.md
-│   └── ...
-└── 03_final_report.md       # 최종 종합 리포트 (Top 5, 18개 종목)
+output/reports/
+├── YYYY-MM-DD/              # 일간 리포트 폴더
+│   ├── 01_sector_report.md      # 섹터 통합 분석 리포트
+│   ├── 02_stocks/               # 종목별 상세 리포트
+│   │   ├── 005930_삼성전자.md
+│   │   ├── 000660_SK하이닉스.md
+│   │   └── ...
+│   └── 03_final_report.md       # 최종 종합 리포트 (Top 5, 18개 종목)
+│
+└── weekly/                  # 주간 리포트 폴더
+    └── YYYY-WXX_sector_report.md  # 주간 섹터 분석 리포트
 ```
 
 ## 개발 가이드

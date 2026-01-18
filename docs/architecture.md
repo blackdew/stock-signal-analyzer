@@ -97,6 +97,7 @@ class BaseAgent(ABC):
 | StockReportAgent | 종목 리포트 | StockAnalysisResult | 마크다운 파일 |
 | SectorReportAgent | 섹터 리포트 | SectorAnalysisResult | 마크다운 파일 |
 | SummaryAgent | 종합 리포트 | RankingResult | 마크다운 + JSON |
+| WeeklySectorReportAgent | 주간 섹터 리포트 | SectorAnalysisResult[] | 마크다운 파일 |
 
 ## 데이터 흐름
 
@@ -391,14 +392,18 @@ src/
 │       ├── __init__.py
 │       ├── stock_report_agent.py   # 개별 종목 마크다운 리포트
 │       ├── sector_report_agent.py  # 섹터 분석 마크다운 리포트
-│       └── summary_agent.py        # 종합 리포트 및 JSON 데이터
+│       ├── summary_agent.py        # 종합 리포트 및 JSON 데이터
+│       └── weekly_sector_report_agent.py  # 주간 섹터 분석 리포트
 │
 └── output/                      # 출력
     ├── data/cache/              # 캐시 저장소
     └── reports/                 # 리포트 저장소
-        ├── sectors/             # 섹터별 리포트
-        ├── stocks/              # 종목별 리포트
-        └── summary/             # 요약 리포트
+        ├── YYYY-MM-DD/          # 일간 리포트
+        │   ├── 01_sector_report.md
+        │   ├── 02_stocks/
+        │   └── 03_final_report.md
+        └── weekly/              # 주간 리포트
+            └── YYYY-WXX_sector_report.md
 
 tests/                           # 테스트 (279개)
 ├── core/                        # rubric V1, V2 테스트 (166개)

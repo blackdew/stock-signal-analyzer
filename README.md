@@ -91,6 +91,7 @@ uv run python -c "from src.core.rubric import RubricEngine; print(RubricEngine()
 - **StockReportAgent**: 개별 종목 마크다운 리포트 생성
 - **SectorReportAgent**: 섹터 분석 마크다운 리포트 생성
 - **SummaryAgent**: 종합 리포트 및 JSON 데이터 생성
+- **WeeklySectorReportAgent**: 주간 섹터 분석 리포트 생성
 
 ## 프로젝트 구조
 
@@ -117,7 +118,8 @@ trading/
 │       └── report/         # 리포트 에이전트
 │           ├── stock_report_agent.py
 │           ├── sector_report_agent.py
-│           └── summary_agent.py
+│           ├── summary_agent.py
+│           └── weekly_sector_report_agent.py
 ├── tests/                  # 테스트 (279개)
 ├── docs/
 │   └── architecture.md     # 아키텍처 문서
