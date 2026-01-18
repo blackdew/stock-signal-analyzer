@@ -617,6 +617,11 @@ class RubricEngine:
         macd_signal = getattr(market_data, "macd_signal", None) if market_data else None
         adx = getattr(market_data, "adx", None) if market_data else None
 
+        # 52주 위치 계산
+        position_52w = None
+        if None not in (current_price, low_52w, high_52w) and high_52w != low_52w:
+            position_52w = (current_price - low_52w) / (high_52w - low_52w) * 100  # 퍼센트
+
         if self.use_v2:
             # V2: 5개 지표 (6+6+6+4+3 = 25점 기준 환산)
             # 개별 점수를 비율로 환산 (만점 25점 기준)
@@ -642,6 +647,17 @@ class RubricEngine:
                 "support_resistance": round(sr_score, 2),
                 "macd": round(macd_score_val, 2),
                 "adx": round(adx_score_val, 2),
+                # 원본 지표 값 추가
+                "ma20_value": round(ma20, 0) if ma20 else None,
+                "ma60_value": round(ma60, 0) if ma60 else None,
+                "rsi_value": round(rsi, 1) if rsi else None,
+                "macd_value": round(macd, 2) if macd else None,
+                "macd_signal_value": round(macd_signal, 2) if macd_signal else None,
+                "adx_value": round(adx, 1) if adx else None,
+                "current_price": round(current_price, 0) if current_price else None,
+                "low_52w": round(low_52w, 0) if low_52w else None,
+                "high_52w": round(high_52w, 0) if high_52w else None,
+                "position_52w": round(position_52w, 1) if position_52w else None,
             }
         else:
             # V1: 3개 지표 (10+10+10 = 30점)
@@ -656,6 +672,14 @@ class RubricEngine:
                 "trend": trend_score,
                 "rsi": rsi_score_val,
                 "support_resistance": sr_score,
+                # 원본 지표 값 추가
+                "ma20_value": round(ma20, 0) if ma20 else None,
+                "ma60_value": round(ma60, 0) if ma60 else None,
+                "rsi_value": round(rsi, 1) if rsi else None,
+                "current_price": round(current_price, 0) if current_price else None,
+                "low_52w": round(low_52w, 0) if low_52w else None,
+                "high_52w": round(high_52w, 0) if high_52w else None,
+                "position_52w": round(position_52w, 1) if position_52w else None,
             }
 
         # 가중치 적용 점수
@@ -695,6 +719,23 @@ class RubricEngine:
         # 가중치 적용 점수
         weighted_score = (normalized_score / 100) * weight
 
+        # 외국인/기관 연속 순매수 일수 계산
+        foreign_consecutive = 0
+        if foreign_net:
+            for amount in foreign_net:
+                if amount > 0:
+                    foreign_consecutive += 1
+                else:
+                    break
+
+        inst_consecutive = 0
+        if inst_net:
+            for amount in inst_net:
+                if amount > 0:
+                    inst_consecutive += 1
+                else:
+                    break
+
         return CategoryScore(
             name="supply",
             score=round(normalized_score, 1),
@@ -704,6 +745,12 @@ class RubricEngine:
                 "foreign": foreign_score,
                 "institution": inst_score,
                 "trading_value": tv_score,
+                # 원본 지표 값 추가
+                "foreign_net_5d": foreign_net if foreign_net else [],
+                "foreign_consecutive_days": foreign_consecutive,
+                "institution_net_5d": inst_net if inst_net else [],
+                "institution_consecutive_days": inst_consecutive,
+                "trading_value_amount": round(trading_value, 2) if trading_value else None,
             }
         )
 
@@ -751,6 +798,14 @@ class RubricEngine:
                 "roe": round(roe_score_val, 2),
                 "growth": round(growth_score_val, 2),
                 "debt": round(debt_score_val, 2),
+                # 원본 지표 값 추가
+                "per_value": round(per, 2) if per else None,
+                "pbr_value": round(pbr, 2) if pbr else None,
+                "roe_value": round(roe, 2) if roe else None,
+                "sector_avg_per": round(sector_avg_per, 2) if sector_avg_per else None,
+                "sector_avg_pbr": round(sector_avg_pbr, 2) if sector_avg_pbr else None,
+                "op_growth_value": round(op_growth, 2) if op_growth else None,
+                "debt_ratio_value": round(debt_ratio, 2) if debt_ratio else None,
             }
         else:
             # V1: 3개 지표 (10+10+5 = 25점)
@@ -765,6 +820,11 @@ class RubricEngine:
                 "per": per_score_val,
                 "growth": growth_score_val,
                 "debt": debt_score_val,
+                # 원본 지표 값 추가
+                "per_value": round(per, 2) if per else None,
+                "sector_avg_per": round(sector_avg_per, 2) if sector_avg_per else None,
+                "op_growth_value": round(op_growth, 2) if op_growth else None,
+                "debt_ratio_value": round(debt_ratio, 2) if debt_ratio else None,
             }
 
         # 가중치 적용 점수
@@ -850,6 +910,10 @@ class RubricEngine:
                 "volatility": volatility_score,
                 "beta": beta_score,
                 "downside_risk": downside_score,
+                # 원본 지표 값 추가
+                "atr_pct_value": round(atr_pct, 2) if atr_pct else None,
+                "beta_value": round(beta, 2) if beta else None,
+                "max_drawdown_value": round(max_drawdown_pct, 2) if max_drawdown_pct else None,
             }
         )
 
@@ -878,6 +942,11 @@ class RubricEngine:
         # 가중치 적용 점수
         weighted_score = (normalized_score / 100) * weight
 
+        # 알파 계산
+        alpha = None
+        if stock_return is not None and market_return is not None:
+            alpha = stock_return - market_return
+
         return CategoryScore(
             name="relative_strength",
             score=round(normalized_score, 1),
@@ -886,6 +955,12 @@ class RubricEngine:
             details={
                 "sector_rank": rank_score,
                 "alpha": alpha_score,
+                # 원본 지표 값 추가
+                "sector_rank_value": sector_rank,
+                "sector_total_value": sector_total,
+                "stock_return_value": round(stock_return, 2) if stock_return else None,
+                "market_return_value": round(market_return, 2) if market_return else None,
+                "alpha_value": round(alpha, 2) if alpha else None,
             }
         )
 

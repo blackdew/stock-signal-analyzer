@@ -23,6 +23,110 @@ from src.agents.report.stock_report_agent import StockReportAgent
 from src.agents.report.sector_report_agent import SectorReportAgent
 from src.agents.report.summary_agent import SummaryAgent
 from src.agents.analysis.ranking_agent import RankingResult
+from src.core.rubric import RubricResult, CategoryScore
+
+
+def create_mock_rubric_result(
+    symbol: str,
+    name: str,
+    total_score: float,
+) -> RubricResult:
+    """테스트용 RubricResult 생성 - 실제 지표 값 포함"""
+    # 기술적 분석
+    technical = CategoryScore(
+        name="technical",
+        score=75.0,
+        max_score=25,
+        weighted_score=total_score * 0.25,
+        details={
+            "trend": 4.5, "rsi": 5.0, "support_resistance": 4.0, "macd": 3.0, "adx": 2.0,
+            "ma20_value": 55000, "ma60_value": 52000,
+            "rsi_value": 55.5, "macd_value": 150.5, "macd_signal_value": 120.3,
+            "adx_value": 28.5,
+            "current_price": 56000, "low_52w": 45000, "high_52w": 65000,
+            "position_52w": 55.0,
+        }
+    )
+
+    # 수급 분석
+    supply = CategoryScore(
+        name="supply",
+        score=70.0,
+        max_score=20,
+        weighted_score=total_score * 0.20,
+        details={
+            "foreign": 6.0, "institution": 5.0, "trading_value": 3.0,
+            "foreign_net_5d": [100, 150, 80, 120, 90],
+            "foreign_consecutive_days": 5,
+            "institution_net_5d": [50, -20, 30, 80, 60],
+            "institution_consecutive_days": 2,
+            "trading_value_amount": 1250.5,
+        }
+    )
+
+    # 펀더멘털 분석
+    fundamental = CategoryScore(
+        name="fundamental",
+        score=72.0,
+        max_score=20,
+        weighted_score=total_score * 0.20,
+        details={
+            "per": 3.0, "pbr": 2.8, "roe": 3.2, "growth": 3.5, "debt": 2.0,
+            "per_value": 12.5, "pbr_value": 1.2, "roe_value": 15.3,
+            "sector_avg_per": 15.0, "sector_avg_pbr": 1.5,
+            "op_growth_value": 25.5, "debt_ratio_value": 45.2,
+        }
+    )
+
+    # 시장 환경
+    market = CategoryScore(
+        name="market",
+        score=68.0,
+        max_score=15,
+        weighted_score=total_score * 0.15,
+        details={
+            "news": 5.5, "sector_momentum": 3.0, "analyst": 3.5,
+        }
+    )
+
+    # 리스크 평가
+    risk = CategoryScore(
+        name="risk",
+        score=75.0,
+        max_score=10,
+        weighted_score=total_score * 0.10,
+        details={
+            "volatility": 3.0, "beta": 2.5, "downside_risk": 2.0,
+            "atr_pct_value": 2.5, "beta_value": 1.05, "max_drawdown_value": 12.5,
+        }
+    )
+
+    # 상대 강도
+    relative_strength = CategoryScore(
+        name="relative_strength",
+        score=70.0,
+        max_score=10,
+        weighted_score=total_score * 0.10,
+        details={
+            "sector_rank": 4.0, "alpha": 3.5,
+            "sector_rank_value": 2, "sector_total_value": 10,
+            "stock_return_value": 8.5, "market_return_value": 3.2, "alpha_value": 5.3,
+        }
+    )
+
+    return RubricResult(
+        symbol=symbol,
+        name=name,
+        technical=technical,
+        supply=supply,
+        fundamental=fundamental,
+        market=market,
+        risk=risk,
+        relative_strength=relative_strength,
+        total_score=total_score,
+        grade="Buy" if total_score >= 60 else "Hold",
+        rubric_version="v2",
+    )
 
 
 def create_mock_stock_result(
@@ -33,6 +137,8 @@ def create_mock_stock_result(
     group: str = "kospi_top10",
 ) -> StockAnalysisResult:
     """테스트용 종목 분석 결과 생성"""
+    rubric_result = create_mock_rubric_result(symbol, name, total_score)
+
     return StockAnalysisResult(
         symbol=symbol,
         name=name,
@@ -49,7 +155,7 @@ def create_mock_stock_result(
         group=group,
         rank_in_group=1,
         final_rank=1,
-        rubric_result=None,
+        rubric_result=rubric_result,
     )
 
 

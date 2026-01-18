@@ -152,6 +152,22 @@ class StockReportAgent(BaseAgent):
         # 투자 의견 생성
         opinion = self._generate_opinion(stock)
 
+        # 값 포맷팅 헬퍼 함수들
+        def fmt_price(val):
+            return f"{val:,.0f}원" if val else "N/A"
+
+        def fmt_pct(val):
+            return f"{val:.1f}%" if val is not None else "N/A"
+
+        def fmt_num(val, decimals=1):
+            return f"{val:.{decimals}f}" if val is not None else "N/A"
+
+        def fmt_days(val):
+            return f"{val}일 연속" if val else "0일"
+
+        def fmt_amount(val):
+            return f"{val:,.0f}억원" if val else "N/A"
+
         # 마크다운 템플릿 렌더링
         md = f"""# {stock.name} ({stock.symbol}) 투자 분석 리포트
 
@@ -168,100 +184,156 @@ class StockReportAgent(BaseAgent):
 | **투자 등급** | {grade_stars} {stock.investment_grade} |
 | **섹터** | {stock.sector or "N/A"} |
 | **시가총액** | {market_cap_str} (순위: {stock.final_rank or stock.rank_in_group}위) |
+| **현재가** | {fmt_price(details['current_price'])} |
 
 ---
 
 ## 📈 기술적 분석 ({stock.technical_score:.1f}/25점)
 
 ### 추세 ({details['trend_score']:.1f}/6점)
-- MA20 vs MA60 비교
-- 판정: {details['trend_verdict']}
+| 지표 | 값 |
+|------|-----|
+| MA20 | {fmt_price(details['ma20_value'])} |
+| MA60 | {fmt_price(details['ma60_value'])} |
+| 판정 | **{details['trend_verdict']}** |
 
 ### 모멘텀 ({details['rsi_score']:.1f}/6점)
-- RSI: {details['rsi']:.1f}
-- 판정: {details['rsi_verdict']}
+| 지표 | 값 |
+|------|-----|
+| RSI(14) | {fmt_num(details['rsi'])} |
+| 판정 | **{details['rsi_verdict']}** |
 
 ### 지지/저항 ({details['support_score']:.1f}/6점)
-- 52주 내 위치 분석
-- 판정: {details['support_verdict']}
+| 지표 | 값 |
+|------|-----|
+| 52주 최저가 | {fmt_price(details['low_52w'])} |
+| 52주 최고가 | {fmt_price(details['high_52w'])} |
+| 52주 내 위치 | {fmt_pct(details['position_52w'])} |
+| 판정 | **{details['support_verdict']}** |
 
 ### MACD ({details['macd_score']:.1f}/4점)
-- 판정: {details['macd_verdict']}
+| 지표 | 값 |
+|------|-----|
+| MACD | {fmt_num(details['macd_value'], 2)} |
+| Signal | {fmt_num(details['macd_signal_value'], 2)} |
+| 판정 | **{details['macd_verdict']}** |
 
 ### ADX ({details['adx_score']:.1f}/3점)
-- 판정: {details['adx_verdict']}
+| 지표 | 값 |
+|------|-----|
+| ADX(14) | {fmt_num(details['adx_value'])} |
+| 판정 | **{details['adx_verdict']}** |
 
 ---
 
 ## 💰 수급 분석 ({stock.supply_score:.1f}/20점)
 
 ### 외국인 ({details['foreign_score']:.1f}/8점)
-- 최근 수급 동향 분석
-- 판정: {details['foreign_verdict']}
+| 지표 | 값 |
+|------|-----|
+| 연속 순매수 | {fmt_days(details['foreign_consecutive_days'])} |
+| 판정 | **{details['foreign_verdict']}** |
 
 ### 기관 ({details['institution_score']:.1f}/8점)
-- 최근 수급 동향 분석
-- 판정: {details['institution_verdict']}
+| 지표 | 값 |
+|------|-----|
+| 연속 순매수 | {fmt_days(details['institution_consecutive_days'])} |
+| 판정 | **{details['institution_verdict']}** |
 
 ### 거래대금 ({details['trading_score']:.1f}/4점)
-- 판정: {details['trading_verdict']}
+| 지표 | 값 |
+|------|-----|
+| 당일 거래대금 | {fmt_amount(details['trading_value_amount'])} |
+| 판정 | **{details['trading_verdict']}** |
 
 ---
 
 ## 📑 펀더멘털 분석 ({stock.fundamental_score:.1f}/20점)
 
 ### PER ({details['per_score']:.1f}/4점)
-- 판정: {details['per_verdict']}
+| 지표 | 값 |
+|------|-----|
+| 현재 PER | {fmt_num(details['per_value'], 2)}배 |
+| 업종 평균 PER | {fmt_num(details['sector_avg_per'], 2)}배 |
+| 판정 | **{details['per_verdict']}** |
 
 ### PBR ({details['pbr_score']:.1f}/4점)
-- 판정: {details['pbr_verdict']}
+| 지표 | 값 |
+|------|-----|
+| 현재 PBR | {fmt_num(details['pbr_value'], 2)}배 |
+| 업종 평균 PBR | {fmt_num(details['sector_avg_pbr'], 2)}배 |
+| 판정 | **{details['pbr_verdict']}** |
 
 ### ROE ({details['roe_score']:.1f}/4점)
-- 판정: {details['roe_verdict']}
+| 지표 | 값 |
+|------|-----|
+| ROE | {fmt_pct(details['roe_value'])} |
+| 판정 | **{details['roe_verdict']}** |
 
 ### 성장성 ({details['growth_score']:.1f}/5점)
-- 영업이익 및 매출 성장률 분석
-- 판정: {details['growth_verdict']}
+| 지표 | 값 |
+|------|-----|
+| 영업이익 성장률 (YoY) | {fmt_pct(details['op_growth_value'])} |
+| 판정 | **{details['growth_verdict']}** |
 
 ### 재무건전성 ({details['debt_score']:.1f}/3점)
-- 부채비율 분석
-- 판정: {details['debt_verdict']}
+| 지표 | 값 |
+|------|-----|
+| 부채비율 | {fmt_pct(details['debt_ratio_value'])} |
+| 판정 | **{details['debt_verdict']}** |
 
 ---
 
 ## 🌐 시장 환경 ({stock.market_score:.1f}/15점)
 
 ### 뉴스 센티먼트 ({details['news_score']:.1f}/7.5점)
-- 판정: {details['news_verdict']}
+- 판정: **{details['news_verdict']}**
 
 ### 섹터 모멘텀 ({details['sector_momentum_score']:.1f}/3.75점)
-- 판정: {details['sector_momentum_verdict']}
+- 판정: **{details['sector_momentum_verdict']}**
 
 ### 애널리스트 전망 ({details['analyst_score']:.1f}/3.75점)
-- 판정: {details['analyst_verdict']}
+- 판정: **{details['analyst_verdict']}**
 
 ---
 
 ## ⚠️ 리스크 평가 ({stock.risk_score:.1f}/10점)
 
 ### 변동성 ({details['volatility_score']:.1f}/4점)
-- 판정: {details['volatility_verdict']}
+| 지표 | 값 |
+|------|-----|
+| ATR(%) | {fmt_pct(details['atr_pct_value'])} |
+| 판정 | **{details['volatility_verdict']}** |
 
 ### 베타 ({details['beta_score']:.1f}/3점)
-- 판정: {details['beta_verdict']}
+| 지표 | 값 |
+|------|-----|
+| 베타 | {fmt_num(details['beta_value'], 2)} |
+| 판정 | **{details['beta_verdict']}** |
 
 ### 하방 리스크 ({details['downside_score']:.1f}/3점)
-- 판정: {details['downside_verdict']}
+| 지표 | 값 |
+|------|-----|
+| 최대 낙폭 | {fmt_pct(details['max_drawdown_value'])} |
+| 판정 | **{details['downside_verdict']}** |
 
 ---
 
 ## 📊 상대 강도 ({stock.relative_strength_score:.1f}/10점)
 
 ### 섹터 내 순위 ({details['sector_rank_score']:.1f}/5점)
-- 판정: {details['sector_rank_verdict']}
+| 지표 | 값 |
+|------|-----|
+| 섹터 내 순위 | {details['sector_rank_value'] or 'N/A'}위 / {details['sector_total_value'] or 'N/A'}개 |
+| 판정 | **{details['sector_rank_verdict']}** |
 
 ### 시장 대비 알파 ({details['alpha_score']:.1f}/5점)
-- 판정: {details['alpha_verdict']}
+| 지표 | 값 |
+|------|-----|
+| 종목 20일 수익률 | {fmt_pct(details['stock_return_value'])} |
+| 시장 20일 수익률 | {fmt_pct(details['market_return_value'])} |
+| 알파 | {fmt_pct(details['alpha_value'])} |
+| 판정 | **{details['alpha_verdict']}** |
 
 ---
 
@@ -286,16 +358,28 @@ class StockReportAgent(BaseAgent):
             "support_score": 3.0, "support_verdict": "중립",
             "macd_score": 2.0, "macd_verdict": "중립",
             "adx_score": 1.5, "adx_verdict": "중립",
+            # 기술적 분석 - 원본 값
+            "ma20_value": None, "ma60_value": None,
+            "macd_value": None, "macd_signal_value": None,
+            "adx_value": None,
+            "current_price": None, "low_52w": None, "high_52w": None, "position_52w": None,
             # 수급 분석
             "foreign_score": 4.0, "foreign_verdict": "중립",
             "institution_score": 4.0, "institution_verdict": "중립",
             "trading_score": 2.0, "trading_verdict": "중립",
+            # 수급 분석 - 원본 값
+            "foreign_consecutive_days": 0, "institution_consecutive_days": 0,
+            "trading_value_amount": None,
             # 펀더멘털 분석
             "per_score": 2.0, "per_verdict": "중립",
             "pbr_score": 2.0, "pbr_verdict": "중립",
             "roe_score": 2.0, "roe_verdict": "중립",
             "growth_score": 2.5, "growth_verdict": "중립",
             "debt_score": 1.5, "debt_verdict": "중립",
+            # 펀더멘털 분석 - 원본 값
+            "per_value": None, "pbr_value": None, "roe_value": None,
+            "sector_avg_per": None, "sector_avg_pbr": None,
+            "op_growth_value": None, "debt_ratio_value": None,
             # 시장 환경
             "news_score": 3.75, "news_verdict": "중립",
             "sector_momentum_score": 1.875, "sector_momentum_verdict": "중립",
@@ -304,9 +388,14 @@ class StockReportAgent(BaseAgent):
             "volatility_score": 2.0, "volatility_verdict": "중립",
             "beta_score": 1.5, "beta_verdict": "중립",
             "downside_score": 1.5, "downside_verdict": "중립",
+            # 리스크 평가 - 원본 값
+            "atr_pct_value": None, "beta_value": None, "max_drawdown_value": None,
             # 상대 강도
             "sector_rank_score": 2.5, "sector_rank_verdict": "중립",
             "alpha_score": 2.5, "alpha_verdict": "중립",
+            # 상대 강도 - 원본 값
+            "sector_rank_value": None, "sector_total_value": None,
+            "stock_return_value": None, "market_return_value": None, "alpha_value": None,
         }
 
         if rubric is None:
@@ -326,6 +415,16 @@ class StockReportAgent(BaseAgent):
             defaults["macd_verdict"] = self._score_to_verdict(details.get("macd", 2.0), 4)
             defaults["adx_score"] = details.get("adx", 1.5)
             defaults["adx_verdict"] = self._score_to_verdict(details.get("adx", 1.5), 3)
+            # 원본 값
+            defaults["ma20_value"] = details.get("ma20_value")
+            defaults["ma60_value"] = details.get("ma60_value")
+            defaults["macd_value"] = details.get("macd_value")
+            defaults["macd_signal_value"] = details.get("macd_signal_value")
+            defaults["adx_value"] = details.get("adx_value")
+            defaults["current_price"] = details.get("current_price")
+            defaults["low_52w"] = details.get("low_52w")
+            defaults["high_52w"] = details.get("high_52w")
+            defaults["position_52w"] = details.get("position_52w")
 
         # 수급 분석 세부
         if rubric.supply and rubric.supply.details:
@@ -336,6 +435,10 @@ class StockReportAgent(BaseAgent):
             defaults["institution_verdict"] = self._score_to_verdict(details.get("institution", 4.0), 8)
             defaults["trading_score"] = details.get("trading_value", 2.0)
             defaults["trading_verdict"] = self._score_to_verdict(details.get("trading_value", 2.0), 4)
+            # 원본 값
+            defaults["foreign_consecutive_days"] = details.get("foreign_consecutive_days", 0)
+            defaults["institution_consecutive_days"] = details.get("institution_consecutive_days", 0)
+            defaults["trading_value_amount"] = details.get("trading_value_amount")
 
         # 펀더멘털 분석 세부
         if rubric.fundamental and rubric.fundamental.details:
@@ -350,6 +453,14 @@ class StockReportAgent(BaseAgent):
             defaults["growth_verdict"] = self._score_to_verdict(details.get("growth", 2.5), 5)
             defaults["debt_score"] = details.get("debt", 1.5)
             defaults["debt_verdict"] = self._score_to_verdict(details.get("debt", 1.5), 3)
+            # 원본 값
+            defaults["per_value"] = details.get("per_value")
+            defaults["pbr_value"] = details.get("pbr_value")
+            defaults["roe_value"] = details.get("roe_value")
+            defaults["sector_avg_per"] = details.get("sector_avg_per")
+            defaults["sector_avg_pbr"] = details.get("sector_avg_pbr")
+            defaults["op_growth_value"] = details.get("op_growth_value")
+            defaults["debt_ratio_value"] = details.get("debt_ratio_value")
 
         # 시장 환경 세부
         if rubric.market and rubric.market.details:
@@ -368,8 +479,12 @@ class StockReportAgent(BaseAgent):
             defaults["volatility_verdict"] = self._score_to_verdict(details.get("volatility", 2.0), 4)
             defaults["beta_score"] = details.get("beta", 1.5)
             defaults["beta_verdict"] = self._score_to_verdict(details.get("beta", 1.5), 3)
-            defaults["downside_score"] = details.get("downside", 1.5)
-            defaults["downside_verdict"] = self._score_to_verdict(details.get("downside", 1.5), 3)
+            defaults["downside_score"] = details.get("downside_risk", 1.5)
+            defaults["downside_verdict"] = self._score_to_verdict(details.get("downside_risk", 1.5), 3)
+            # 원본 값
+            defaults["atr_pct_value"] = details.get("atr_pct_value")
+            defaults["beta_value"] = details.get("beta_value")
+            defaults["max_drawdown_value"] = details.get("max_drawdown_value")
 
         # 상대 강도 세부 (V2)
         if rubric.relative_strength and rubric.relative_strength.details:
@@ -378,6 +493,12 @@ class StockReportAgent(BaseAgent):
             defaults["sector_rank_verdict"] = self._score_to_verdict(details.get("sector_rank", 2.5), 5)
             defaults["alpha_score"] = details.get("alpha", 2.5)
             defaults["alpha_verdict"] = self._score_to_verdict(details.get("alpha", 2.5), 5)
+            # 원본 값
+            defaults["sector_rank_value"] = details.get("sector_rank_value")
+            defaults["sector_total_value"] = details.get("sector_total_value")
+            defaults["stock_return_value"] = details.get("stock_return_value")
+            defaults["market_return_value"] = details.get("market_return_value")
+            defaults["alpha_value"] = details.get("alpha_value")
 
         return defaults
 
@@ -439,41 +560,83 @@ class StockReportAgent(BaseAgent):
     def _generate_opinion(self, stock: StockAnalysisResult) -> str:
         """
         투자 의견을 자동 생성합니다. (템플릿 기반, LLM 미사용)
+        최소 3문장 이상의 상세한 의견을 생성합니다.
         """
         opinions = []
+        strengths = []
+        weaknesses = []
 
-        # 종합 등급 기반
+        # 1. 종합 등급 기반 도입부
         if stock.total_score >= 80:
-            opinions.append(f"{stock.name}은(는) 현재 매우 매력적인 투자 기회로 판단됩니다.")
+            opinions.append(f"**{stock.name}**은(는) 종합 점수 {stock.total_score:.1f}점으로 **Strong Buy** 등급을 받았습니다.")
+            opinions.append("현재 매우 매력적인 투자 기회로 판단되며, 적극적인 매수를 검토해 볼 수 있습니다.")
         elif stock.total_score >= 60:
-            opinions.append(f"{stock.name}은(는) 긍정적인 투자 전망을 보이고 있습니다.")
+            opinions.append(f"**{stock.name}**은(는) 종합 점수 {stock.total_score:.1f}점으로 **Buy** 등급을 받았습니다.")
+            opinions.append("긍정적인 투자 전망을 보이고 있어 신규 진입 또는 추가 매수를 고려해 볼 만합니다.")
         elif stock.total_score >= 40:
-            opinions.append(f"{stock.name}은(는) 현재 관망이 적절한 시점입니다.")
+            opinions.append(f"**{stock.name}**은(는) 종합 점수 {stock.total_score:.1f}점으로 **Hold** 등급을 받았습니다.")
+            opinions.append("현재 관망이 적절한 시점이며, 추세 전환 신호를 확인한 후 매매 결정을 내리는 것이 좋습니다.")
         else:
-            opinions.append(f"{stock.name}은(는) 당분간 투자에 신중할 필요가 있습니다.")
+            opinions.append(f"**{stock.name}**은(는) 종합 점수 {stock.total_score:.1f}점으로 **Sell** 등급을 받았습니다.")
+            opinions.append("당분간 투자에 신중할 필요가 있으며, 기존 보유자는 손절 또는 비중 축소를 고려해야 합니다.")
 
-        # 수급 분석 강점 (20점 만점 기준)
-        if stock.supply_score >= 16:
-            opinions.append("외국인/기관의 수급이 양호하여 단기 모멘텀이 기대됩니다.")
-        elif stock.supply_score <= 8:
-            opinions.append("최근 외국인/기관 수급이 부진하여 주의가 필요합니다.")
+        # 2. 강점/약점 분석
+        # 기술적 분석 (25점 만점)
+        tech_ratio = stock.technical_score / 25 * 100
+        if tech_ratio >= 70:
+            strengths.append(f"기술적 지표가 상승 추세({stock.technical_score:.1f}/25점)")
+        elif tech_ratio <= 40:
+            weaknesses.append(f"기술적 지표가 약세({stock.technical_score:.1f}/25점)")
 
-        # 펀더멘털 강점 (20점 만점 기준)
-        if stock.fundamental_score >= 16:
-            opinions.append("실적 성장세가 뚜렷하여 중장기 전망이 밝습니다.")
-        elif stock.fundamental_score <= 8:
-            opinions.append("펀더멘털 지표가 다소 부진한 상태입니다.")
+        # 수급 분석 (20점 만점)
+        supply_ratio = stock.supply_score / 20 * 100
+        if supply_ratio >= 70:
+            strengths.append(f"외국인/기관 수급 양호({stock.supply_score:.1f}/20점)")
+        elif supply_ratio <= 40:
+            weaknesses.append(f"수급 부진({stock.supply_score:.1f}/20점)")
 
-        # 기술적 분석 강점 (25점 만점 기준)
-        if stock.technical_score >= 20:
-            opinions.append("기술적 지표가 상승 추세를 나타내고 있습니다.")
-        elif stock.technical_score <= 10:
-            opinions.append("기술적 지표가 약세를 나타내고 있어 추가 하락에 유의해야 합니다.")
+        # 펀더멘털 분석 (20점 만점)
+        fund_ratio = stock.fundamental_score / 20 * 100
+        if fund_ratio >= 70:
+            strengths.append(f"펀더멘털 우수({stock.fundamental_score:.1f}/20점)")
+        elif fund_ratio <= 40:
+            weaknesses.append(f"펀더멘털 미흡({stock.fundamental_score:.1f}/20점)")
 
-        # 리스크 평가 (10점 만점 기준)
-        if stock.risk_score >= 8:
-            opinions.append("변동성이 낮고 안정적인 흐름을 보이고 있습니다.")
-        elif stock.risk_score <= 4:
-            opinions.append("다만, 변동성이 높아 리스크 관리에 유의해야 합니다.")
+        # 시장 환경 (15점 만점)
+        market_ratio = stock.market_score / 15 * 100
+        if market_ratio >= 70:
+            strengths.append(f"시장 환경 긍정적({stock.market_score:.1f}/15점)")
+        elif market_ratio <= 40:
+            weaknesses.append(f"시장 환경 부정적({stock.market_score:.1f}/15점)")
 
-        return " ".join(opinions)
+        # 리스크 평가 (10점 만점)
+        risk_ratio = stock.risk_score / 10 * 100
+        if risk_ratio >= 70:
+            strengths.append(f"리스크 낮음({stock.risk_score:.1f}/10점)")
+        elif risk_ratio <= 40:
+            weaknesses.append(f"리스크 높음({stock.risk_score:.1f}/10점)")
+
+        # 상대 강도 (10점 만점)
+        rs_ratio = stock.relative_strength_score / 10 * 100
+        if rs_ratio >= 70:
+            strengths.append(f"상대 강도 우수({stock.relative_strength_score:.1f}/10점)")
+        elif rs_ratio <= 40:
+            weaknesses.append(f"상대 강도 미흡({stock.relative_strength_score:.1f}/10점)")
+
+        # 3. 강점 서술
+        if strengths:
+            opinions.append(f"\n\n**주요 강점**: {', '.join(strengths)}.")
+
+        # 4. 약점 서술
+        if weaknesses:
+            opinions.append(f"\n\n**주의 사항**: {', '.join(weaknesses)}.")
+
+        # 5. 구체적인 권고사항 추가
+        if stock.total_score >= 70:
+            opinions.append("\n\n**권고사항**: 분할 매수 전략을 활용하여 포지션을 구축하는 것이 좋습니다. 목표가는 52주 최고가 부근으로 설정할 수 있으며, 손절가는 최근 지지선 하단에 설정하는 것을 권장합니다.")
+        elif stock.total_score >= 50:
+            opinions.append("\n\n**권고사항**: 현재 가격대에서는 관망하며 추세 전환 신호를 기다리는 것이 좋습니다. RSI가 과매도 구간에 진입하거나 거래량이 급증하는 시점에 진입을 고려해 볼 수 있습니다.")
+        else:
+            opinions.append("\n\n**권고사항**: 추가 하락 가능성이 있으므로 신규 진입은 자제하고, 기존 보유자는 반등 시 비중 축소를 고려해야 합니다. 기술적 지지선과 펀더멘털 개선 신호를 확인한 후 재진입 여부를 결정하시기 바랍니다.")
+
+        return "".join(opinions)
