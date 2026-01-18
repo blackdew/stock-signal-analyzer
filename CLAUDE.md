@@ -107,7 +107,7 @@ trading/
 │   │   │   ├── __init__.py
 │   │   │   ├── stock_analyzer.py       # 개별 종목 루브릭 점수
 │   │   │   ├── sector_analyzer.py      # 섹터 시가총액 가중 평균
-│   │   │   └── ranking_agent.py        # 4개 그룹 순위, 최종 18개, Top 3
+│   │   │   └── ranking_agent.py        # 4개 그룹 순위, 최종 18개, Top 5
 │   │   │
 │   │   └── report/              # 리포트 에이전트
 │   │       ├── __init__.py
@@ -344,7 +344,7 @@ top3_sectors = sector_analyzer.get_top_sectors(sector_results, top_n=3)
 ranking_agent = RankingAgent()
 result = await ranking_agent.rank()
 print(result.final_18)   # 최종 18개 종목
-print(result.final_top3) # Top 3 종목
+print(result.final_top5) # Top 5 종목
 ```
 
 - **StockAnalyzer**: 개별 종목 루브릭 점수 산출
@@ -358,7 +358,7 @@ print(result.final_top3) # Top 3 종목
 - **RankingAgent**: 최종 순위 산정
   - 4개 그룹에서 각 3개 종목 선정 (KOSPI 9개 + KOSDAQ 3개 + 섹터 9개)
   - 중복 제거 후 최종 18개 종목 집계
-  - Top 3 선정 (가중치: 총점 70%, 수급 15%, 성장성 15%)
+  - Top 5 선정 (가중치: 총점 70%, 수급 15%, 성장성 15%)
 
 ### src/agents/report/
 리포트 생성 에이전트 모듈.
@@ -401,7 +401,7 @@ summary_paths = await summary_agent.generate_summary(ranking_result)
 
 - **SummaryAgent**: 종합 리포트 및 JSON 데이터 생성
   - RankingResult를 종합 리포트로 변환
-  - Top 3 추천 종목 및 선정 이유
+  - Top 5 추천 종목 및 선정 이유
   - 상위 섹터, 그룹별 선정 종목
   - 최종 18개 종목 테이블
   - 출력: `03_final_report.md`, `output/data/analysis_{날짜}.json`
@@ -417,7 +417,7 @@ output/reports/YYYY-MM-DD/
 │   ├── 005930_삼성전자.md
 │   ├── 000660_SK하이닉스.md
 │   └── ...
-└── 03_final_report.md       # 최종 종합 리포트 (Top 3, 18개 종목)
+└── 03_final_report.md       # 최종 종합 리포트 (Top 5, 18개 종목)
 ```
 
 ## 개발 가이드
