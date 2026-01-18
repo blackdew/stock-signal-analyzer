@@ -47,8 +47,14 @@ uv run python -c "from src.agents.report import StockReportAgent, SectorReportAg
 
 ### 메인 실행
 ```bash
-# 전체 분석 실행
+# 일간 리포트 생성 (기본값)
 uv run python main.py
+
+# 일간 리포트 (명시적)
+uv run python main.py --daily
+
+# 주간 섹터 리포트 생성
+uv run python main.py --weekly
 
 # 섹터 분석만
 uv run python main.py --sector-only
@@ -416,21 +422,27 @@ summary_paths = await summary_agent.generate_summary(ranking_result)
 
 ### 리포트 출력 구조
 
-Orchestrator 실행 시 날짜별 폴더에 다음 구조로 리포트가 생성됩니다:
+Orchestrator 실행 시 모드에 따라 다음 구조로 리포트가 생성됩니다:
 
 ```
 output/reports/
-├── YYYY-MM-DD/              # 일간 리포트 폴더
-│   ├── 01_sector_report.md      # 섹터 통합 분석 리포트
-│   ├── 02_stocks/               # 종목별 상세 리포트
-│   │   ├── 005930_삼성전자.md
-│   │   ├── 000660_SK하이닉스.md
-│   │   └── ...
-│   └── 03_final_report.md       # 최종 종합 리포트 (Top 5, 18개 종목)
+├── daily/                   # 일간 리포트 폴더
+│   └── YYYY-MM-DD/
+│       ├── 01_sector_report.md      # 섹터 통합 분석 리포트
+│       ├── 02_stocks/               # 종목별 상세 리포트
+│       │   ├── 005930_삼성전자.md
+│       │   ├── 000660_SK하이닉스.md
+│       │   └── ...
+│       └── 03_final_report.md       # 최종 종합 리포트 (Top 5, 18개 종목)
 │
 └── weekly/                  # 주간 리포트 폴더
-    └── YYYY-WXX_sector_report.md  # 주간 섹터 분석 리포트
+    └── YYYY-WXX/
+        └── sector_report.md         # 주간 섹터 분석 리포트
 ```
+
+**실행 명령:**
+- `uv run python main.py --daily`: 일간 리포트 생성 (기본값)
+- `uv run python main.py --weekly`: 주간 섹터 리포트 생성
 
 ## 개발 가이드
 

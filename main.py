@@ -26,12 +26,26 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 사용 예시:
-  uv run main.py                    # 전체 분석 실행
+  uv run main.py                    # 일간 리포트 생성 (기본값)
+  uv run main.py --daily            # 일간 리포트 생성
+  uv run main.py --weekly           # 주간 섹터 리포트 생성
   uv run main.py --sector-only      # 섹터 분석만
   uv run main.py --no-cache -v      # 캐시 없이 상세 로그
-  uv run main.py --format json      # JSON만 출력
   uv run main.py --help             # 도움말
         """
+    )
+
+    # 모드 선택 (상호 배타적)
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
+        "--daily",
+        action="store_true",
+        help="일간 리포트 생성 (기본값)"
+    )
+    mode_group.add_argument(
+        "--weekly",
+        action="store_true",
+        help="주간 섹터 리포트 생성"
     )
 
     parser.add_argument(
@@ -101,8 +115,12 @@ def main() -> int:
     log_dir = Path(args.output_dir) / "logs"
     setup_logging(verbose=args.verbose, log_dir=log_dir)
 
+    # 모드 결정: --weekly 이면 "weekly", 아니면 "daily" (기본값)
+    mode = "weekly" if args.weekly else "daily"
+
     # 실행 옵션 설정
     options = RunOptions(
+        mode=mode,
         sector_only=args.sector_only,
         group=args.group,
         output_format=args.format,
@@ -123,8 +141,10 @@ def main() -> int:
         # 분석 실행
         if args.sector_only:
             result = asyncio.run(orchestrator.run_sector_only())
+        elif mode == "weekly":
+            result = asyncio.run(orchestrator.run_weekly())
         else:
-            result = asyncio.run(orchestrator.run(options))
+            result = asyncio.run(orchestrator.run_daily(options))
 
         # 결과 출력
         print_summary(result)

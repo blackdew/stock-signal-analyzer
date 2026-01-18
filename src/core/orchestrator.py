@@ -23,6 +23,7 @@ from src.agents.analysis.ranking_agent import RankingAgent, RankingResult
 from src.agents.report.stock_report_agent import StockReportAgent
 from src.agents.report.sector_report_agent import SectorReportAgent
 from src.agents.report.summary_agent import SummaryAgent
+from src.agents.report.weekly_sector_report_agent import WeeklySectorReportAgent
 
 
 # =============================================================================
@@ -36,6 +37,7 @@ class RunOptions:
     실행 옵션
 
     Attributes:
+        mode: 실행 모드 (daily, weekly)
         sector_only: 섹터 분석만 실행
         group: 분석할 그룹 (kospi_top10, kospi_11_20, kosdaq_top10, all)
         output_format: 출력 형식 (markdown, json, both)
@@ -44,6 +46,7 @@ class RunOptions:
         output_dir: 출력 디렉토리
         verbose: 상세 로그 출력
     """
+    mode: str = "daily"
     sector_only: bool = False
     group: str = "all"
     output_format: str = "both"
@@ -170,7 +173,22 @@ class Orchestrator:
 
     async def run(self, options: Optional[RunOptions] = None) -> AnalysisOutput:
         """
-        전체 분석 파이프라인을 실행합니다.
+        전체 분석 파이프라인을 실행합니다. (하위 호환성)
+
+        기본적으로 일간 분석을 실행합니다.
+        주간 분석은 run_weekly()를 사용하세요.
+
+        Args:
+            options: 실행 옵션 (None이면 기본값 사용)
+
+        Returns:
+            AnalysisOutput
+        """
+        return await self.run_daily(options)
+
+    async def run_daily(self, options: Optional[RunOptions] = None) -> AnalysisOutput:
+        """
+        일간 분석 파이프라인을 실행합니다.
 
         Args:
             options: 실행 옵션 (None이면 기본값 사용)
@@ -185,9 +203,9 @@ class Orchestrator:
         stats: Dict[str, Any] = {"phases": {}}
         report_paths: Dict[str, Any] = {}
 
-        # 날짜별 폴더 생성 (YYYY-MM-DD 형식)
+        # 날짜별 폴더 생성 (output/reports/daily/YYYY-MM-DD)
         date_str = datetime.now().strftime("%Y-%m-%d")
-        date_report_dir = Path(self.output_dir) / "reports" / date_str
+        date_report_dir = Path(self.output_dir) / "reports" / "daily" / date_str
         date_report_dir.mkdir(parents=True, exist_ok=True)
 
         self.logger.info("=" * 60)
@@ -322,6 +340,78 @@ class Orchestrator:
             self.logger.error(f"섹터 분석 실패: {e}")
             raise
 
+    async def run_weekly(self) -> AnalysisOutput:
+        """
+        주간 섹터 리포트를 생성합니다.
+
+        Returns:
+            AnalysisOutput (주간 섹터 리포트 포함)
+        """
+        start_time = time.time()
+        stats: Dict[str, Any] = {"phases": {}}
+        report_paths: Dict[str, Any] = {}
+
+        # 주차별 폴더 생성 (output/reports/weekly/YYYY-WXX)
+        now = datetime.now()
+        week_str = now.strftime("%G-W%V")
+        weekly_report_dir = Path(self.output_dir) / "reports" / "weekly" / week_str
+        weekly_report_dir.mkdir(parents=True, exist_ok=True)
+
+        self.logger.info("=" * 60)
+        self.logger.info(f"주간 섹터 분석 시작 ({week_str})")
+        self.logger.info("=" * 60)
+
+        try:
+            # Phase 1: 섹터 분석
+            phase_start = time.time()
+            self.logger.info("Phase 1: 섹터 분석 시작")
+
+            sector_analyzer = SectorAnalyzer()
+            sector_results = await sector_analyzer.analyze()
+
+            phase_time = time.time() - phase_start
+            stats["phases"]["sector_analysis"] = {"time": round(phase_time, 2)}
+            self.logger.info(f"Phase 1 완료 ({phase_time:.1f}초)")
+
+            # Phase 2: 주간 섹터 리포트 생성
+            phase_start = time.time()
+            self.logger.info("Phase 2: 주간 섹터 리포트 생성 시작")
+
+            weekly_report_agent = WeeklySectorReportAgent(output_dir=weekly_report_dir)
+            report_path = await weekly_report_agent.generate_weekly_report(
+                sector_results, week_str
+            )
+            report_paths["weekly_sector"] = report_path
+
+            phase_time = time.time() - phase_start
+            stats["phases"]["weekly_report"] = {"time": round(phase_time, 2)}
+            self.logger.info(f"Phase 2 완료: 주간 섹터 리포트 생성 ({phase_time:.1f}초)")
+
+            # 전체 통계
+            total_time = time.time() - start_time
+            stats["total_time"] = round(total_time, 2)
+            stats["sectors_analyzed"] = len(sector_results)
+
+            self.logger.info("=" * 60)
+            self.logger.info(f"주간 섹터 분석 완료 (총 {total_time:.1f}초)")
+            self.logger.info(f"분석 섹터: {len(sector_results)}개")
+            self.logger.info("상위 3개 섹터:")
+            for i, sector in enumerate(sector_results[:3], 1):
+                self.logger.info(f"  {i}. {sector.sector_name}: {sector.weighted_score:.1f}점")
+            self.logger.info(f"리포트: {report_path}")
+            self.logger.info("=" * 60)
+
+            return AnalysisOutput(
+                generated_at=datetime.now(),
+                sector_results=sector_results,
+                report_paths=report_paths,
+                stats=stats
+            )
+
+        except Exception as e:
+            self.logger.error(f"주간 섹터 분석 실패: {e}")
+            raise
+
     async def _run_with_retry(
         self,
         func,
@@ -405,6 +495,8 @@ def print_summary(result: AnalysisOutput) -> None:
                 print(f"  - 종합 리포트: {paths['markdown']}")
             if "json" in paths:
                 print(f"  - JSON 데이터: {paths['json']}")
+        if "weekly_sector" in result.report_paths:
+            print(f"  - 주간 섹터 리포트: {result.report_paths['weekly_sector']}")
 
     print(f"\n⏱️ 총 소요 시간: {result.stats.get('total_time', 0):.1f}초")
     print("=" * 60)
