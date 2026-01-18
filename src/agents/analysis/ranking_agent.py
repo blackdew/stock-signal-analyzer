@@ -31,7 +31,7 @@ class RankingResult:
         sector_top: 섹터별 상위 종목 (상위 3개 섹터의 상위 종목)
 
         final_18: 최종 선정된 18개 종목
-        final_top3: 최종 Top 3 종목
+        final_top5: 최종 Top 5 종목
 
         top_sectors: 상위 3개 섹터
     """
@@ -92,13 +92,13 @@ class RankingAgent(BaseAgent):
       - KOSDAQ Top 10에서 3개
       - 상위 3개 섹터에서 각 3개 (9개)
     - 최종 18개 종목 선정
-    - 최종 Top 3 선정 (가중치: 총점 70%, 수급 15%, 성장성 15%)
+    - 최종 Top 5 선정 (가중치: 총점 70%, 수급 15%, 성장성 15%)
 
     사용 예시:
         agent = RankingAgent()
         result = await agent.rank()
 
-        print(result.final_top3)
+        print(result.final_top5)
     """
 
     stock_analyzer: StockAnalyzer = field(default_factory=StockAnalyzer)

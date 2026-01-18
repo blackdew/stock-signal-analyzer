@@ -267,16 +267,16 @@ class Orchestrator:
             total_time = time.time() - start_time
             stats["total_time"] = round(total_time, 2)
             stats["final_stocks"] = len(ranking_result.final_18)
-            stats["final_top3"] = [
+            stats["final_top5"] = [
                 {"symbol": s.symbol, "name": s.name, "score": s.total_score}
-                for s in ranking_result.final_top3
+                for s in ranking_result.final_top5
             ]
 
             self.logger.info("=" * 60)
             self.logger.info(f"분석 완료 (총 {total_time:.1f}초)")
             self.logger.info(f"최종 {len(ranking_result.final_18)}개 종목 선정")
-            self.logger.info("Top 3:")
-            for i, stock in enumerate(ranking_result.final_top3, 1):
+            self.logger.info("Top 5:")
+            for i, stock in enumerate(ranking_result.final_top5, 1):
                 self.logger.info(f"  {i}. {stock.name} ({stock.symbol}): {stock.total_score:.1f}점")
             self.logger.info("=" * 60)
 
@@ -385,8 +385,8 @@ def print_summary(result: AnalysisOutput) -> None:
     print("=" * 60)
 
     if result.ranking_result:
-        print(f"\n🏆 Top 3 추천 종목:")
-        for i, stock in enumerate(result.ranking_result.final_top3, 1):
+        print(f"\n🏆 Top 5 추천 종목:")
+        for i, stock in enumerate(result.ranking_result.final_top5, 1):
             print(f"  {i}. {stock.name} ({stock.symbol})")
             print(f"     점수: {stock.total_score:.1f}/100 | 등급: {stock.investment_grade}")
 
