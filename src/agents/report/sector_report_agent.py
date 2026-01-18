@@ -58,13 +58,40 @@ class SectorReportAgent(BaseAgent):
         """
         return {}
 
+    async def generate_unified_report(
+        self,
+        sectors: List[SectorAnalysisResult],
+    ) -> str:
+        """
+        모든 섹터를 하나의 통합 리포트로 생성합니다.
+
+        Args:
+            sectors: 섹터 분석 결과 리스트
+
+        Returns:
+            생성된 리포트 파일 경로
+        """
+        self._log_info(f"Generating unified sector report for {len(sectors)} sectors")
+
+        # 마크다운 생성
+        content = self._render_unified_markdown(sectors)
+
+        # 파일 저장 (01_sector_report.md)
+        filepath = self.output_dir / "01_sector_report.md"
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        self._log_info(f"Generated unified sector report: {filepath}")
+        return str(filepath)
+
     async def generate_reports(
         self,
         sectors: List[SectorAnalysisResult],
         date_str: Optional[str] = None,
     ) -> Dict[str, str]:
         """
-        섹터 리포트를 생성합니다.
+        섹터 리포트를 생성합니다. (기존 방식, 개별 파일)
 
         Args:
             sectors: 섹터 분석 결과 리스트
@@ -311,3 +338,143 @@ class SectorReportAgent(BaseAgent):
             return f"{market_cap / 10000:.1f}조원"
         else:
             return f"{market_cap:,.0f}억원"
+
+    def _render_unified_markdown(self, sectors: List[SectorAnalysisResult]) -> str:
+        """
+        모든 섹터를 하나의 통합 마크다운으로 렌더링합니다.
+
+        Args:
+            sectors: 섹터 분석 결과 리스트
+
+        Returns:
+            통합 마크다운 문자열
+        """
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+        # 상위 3개 섹터 하이라이트
+        top3_sectors = sectors[:3] if len(sectors) >= 3 else sectors
+        top3_highlight = self._render_top3_highlight(top3_sectors)
+
+        # 전체 섹터 순위 테이블
+        all_sectors_table = self._render_all_sectors_table(sectors)
+
+        # 각 섹터별 상세 분석
+        sector_details = self._render_sector_details(sectors)
+
+        md = f"""# 섹터 분석 리포트
+
+> 생성일시: {now}
+> 분석 대상: {len(sectors)}개 섹터
+
+---
+
+## 🏆 상위 3개 섹터 하이라이트
+
+{top3_highlight}
+
+---
+
+## 📊 전체 섹터 순위
+
+{all_sectors_table}
+
+---
+
+## 📈 섹터별 상세 분석
+
+{sector_details}
+
+---
+
+*이 리포트는 자동 생성되었으며, 투자 판단의 참고 자료로만 활용하시기 바랍니다.*
+"""
+        return md
+
+    def _render_top3_highlight(self, sectors: List[SectorAnalysisResult]) -> str:
+        """
+        상위 3개 섹터 하이라이트를 렌더링합니다.
+        """
+        highlights = []
+
+        for i, sector in enumerate(sectors, 1):
+            market_cap_str = self._format_market_cap(sector.total_market_cap)
+
+            # 상위 종목 이름만 추출
+            top_stock_names = [s.name for s in sector.top_stocks[:3]]
+            top_stocks_str = ", ".join(top_stock_names) if top_stock_names else "N/A"
+
+            highlight = f"""### {i}위: {sector.sector_name}
+
+| 항목 | 값 |
+|------|-----|
+| 시가총액 가중 점수 | **{sector.weighted_score:.1f}점** |
+| 단순 평균 점수 | {sector.simple_score:.1f}점 |
+| 종목 수 | {sector.stock_count}개 |
+| 총 시가총액 | {market_cap_str} |
+| 대표 종목 | {top_stocks_str} |
+"""
+            highlights.append(highlight)
+
+        return "\n".join(highlights)
+
+    def _render_all_sectors_table(self, sectors: List[SectorAnalysisResult]) -> str:
+        """
+        전체 섹터 순위 테이블을 렌더링합니다.
+        """
+        lines = [
+            "| 순위 | 섹터명 | 가중 점수 | 단순 점수 | 종목 수 | 시가총액 |",
+            "|------|--------|----------|----------|--------|----------|",
+        ]
+
+        for sector in sectors:
+            market_cap_str = self._format_market_cap(sector.total_market_cap)
+            lines.append(
+                f"| {sector.rank} | **{sector.sector_name}** | {sector.weighted_score:.1f} | "
+                f"{sector.simple_score:.1f} | {sector.stock_count}개 | {market_cap_str} |"
+            )
+
+        return "\n".join(lines)
+
+    def _render_sector_details(self, sectors: List[SectorAnalysisResult]) -> str:
+        """
+        각 섹터별 상세 분석을 렌더링합니다.
+        """
+        details = []
+
+        for sector in sectors:
+            market_cap_str = self._format_market_cap(sector.total_market_cap)
+
+            # 상위 종목 테이블
+            top_stocks_table = self._render_top_stocks_table(sector.top_stocks)
+
+            # 카테고리별 분석
+            category_analysis = self._analyze_category_strengths(sector)
+
+            detail = f"""### {sector.rank}위: {sector.sector_name}
+
+| 항목 | 값 |
+|------|-----|
+| 시가총액 가중 점수 | {sector.weighted_score:.1f}/100점 |
+| 단순 평균 점수 | {sector.simple_score:.1f}/100점 |
+| 종목 수 | {sector.stock_count}개 |
+| 총 시가총액 | {market_cap_str} |
+
+**카테고리별 점수**:
+| 카테고리 | 점수 | 비율 |
+|----------|------|------|
+| 기술적 분석 | {sector.technical_score:.1f}/25점 | {sector.technical_score/25*100:.0f}% |
+| 수급 분석 | {sector.supply_score:.1f}/20점 | {sector.supply_score/20*100:.0f}% |
+| 펀더멘털 분석 | {sector.fundamental_score:.1f}/20점 | {sector.fundamental_score/20*100:.0f}% |
+| 시장 환경 | {sector.market_score:.1f}/15점 | {sector.market_score/15*100:.0f}% |
+
+**강/약점 분석**:
+{category_analysis}
+
+**상위 종목**:
+{top_stocks_table}
+
+---
+"""
+            details.append(detail)
+
+        return "\n".join(details)

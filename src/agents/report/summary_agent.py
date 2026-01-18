@@ -83,13 +83,14 @@ class SummaryAgent(BaseAgent):
 
         Args:
             ranking_result: RankingAgent의 결과
-            date_str: 날짜 문자열 (기본값: 오늘)
+            date_str: 날짜 문자열 (미사용, 폴더명에서 날짜 사용)
 
         Returns:
             생성된 파일 경로들 (markdown, json)
         """
+        # 날짜 문자열 (JSON 파일용)
         if date_str is None:
-            date_str = datetime.now().strftime("%Y%m%d")
+            date_str = datetime.now().strftime("%Y-%m-%d")
 
         self._log_info("Generating summary report")
 
@@ -99,8 +100,8 @@ class SummaryAgent(BaseAgent):
         json_path = await self._save_json_data(ranking_result, date_str)
         result_paths["json"] = json_path
 
-        # 2. 마크다운 종합 리포트 생성
-        md_path = await self._save_markdown_report(ranking_result, date_str)
+        # 2. 마크다운 종합 리포트 생성 (03_final_report.md)
+        md_path = await self._save_markdown_report(ranking_result)
         result_paths["markdown"] = md_path
 
         self._log_info(f"Summary report generated: {result_paths}")
@@ -258,14 +259,14 @@ class SummaryAgent(BaseAgent):
     async def _save_markdown_report(
         self,
         ranking_result: RankingResult,
-        date_str: str,
     ) -> str:
         """
         마크다운 종합 리포트를 저장합니다.
+        파일명: 03_final_report.md (날짜별 폴더에 저장됨)
         """
         content = self._render_markdown(ranking_result)
 
-        filepath = self.summary_dir / f"종합리포트_{date_str}.md"
+        filepath = self.summary_dir / "03_final_report.md"
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(content)
 

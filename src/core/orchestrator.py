@@ -184,7 +184,11 @@ class Orchestrator:
         start_time = time.time()
         stats: Dict[str, Any] = {"phases": {}}
         report_paths: Dict[str, Any] = {}
-        date_str = datetime.now().strftime("%Y%m%d")
+
+        # 날짜별 폴더 생성 (YYYY-MM-DD 형식)
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        date_report_dir = Path(self.output_dir) / "reports" / date_str
+        date_report_dir.mkdir(parents=True, exist_ok=True)
 
         self.logger.info("=" * 60)
         self.logger.info("투자 기회 분석 시작")
@@ -204,14 +208,35 @@ class Orchestrator:
             stats["phases"]["ranking"] = {"time": round(phase_time, 2)}
             self.logger.info(f"Phase 1 완료 ({phase_time:.1f}초)")
 
-            # Phase 2: 종목 리포트 생성
+            # Phase 2: 섹터 리포트 생성 (01_sector_report.md)
             if options.output_format in ("markdown", "both"):
                 phase_start = time.time()
-                self.logger.info("Phase 2: 종목 리포트 생성 시작")
+                self.logger.info("Phase 2: 섹터 리포트 생성 시작")
 
-                stock_paths = await self.stock_report_agent.generate_reports(
-                    ranking_result.final_18,
-                    date_str
+                # SectorReportAgent에 날짜 폴더 전달
+                sector_report_agent = SectorReportAgent(output_dir=date_report_dir)
+                sector_path = await sector_report_agent.generate_unified_report(
+                    ranking_result.top_sectors
+                )
+                report_paths["sectors"] = sector_path
+
+                phase_time = time.time() - phase_start
+                stats["phases"]["sector_reports"] = {
+                    "time": round(phase_time, 2),
+                    "count": len(ranking_result.top_sectors)
+                }
+                self.logger.info(f"Phase 2 완료: 섹터 통합 리포트 생성 ({phase_time:.1f}초)")
+
+            # Phase 3: 종목 리포트 생성 (02_stocks/)
+            if options.output_format in ("markdown", "both"):
+                phase_start = time.time()
+                self.logger.info("Phase 3: 종목 리포트 생성 시작")
+
+                # StockReportAgent에 날짜/stocks 폴더 전달
+                stocks_dir = date_report_dir / "02_stocks"
+                stock_report_agent = StockReportAgent(output_dir=stocks_dir)
+                stock_paths = await stock_report_agent.generate_reports(
+                    ranking_result.final_18
                 )
                 report_paths["stocks"] = stock_paths
 
@@ -220,34 +245,18 @@ class Orchestrator:
                     "time": round(phase_time, 2),
                     "count": len(stock_paths)
                 }
-                self.logger.info(f"Phase 2 완료: {len(stock_paths)}개 종목 리포트 ({phase_time:.1f}초)")
+                self.logger.info(f"Phase 3 완료: {len(stock_paths)}개 종목 리포트 ({phase_time:.1f}초)")
 
-            # Phase 3: 섹터 리포트 생성
-            if options.output_format in ("markdown", "both"):
-                phase_start = time.time()
-                self.logger.info("Phase 3: 섹터 리포트 생성 시작")
-
-                sector_paths = await self.sector_report_agent.generate_reports(
-                    ranking_result.top_sectors,
-                    date_str
-                )
-                report_paths["sectors"] = sector_paths
-
-                phase_time = time.time() - phase_start
-                stats["phases"]["sector_reports"] = {
-                    "time": round(phase_time, 2),
-                    "count": len(sector_paths)
-                }
-                self.logger.info(f"Phase 3 완료: {len(sector_paths)}개 섹터 리포트 ({phase_time:.1f}초)")
-
-            # Phase 4: 종합 리포트 생성
+            # Phase 4: 종합 리포트 생성 (03_final_report.md)
             phase_start = time.time()
             self.logger.info("Phase 4: 종합 리포트 생성 시작")
 
-            summary_paths = await self.summary_agent.generate_summary(
-                ranking_result,
-                date_str
+            # SummaryAgent에 날짜 폴더 전달
+            summary_agent = SummaryAgent(
+                summary_dir=date_report_dir,
+                data_dir=Path(self.output_dir) / "data"
             )
+            summary_paths = await summary_agent.generate_summary(ranking_result)
             report_paths["summary"] = summary_paths
 
             phase_time = time.time() - phase_start

@@ -77,19 +77,16 @@ class StockReportAgent(BaseAgent):
 
         Args:
             stocks: 종목 분석 결과 리스트
-            date_str: 날짜 문자열 (기본값: 오늘)
+            date_str: 날짜 문자열 (미사용, 폴더명에서 날짜 사용)
 
         Returns:
             종목코드를 키로 하는 리포트 파일 경로 딕셔너리
         """
-        if date_str is None:
-            date_str = datetime.now().strftime("%Y%m%d")
-
         self._log_info(f"Generating {len(stocks)} stock reports")
 
         # 병렬 생성
         tasks = [
-            self._generate_single_report(stock, date_str)
+            self._generate_single_report(stock)
             for stock in stocks
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -108,14 +105,12 @@ class StockReportAgent(BaseAgent):
     async def _generate_single_report(
         self,
         stock: StockAnalysisResult,
-        date_str: str,
     ) -> str:
         """
         단일 종목 리포트를 생성합니다.
 
         Args:
             stock: 종목 분석 결과
-            date_str: 날짜 문자열
 
         Returns:
             생성된 리포트 파일 경로
@@ -123,8 +118,8 @@ class StockReportAgent(BaseAgent):
         # 마크다운 생성
         content = self._render_markdown(stock)
 
-        # 파일 저장
-        filename = f"{stock.symbol}_{stock.name}_{date_str}.md"
+        # 파일 저장 (날짜 없이, 폴더명에 날짜 포함됨)
+        filename = f"{stock.symbol}_{stock.name}.md"
         filepath = self.output_dir / filename
 
         with open(filepath, "w", encoding="utf-8") as f:
