@@ -20,6 +20,7 @@ from src.agents.data.news_agent import NewsAgent
 from src.agents.analysis.stock_analyzer import StockAnalyzer, StockAnalysisResult
 from src.agents.analysis.sector_analyzer import SectorAnalyzer, SectorAnalysisResult
 from src.agents.analysis.ranking_agent import RankingAgent, RankingResult
+from src.agents.analysis.data_quality import DataQualityError, DataQualitySummary
 from src.agents.report.stock_report_agent import StockReportAgent
 from src.agents.report.sector_report_agent import SectorReportAgent
 from src.agents.report.summary_agent import SummaryAgent
@@ -45,6 +46,7 @@ class RunOptions:
         skip_news: 뉴스 분석 스킵
         output_dir: 출력 디렉토리
         verbose: 상세 로그 출력
+        strict: 데이터 품질 기준 미달 시 실행 중단
     """
     mode: str = "daily"
     sector_only: bool = False
@@ -54,6 +56,7 @@ class RunOptions:
     skip_news: bool = False
     output_dir: str = "output"
     verbose: bool = False
+    strict: bool = False
 
 
 @dataclass
@@ -83,12 +86,14 @@ class AnalysisOutput:
         ranking_result: 순위 산정 결과
         report_paths: 생성된 리포트 파일 경로
         stats: 실행 통계
+        data_quality_summary: 데이터 품질 요약
     """
     generated_at: datetime
     ranking_result: Optional[RankingResult] = None
     sector_results: Optional[List[SectorAnalysisResult]] = None
     report_paths: Dict[str, Any] = field(default_factory=dict)
     stats: Dict[str, Any] = field(default_factory=dict)
+    data_quality_summary: Optional[Dict[str, Any]] = None
 
 
 # =============================================================================
@@ -226,6 +231,45 @@ class Orchestrator:
             stats["phases"]["ranking"] = {"time": round(phase_time, 2)}
             self.logger.info(f"Phase 1 완료 ({phase_time:.1f}초)")
 
+            # 데이터 품질 요약 출력
+            quality_summary = self.ranking_agent.get_quality_summary()
+            quality_summary_dict = None
+
+            if quality_summary:
+                quality_summary_dict = {
+                    "total_count": quality_summary.total_count,
+                    "valid_count": quality_summary.valid_count,
+                    "invalid_count": quality_summary.invalid_count,
+                    "avg_quality_score": quality_summary.avg_quality_score,
+                    "invalid_symbols": quality_summary.invalid_symbols,
+                }
+
+                self.logger.info("-" * 40)
+                self.logger.info("📊 데이터 품질 요약")
+                self.logger.info(f"  전체 종목: {quality_summary.total_count}개")
+                self.logger.info(f"  유효 종목: {quality_summary.valid_count}개")
+                self.logger.info(f"  무효 종목: {quality_summary.invalid_count}개")
+                self.logger.info(f"  평균 품질 점수: {quality_summary.avg_quality_score:.1f}/100")
+
+                if quality_summary.invalid_symbols:
+                    self.logger.warning(
+                        f"  ⚠️ 품질 기준 미달 종목: {', '.join(quality_summary.invalid_symbols[:5])}"
+                        + (" 외" if len(quality_summary.invalid_symbols) > 5 else "")
+                    )
+                self.logger.info("-" * 40)
+
+                # --strict 모드: 품질 기준 미달 시 실행 중단
+                if options.strict and quality_summary.invalid_count > 0:
+                    error_msg = (
+                        f"데이터 품질 기준 미달: {quality_summary.invalid_count}개 종목이 "
+                        f"필수 데이터 항목을 충족하지 못했습니다. "
+                        f"(무효 종목: {', '.join(quality_summary.invalid_symbols)})"
+                    )
+                    self.logger.error(f"🚫 [STRICT MODE] {error_msg}")
+                    raise DataQualityError(error_msg, quality_summary)
+
+            stats["data_quality"] = quality_summary_dict
+
             # Phase 2: 섹터 리포트 생성 (01_sector_report.md)
             if options.output_format in ("markdown", "both"):
                 phase_start = time.time()
@@ -303,9 +347,12 @@ class Orchestrator:
                 ranking_result=ranking_result,
                 sector_results=ranking_result.top_sectors,
                 report_paths=report_paths,
-                stats=stats
+                stats=stats,
+                data_quality_summary=quality_summary_dict,
             )
 
+        except DataQualityError:
+            raise  # strict 모드에서 데이터 품질 오류는 그대로 전파
         except Exception as e:
             self.logger.error(f"분석 실패: {e}")
             raise

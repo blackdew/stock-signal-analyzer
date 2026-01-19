@@ -12,6 +12,7 @@ from pathlib import Path
 
 from src.core.logging_config import setup_logging
 from src.core.orchestrator import Orchestrator, RunOptions, print_summary
+from src.agents.analysis.data_quality import DataQualityError
 
 
 def parse_args() -> argparse.Namespace:
@@ -93,6 +94,12 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="데이터 품질 기준 미달 시 실행 중단"
+    )
+
+    parser.add_argument(
         "--version",
         action="version",
         version="%(prog)s 1.0.0"
@@ -127,7 +134,8 @@ def main() -> int:
         use_cache=not args.no_cache,
         skip_news=args.no_news,
         output_dir=args.output_dir,
-        verbose=args.verbose
+        verbose=args.verbose,
+        strict=args.strict,
     )
 
     # Orchestrator 생성
@@ -154,6 +162,17 @@ def main() -> int:
     except KeyboardInterrupt:
         print("\n\n분석이 사용자에 의해 중단되었습니다.")
         return 1
+
+    except DataQualityError as e:
+        print(f"\n🚫 데이터 품질 오류: {e}")
+        summary = e.summary
+        print(f"   - 전체 종목: {summary.total_count}개")
+        print(f"   - 무효 종목: {summary.invalid_count}개")
+        print(f"   - 무효 종목 목록: {', '.join(summary.invalid_symbols[:10])}")
+        if len(summary.invalid_symbols) > 10:
+            print(f"     ... 외 {len(summary.invalid_symbols) - 10}개")
+        print("\n💡 --strict 옵션 없이 실행하면 품질 기준 미달 종목을 포함하여 분석합니다.")
+        return 2
 
     except Exception as e:
         print(f"\n오류 발생: {e}")

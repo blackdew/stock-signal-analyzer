@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from src.agents.base_agent import BaseAgent
 from src.agents.analysis.stock_analyzer import StockAnalyzer, StockAnalysisResult
 from src.agents.analysis.sector_analyzer import SectorAnalyzer, SectorAnalysisResult
+from src.agents.analysis.data_quality import DataQualitySummary
 from src.core.config import SECTORS
 
 
@@ -296,3 +297,12 @@ class RankingAgent(BaseAgent):
             "kosdaq_top10": [s.to_dict() for s in result.kosdaq_top10],
             "sector_top": [s.to_dict() for s in result.sector_top],
         }
+
+    def get_quality_summary(self) -> Optional[DataQualitySummary]:
+        """
+        마지막 분석의 데이터 품질 요약을 반환합니다.
+
+        Returns:
+            DataQualitySummary (분석이 수행되지 않았으면 None)
+        """
+        return self.stock_analyzer.get_quality_summary()

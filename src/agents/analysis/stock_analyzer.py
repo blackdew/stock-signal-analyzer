@@ -14,6 +14,11 @@ from src.agents.base_agent import BaseAgent
 from src.agents.data.market_data_agent import MarketDataAgent, MarketData
 from src.agents.data.fundamental_agent import FundamentalAgent, FundamentalData
 from src.agents.data.news_agent import NewsAgent, NewsData
+from src.agents.analysis.data_quality import (
+    DataQualityValidator,
+    DataQualityResult,
+    DataQualitySummary,
+)
 from src.core.rubric import RubricEngine, RubricResult
 from src.core.config import SECTORS, get_sector_by_symbol
 from src.data.fetcher import StockDataFetcher
@@ -75,6 +80,9 @@ class StockAnalysisResult:
     rank_in_group: int = 0
     final_rank: Optional[int] = None
 
+    # 데이터 품질
+    data_quality: Optional[DataQualityResult] = None
+
     def to_dict(self) -> Dict[str, Any]:
         """딕셔너리로 변환"""
         return {
@@ -93,6 +101,7 @@ class StockAnalysisResult:
             "investment_grade": self.investment_grade,
             "rank_in_group": self.rank_in_group,
             "final_rank": self.final_rank,
+            "data_quality": self.data_quality.to_dict() if self.data_quality else None,
         }
 
 
@@ -130,6 +139,10 @@ class StockAnalyzer(BaseAgent):
     news_agent: NewsAgent = field(default_factory=NewsAgent)
     rubric_engine: RubricEngine = field(default_factory=RubricEngine)
     fetcher: StockDataFetcher = field(default_factory=StockDataFetcher)
+    quality_validator: DataQualityValidator = field(default_factory=DataQualityValidator)
+
+    # 마지막 분석의 품질 요약 (Orchestrator에서 참조)
+    _last_quality_summary: Optional[DataQualitySummary] = field(default=None, init=False)
 
     async def collect(self, symbols: List[str]) -> Dict[str, StockAnalysisResult]:
         """
@@ -160,6 +173,24 @@ class StockAnalyzer(BaseAgent):
         fundamental_data = await self.fundamental_agent.collect(symbols)
         news_data = await self.news_agent.collect(symbols)
 
+        # 데이터 품질 검증
+        quality_results = self.quality_validator.validate_batch(
+            market_data, fundamental_data
+        )
+        self._last_quality_summary = self.quality_validator.summarize(quality_results)
+
+        # 품질 로그 출력
+        summary = self._last_quality_summary
+        if summary.invalid_count > 0:
+            self._log_warning(
+                f"Data quality issues: {summary.invalid_count}/{summary.total_count} "
+                f"stocks have invalid data (avg score: {summary.avg_quality_score})"
+            )
+            for symbol in summary.invalid_symbols[:5]:  # 최대 5개만 표시
+                qr = quality_results.get(symbol)
+                if qr:
+                    self._log_warning(f"  - {symbol}: missing {qr.missing_required}")
+
         # 시가총액 조회
         market_caps = self._get_market_caps(symbols)
 
@@ -174,6 +205,7 @@ class StockAnalyzer(BaseAgent):
                     fundamental_data=fundamental_data.get(symbol),
                     news_data=news_data.get(symbol),
                     market_cap=market_caps.get(symbol, 0),
+                    data_quality=quality_results.get(symbol),
                 )
                 if result:
                     results[symbol] = result
@@ -183,6 +215,10 @@ class StockAnalyzer(BaseAgent):
         self._log_info(f"Analyzed {len(results)}/{len(symbols)} stocks")
         return results
 
+    def get_quality_summary(self) -> Optional[DataQualitySummary]:
+        """마지막 분석의 데이터 품질 요약을 반환합니다."""
+        return self._last_quality_summary
+
     def _analyze_single(
         self,
         symbol: str,
@@ -191,6 +227,7 @@ class StockAnalyzer(BaseAgent):
         fundamental_data: Optional[FundamentalData],
         news_data: Optional[NewsData],
         market_cap: float,
+        data_quality: Optional[DataQualityResult] = None,
     ) -> Optional[StockAnalysisResult]:
         """
         단일 종목을 분석합니다.
@@ -241,6 +278,7 @@ class StockAnalyzer(BaseAgent):
             relative_strength_score=rubric_result.relative_strength.weighted_score if rubric_result.relative_strength else 0.0,
             total_score=rubric_result.total_score,
             investment_grade=rubric_result.grade,
+            data_quality=data_quality,
         )
 
         return result
