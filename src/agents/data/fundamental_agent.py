@@ -2,24 +2,20 @@
 Fundamental Agent
 
 재무제표 데이터를 수집하는 에이전트.
-FinanceDataReader를 활용하여 PER, PBR, ROE, 부채비율 등을 조회합니다.
+네이버 금융 크롤링을 통해 PER, PBR, ROE, 부채비율 등을 조회합니다.
 """
 
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-import pandas as pd
+import requests
+from bs4 import BeautifulSoup
 
 from src.agents.base_agent import BaseAgent
 from src.data.cache import CacheManager, CacheTTL
 from src.data.fetcher import StockDataFetcher
 from src.core.config import SECTORS, get_sector_by_symbol
-
-try:
-    import FinanceDataReader as fdr
-except ImportError:
-    fdr = None
 
 
 # =============================================================================
@@ -185,105 +181,154 @@ class FundamentalAgent(BaseAgent):
 
     def _fetch_financial_data(self, symbol: str) -> Dict[str, Any]:
         """
-        FinanceDataReader를 사용하여 재무 데이터를 가져옵니다.
+        재무 데이터를 가져옵니다. (네이버 금융 크롤링)
+
+        Returns:
+            재무 데이터 딕셔너리 (per, pbr, roe, debt_ratio, operating_margin, operating_profit_growth)
+        """
+        return self._fetch_from_naver(symbol)
+
+    def _fetch_from_naver(self, symbol: str) -> Dict[str, Any]:
+        """
+        네이버 금융에서 펀더멘털 데이터를 크롤링합니다.
+
+        크롤링 대상:
+        - PER, PBR: em#_per, em#_pbr 태그
+        - ROE, 부채비율, 영업이익률: 주요재무정보 테이블
 
         Returns:
             재무 데이터 딕셔너리
         """
         result: Dict[str, Any] = {}
 
-        if fdr is None:
-            self._log_warning("FinanceDataReader not available")
-            return result
-
         try:
-            # KRX 상장 종목 정보에서 기본 밸류에이션 데이터 가져오기
-            krx = self.fetcher._get_krx_listing()
-            stock = krx[krx["Code"] == symbol]
+            url = f"https://finance.naver.com/item/main.naver?code={symbol}"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+            }
+            response = requests.get(url, headers=headers, timeout=10)
+            response.encoding = response.apparent_encoding or "utf-8"
 
-            if not stock.empty:
-                row = stock.iloc[0]
+            if response.status_code != 200:
+                self._log_warning(f"Naver finance request failed for {symbol}: {response.status_code}")
+                return result
 
-                # PER
-                if "PER" in row.index and pd.notna(row["PER"]):
-                    per_value = row["PER"]
-                    if per_value > 0:  # 음수 PER 제외
-                        result["per"] = round(float(per_value), 2)
+            soup = BeautifulSoup(response.text, "html.parser")
 
-                # PBR
-                if "PBR" in row.index and pd.notna(row["PBR"]):
-                    pbr_value = row["PBR"]
-                    if pbr_value > 0:
-                        result["pbr"] = round(float(pbr_value), 2)
+            # PER 추출 (em#_per)
+            per_em = soup.select_one("em#_per")
+            if per_em:
+                try:
+                    per_text = per_em.text.strip().replace(",", "")
+                    if per_text and per_text != "N/A":
+                        per_value = float(per_text)
+                        if per_value > 0:
+                            result["per"] = round(per_value, 2)
+                except (ValueError, TypeError):
+                    pass
 
-            # SnapDataReader로 추가 재무 데이터 시도
-            snap_data = self._fetch_snap_data(symbol)
-            if snap_data:
-                result.update(snap_data)
+            # PBR 추출 (em#_pbr)
+            pbr_em = soup.select_one("em#_pbr")
+            if pbr_em:
+                try:
+                    pbr_text = pbr_em.text.strip().replace(",", "")
+                    if pbr_text and pbr_text != "N/A":
+                        pbr_value = float(pbr_text)
+                        if pbr_value > 0:
+                            result["pbr"] = round(pbr_value, 2)
+                except (ValueError, TypeError):
+                    pass
 
+            # 주요재무정보 테이블에서 ROE, 부채비율, 영업이익률 추출
+            self._extract_financial_table_data(soup, result)
+
+        except requests.RequestException as e:
+            self._log_warning(f"Naver finance request error for {symbol}: {e}")
         except Exception as e:
-            self._log_warning(f"Financial data fetch failed for {symbol}: {e}")
+            self._log_debug(f"Naver finance parsing failed for {symbol}: {e}")
 
         return result
 
-    def _fetch_snap_data(self, symbol: str) -> Dict[str, Any]:
+    def _extract_financial_table_data(self, soup: BeautifulSoup, result: Dict[str, Any]) -> None:
         """
-        SnapDataReader를 사용하여 상세 재무 데이터를 가져옵니다.
+        주요재무정보 테이블에서 ROE, 부채비율, 영업이익률, 성장률을 추출합니다.
         """
-        result: Dict[str, Any] = {}
+        for table in soup.select("table.tb_type1"):
+            headers = [th.text.strip() for th in table.select("th")]
+            # 주요재무정보 테이블 확인 (ROE(지배주주) 헤더 포함)
+            if "ROE(지배주주)" not in headers:
+                continue
 
-        try:
-            # SnapDataReader 시도 (지원되는 경우)
-            if not hasattr(fdr, "SnapDataReader"):
-                return result
+            rows = table.select("tr")
+            for row in rows:
+                th = row.select_one("th")
+                if not th:
+                    continue
 
-            snap_df = fdr.SnapDataReader(symbol)
+                th_text = th.text.strip()
+                tds = row.select("td")
+                if len(tds) < 3:
+                    continue
 
-            if snap_df is None or snap_df.empty:
-                return result
+                # 2024.12 (3번째 컬럼, 인덱스 2)를 기본으로 사용
+                # 값이 없으면 2023.12 (2번째 컬럼, 인덱스 1) 사용
+                value = None
+                for idx in [2, 1]:
+                    if idx < len(tds):
+                        td_text = tds[idx].text.strip().replace(",", "")
+                        if td_text and td_text != "-":
+                            try:
+                                value = float(td_text)
+                                break
+                            except ValueError:
+                                continue
 
-            # ROE 추출
-            if "ROE" in snap_df.columns:
-                roe_value = snap_df["ROE"].iloc[0]
-                if pd.notna(roe_value):
-                    result["roe"] = round(float(roe_value), 2)
+                if value is None:
+                    continue
 
-            # 영업이익률 추출
-            for col in ["영업이익률", "OPM", "OperatingMargin"]:
-                if col in snap_df.columns:
-                    value = snap_df[col].iloc[0]
-                    if pd.notna(value):
-                        result["operating_margin"] = round(float(value), 2)
-                        break
+                # 각 항목별 추출
+                if th_text == "ROE(지배주주)" and "roe" not in result:
+                    result["roe"] = round(value, 2)
+                elif th_text == "부채비율" and "debt_ratio" not in result:
+                    result["debt_ratio"] = round(value, 2)
+                elif th_text == "영업이익률" and "operating_margin" not in result:
+                    result["operating_margin"] = round(value, 2)
+                elif th_text == "영업이익" and "operating_profit" not in result:
+                    # 영업이익은 성장률 계산용으로 저장
+                    result["operating_profit"] = value
 
-            # 부채비율 추출
-            for col in ["부채비율", "DebtRatio", "Debt Ratio"]:
-                if col in snap_df.columns:
-                    value = snap_df[col].iloc[0]
-                    if pd.notna(value):
-                        result["debt_ratio"] = round(float(value), 2)
-                        break
+            # 영업이익 성장률 계산 (최근 2년 영업이익 비교)
+            self._calculate_growth_rate_from_table(rows, result)
 
-            # 매출 성장률 추출
-            for col in ["매출액증가율", "RevenueGrowth", "Revenue Growth"]:
-                if col in snap_df.columns:
-                    value = snap_df[col].iloc[0]
-                    if pd.notna(value):
-                        result["revenue_growth"] = round(float(value), 2)
-                        break
+    def _calculate_growth_rate_from_table(self, rows: list, result: Dict[str, Any]) -> None:
+        """영업이익 성장률을 테이블 데이터에서 계산합니다."""
+        if "operating_profit_growth" in result:
+            return
 
-            # 영업이익 성장률 추출
-            for col in ["영업이익증가율", "OPGrowth", "Operating Profit Growth"]:
-                if col in snap_df.columns:
-                    value = snap_df[col].iloc[0]
-                    if pd.notna(value):
-                        result["operating_profit_growth"] = round(float(value), 2)
-                        break
+        for row in rows:
+            th = row.select_one("th")
+            if not th or th.text.strip() != "영업이익":
+                continue
 
-        except Exception as e:
-            self._log_debug(f"SnapDataReader failed for {symbol}: {e}")
+            tds = row.select("td")
+            if len(tds) < 3:
+                continue
 
-        return result
+            # 2024.12 (인덱스 2)와 2023.12 (인덱스 1) 비교
+            try:
+                current_text = tds[2].text.strip().replace(",", "")
+                prev_text = tds[1].text.strip().replace(",", "")
+
+                if current_text and prev_text and current_text != "-" and prev_text != "-":
+                    current = float(current_text)
+                    prev = float(prev_text)
+
+                    if prev != 0:
+                        growth = ((current - prev) / abs(prev)) * 100
+                        result["operating_profit_growth"] = round(growth, 2)
+            except (ValueError, IndexError):
+                pass
+            break
 
     async def _calculate_sector_averages(self) -> None:
         """

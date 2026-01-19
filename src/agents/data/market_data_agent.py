@@ -2,7 +2,7 @@
 Market Data Agent
 
 주가, 기술적 지표, 수급 데이터를 수집하는 에이전트.
-FinanceDataReader를 활용하여 KOSPI/KOSDAQ 시총 상위 종목 및
+네이버 금융을 활용하여 KOSPI/KOSDAQ 시총 상위 종목 및
 외국인/기관 순매수 데이터를 조회합니다.
 """
 
@@ -17,11 +17,6 @@ import pandas_ta as ta
 from src.agents.base_agent import BaseAgent
 from src.data.cache import CacheManager, CacheTTL
 from src.data.fetcher import StockDataFetcher
-
-try:
-    import FinanceDataReader as fdr
-except ImportError:
-    fdr = None
 
 
 # =============================================================================
@@ -121,8 +116,9 @@ class MarketDataAgent(BaseAgent):
         self._log_info(f"Collecting market data for {len(symbols)} symbols")
         result: Dict[str, MarketData] = {}
 
-        # 날짜 범위 계산
-        end_date = datetime.now()
+        # 날짜 범위 계산 (최근 거래일 기준)
+        latest_trading_date = self.fetcher._get_latest_trading_date()
+        end_date = datetime.strptime(latest_trading_date, "%Y%m%d")
         start_date = end_date - timedelta(days=self.analysis_days)
         start_str = start_date.strftime("%Y-%m-%d")
         end_str = end_date.strftime("%Y-%m-%d")
@@ -330,20 +326,20 @@ class MarketDataAgent(BaseAgent):
     def _detect_market(self, symbol: str) -> str:
         """
         종목 코드로 시장을 추정합니다.
-        """
-        try:
-            krx = self.fetcher._get_krx_listing()
-            stock = krx[krx["Code"] == symbol]
-            if not stock.empty and "Market" in stock.columns:
-                market = stock.iloc[0]["Market"]
-                if pd.notna(market):
-                    return str(market).upper()
-        except Exception:
-            pass
 
-        # 코드로 추정 (5자리: KOSPI, 6자리 3으로 시작: KOSDAQ)
-        if len(symbol) == 6 and symbol.startswith("3"):
-            return "KOSDAQ"
+        KOSDAQ 종목 코드 패턴:
+        - 2로 시작하는 6자리 (2xxxxx)
+        - 3으로 시작하는 6자리 (3xxxxx)
+        - 일부 4로 시작하는 6자리 (4xxxxx)
+        """
+        if len(symbol) == 6:
+            first_digit = symbol[0]
+            # KOSDAQ 종목 코드는 주로 2, 3으로 시작
+            if first_digit in ["2", "3"]:
+                return "KOSDAQ"
+            # 4로 시작하는 일부 종목도 KOSDAQ
+            if first_digit == "4" and int(symbol) >= 400000:
+                return "KOSDAQ"
         return "KOSPI"
 
     def _get_supply_data(self, symbol: str) -> tuple:
@@ -358,49 +354,9 @@ class MarketDataAgent(BaseAgent):
         if cached:
             return cached.get("foreign", []), cached.get("institution", [])
 
-        foreign_net = []
-        inst_net = []
-
         try:
-            if fdr is None:
-                return foreign_net, inst_net
-
-            # 최근 30일 데이터 요청 (5 거래일 확보)
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=30)
-
-            # 외국인 매매 동향
-            try:
-                foreign_df = fdr.DataReader(
-                    symbol,
-                    start_date.strftime("%Y-%m-%d"),
-                    end_date.strftime("%Y-%m-%d"),
-                    data_source="naver-frgn"  # 네이버 외국인 데이터
-                )
-                if foreign_df is not None and not foreign_df.empty:
-                    # 최근 5일 순매수 (억원 단위로 변환)
-                    if "NetPurchase" in foreign_df.columns:
-                        foreign_net = (foreign_df["NetPurchase"].tail(5) / 100_000_000).tolist()
-                    elif "Foreign_Net" in foreign_df.columns:
-                        foreign_net = (foreign_df["Foreign_Net"].tail(5) / 100_000_000).tolist()
-            except Exception as e:
-                self._log_debug(f"Foreign data fetch failed for {symbol}: {e}")
-
-            # 기관 매매 동향
-            try:
-                inst_df = fdr.DataReader(
-                    symbol,
-                    start_date.strftime("%Y-%m-%d"),
-                    end_date.strftime("%Y-%m-%d"),
-                    data_source="naver-inst"  # 네이버 기관 데이터
-                )
-                if inst_df is not None and not inst_df.empty:
-                    if "NetPurchase" in inst_df.columns:
-                        inst_net = (inst_df["NetPurchase"].tail(5) / 100_000_000).tolist()
-                    elif "Inst_Net" in inst_df.columns:
-                        inst_net = (inst_df["Inst_Net"].tail(5) / 100_000_000).tolist()
-            except Exception as e:
-                self._log_debug(f"Institution data fetch failed for {symbol}: {e}")
+            # 네이버 금융에서 외국인/기관 순매수 데이터 조회
+            foreign_net, inst_net = self.fetcher.get_foreign_institution_trading(symbol, days=5)
 
             # 캐시 저장
             if foreign_net or inst_net:
@@ -410,10 +366,11 @@ class MarketDataAgent(BaseAgent):
                     ttl_hours=CacheTTL.SUPPLY
                 )
 
+            return foreign_net, inst_net
+
         except Exception as e:
             self._log_warning(f"Supply data fetch failed for {symbol}: {e}")
-
-        return foreign_net, inst_net
+            return [], []
 
     def _get_market_cap_info(self, symbol: str, market: str) -> tuple:
         """
@@ -423,38 +380,58 @@ class MarketDataAgent(BaseAgent):
             (시가총액 억원, 순위)
         """
         try:
-            listing = self.fetcher._get_krx_listing()
-            stock = listing[listing["Code"] == symbol]
+            # 시가총액 순위 목록에서 찾기
+            market_cap_stocks = self.fetcher.get_market_cap_rank(market=market, top_n=50)
 
-            if stock.empty:
-                return None, None
+            for idx, stock in enumerate(market_cap_stocks):
+                if stock.symbol == symbol:
+                    return stock.market_cap, idx + 1
 
-            row = stock.iloc[0]
-
-            # 시가총액 컬럼 찾기
-            market_cap = None
-            for col in ["Marcap", "Market", "MarketCap"]:
-                if col in row.index and pd.notna(row[col]):
-                    market_cap = row[col] / 100_000_000  # 억원
-                    break
-
-            # 순위 계산 (해당 시장 내)
-            market_cap_rank = None
-            if market_cap and market:
-                market_stocks = listing[listing["Market"] == market] if "Market" in listing.columns else listing
-                for col in ["Marcap", "Market", "MarketCap"]:
-                    if col in market_stocks.columns:
-                        sorted_df = market_stocks.sort_values(col, ascending=False).reset_index(drop=True)
-                        rank_df = sorted_df[sorted_df["Code"] == symbol]
-                        if not rank_df.empty:
-                            market_cap_rank = rank_df.index[0] + 1
-                        break
-
-            return market_cap, market_cap_rank
+            # 상위 50개에 없으면 시가총액만 반환 (순위는 None)
+            # 네이버 금융에서 개별 시가총액 조회 시도
+            return self._get_single_market_cap(symbol), None
 
         except Exception as e:
             self._log_debug(f"Market cap info fetch failed for {symbol}: {e}")
             return None, None
+
+    def _get_single_market_cap(self, symbol: str) -> Optional[float]:
+        """
+        개별 종목의 시가총액을 네이버 금융에서 조회합니다.
+
+        Returns:
+            시가총액 (억원), 실패시 None
+        """
+        import requests
+        from bs4 import BeautifulSoup
+
+        try:
+            url = f"https://finance.naver.com/item/main.naver?code={symbol}"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+            }
+            response = requests.get(url, headers=headers, timeout=10)
+            response.encoding = response.apparent_encoding or "utf-8"
+            soup = BeautifulSoup(response.text, "html.parser")
+
+            # 시가총액 추출 (em#_market_sum)
+            market_sum = soup.select_one("em#_market_sum")
+            if market_sum:
+                text = market_sum.text.strip().replace(",", "").replace("조", "0000").replace("억", "")
+                # "조"와 "억"을 숫자로 변환
+                parts = market_sum.text.strip().replace(",", "").split("조")
+                if len(parts) == 2:
+                    jo = int(parts[0]) if parts[0] else 0
+                    eok = int(parts[1].replace("억", "").strip()) if parts[1].replace("억", "").strip() else 0
+                    return jo * 10000 + eok
+                else:
+                    eok_text = market_sum.text.strip().replace(",", "").replace("억", "")
+                    return int(eok_text) if eok_text else None
+
+        except Exception as e:
+            self._log_debug(f"Single market cap fetch failed for {symbol}: {e}")
+
+        return None
 
     def _calculate_change_pct(self, current: float, previous: float) -> Optional[float]:
         """전일 대비 등락률 계산"""
@@ -524,19 +501,16 @@ class MarketDataAgent(BaseAgent):
             베타 값 (None if 계산 실패)
         """
         try:
-            if fdr is None:
-                return None
-
             # 종목 일간 수익률
             stock_returns = stock_df["Close"].pct_change().dropna()
             if len(stock_returns) < 60:
                 return None
 
-            # KOSPI 지수 데이터 가져오기
+            # KOSPI 지수 데이터 가져오기 (네이버 금융)
             start_date = stock_df.index[0].strftime("%Y-%m-%d")
             end_date = stock_df.index[-1].strftime("%Y-%m-%d")
 
-            kospi_df = fdr.DataReader("KS11", start_date, end_date)
+            kospi_df = self.fetcher.get_kospi_index(start_date, end_date)
             if kospi_df is None or kospi_df.empty:
                 return None
 

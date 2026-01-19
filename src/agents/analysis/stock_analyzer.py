@@ -247,21 +247,44 @@ class StockAnalyzer(BaseAgent):
             종목코드를 키로 하는 시가총액 딕셔너리 (억원 단위)
         """
         result: Dict[str, float] = {}
+        missing_symbols: List[str] = []
 
         try:
-            # KRX 상장 종목 정보에서 시가총액 조회
+            # 1차: KRX 상장 종목 정보에서 시가총액 조회
             krx = self.fetcher._get_krx_listing()
 
             for symbol in symbols:
                 stock = krx[krx["Code"] == symbol]
                 if not stock.empty and "Marcap" in stock.columns:
-                    # Marcap은 원 단위, 억원으로 변환
                     marcap = stock.iloc[0]["Marcap"]
-                    result[symbol] = float(marcap) / 100_000_000
-                else:
-                    result[symbol] = 0
+                    if marcap and marcap > 0:
+                        result[symbol] = float(marcap) / 100_000_000
+                        continue
+                missing_symbols.append(symbol)
+
         except Exception as e:
-            self._log_warning(f"Failed to get market caps: {e}")
+            self._log_warning(f"Failed to get market caps from KRX: {e}")
+            missing_symbols = list(symbols)
+
+        # 2차: 네이버 금융 크롤링으로 누락된 시가총액 조회
+        if missing_symbols:
+            try:
+                # KOSPI, KOSDAQ 모두에서 시가총액 데이터 가져오기
+                kospi_data = self.fetcher._get_market_cap_rank_naver("KOSPI", 100)
+                kosdaq_data = self.fetcher._get_market_cap_rank_naver("KOSDAQ", 100)
+
+                # 심볼별 시가총액 매핑
+                market_cap_map = {}
+                for stock in kospi_data + kosdaq_data:
+                    market_cap_map[stock.symbol] = stock.market_cap or 0
+
+                for symbol in missing_symbols:
+                    result[symbol] = market_cap_map.get(symbol, 0)
+
+            except Exception as e:
+                self._log_warning(f"Failed to get market caps from Naver: {e}")
+                for symbol in missing_symbols:
+                    result[symbol] = 0
 
         return result
 
@@ -278,7 +301,8 @@ class StockAnalyzer(BaseAgent):
         self._log_info(f"Analyzing KOSPI top {top_n} stocks")
 
         try:
-            symbols = self.fetcher.get_market_cap_rank(market="KOSPI", top_n=top_n)
+            stock_infos = self.fetcher.get_market_cap_rank(market="KOSPI", top_n=top_n)
+            symbols = [si.symbol for si in stock_infos]
         except Exception as e:
             self._log_error(f"Failed to get KOSPI rankings: {e}")
             return {}
@@ -309,7 +333,8 @@ class StockAnalyzer(BaseAgent):
         self._log_info(f"Analyzing KOSDAQ top {top_n} stocks")
 
         try:
-            symbols = self.fetcher.get_market_cap_rank(market="KOSDAQ", top_n=top_n)
+            stock_infos = self.fetcher.get_market_cap_rank(market="KOSDAQ", top_n=top_n)
+            symbols = [si.symbol for si in stock_infos]
         except Exception as e:
             self._log_error(f"Failed to get KOSDAQ rankings: {e}")
             return {}

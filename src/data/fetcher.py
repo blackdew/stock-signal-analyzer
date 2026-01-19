@@ -1,11 +1,16 @@
-"""주식 데이터 가져오기 모듈"""
+"""주식 데이터 가져오기 모듈
+
+네이버 금융을 사용하여 주식 데이터를 수집합니다.
+"""
 import logging
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-import FinanceDataReader as fdr
 import pandas as pd
+import requests
+from bs4 import BeautifulSoup
 
 from src.core.config import SECTORS
 
@@ -44,29 +49,57 @@ class StockData:
 
 
 class StockDataFetcher:
-    """FinanceDataReader를 사용하여 주식 데이터를 가져오는 클래스"""
+    """네이버 금융을 사용하여 주식 데이터를 가져오는 클래스"""
 
     def __init__(self):
-        self._krx_listing_cache: Optional[pd.DataFrame] = None
+        self._stock_name_cache: Dict[str, str] = {}
+        self._market_cap_cache: Dict[str, float] = {}
+        self._latest_trading_date_cache: Optional[str] = None
+        self._headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+        }
 
-    def _get_krx_listing(self) -> pd.DataFrame:
+    def _get_latest_trading_date(self) -> str:
         """
-        KRX 상장 종목 리스트를 가져옵니다 (캐싱 적용).
+        네이버 금융에서 가장 최근 거래일을 조회합니다.
 
         Returns:
-            KRX 상장 종목 DataFrame
+            최근 거래일 (YYYYMMDD 형식)
         """
-        if self._krx_listing_cache is None:
-            logger.debug("KRX 상장 종목 리스트 로딩 중...")
-            self._krx_listing_cache = fdr.StockListing("KRX")
-            logger.debug(f"KRX 상장 종목 {len(self._krx_listing_cache)}개 로드 완료")
-        return self._krx_listing_cache
+        if self._latest_trading_date_cache:
+            return self._latest_trading_date_cache
+
+        try:
+            # 삼성전자 일별 시세에서 최근 거래일 추출
+            url = "https://finance.naver.com/item/sise_day.naver?code=005930&page=1"
+            response = requests.get(url, headers=self._headers, timeout=10)
+            response.encoding = "euc-kr"
+            soup = BeautifulSoup(response.text, "html.parser")
+
+            for tr in soup.select("table.type2 tr"):
+                tds = tr.select("td")
+                if len(tds) >= 7:
+                    date_text = tds[0].text.strip()
+                    if date_text and "." in date_text:
+                        # 2026.01.19 -> 20260119
+                        date_str = date_text.replace(".", "")
+                        self._latest_trading_date_cache = date_str
+                        logger.info(f"최근 거래일: {date_str}")
+                        return date_str
+
+        except Exception as e:
+            logger.warning(f"최근 거래일 조회 실패: {e}")
+
+        # 폴백: 고정 날짜
+        logger.warning("최근 거래일 조회 실패, 기본값 사용")
+        self._latest_trading_date_cache = "20250117"
+        return self._latest_trading_date_cache
 
     def fetch_stock_data(
         self, symbol: str, start_date: str, end_date: str, max_retries: int = 3
     ) -> Optional[pd.DataFrame]:
         """
-        주식 데이터를 가져옵니다. (재시도 로직 포함)
+        네이버 금융에서 주식 데이터를 가져옵니다.
 
         Args:
             symbol: 종목 코드 (예: '005930' for 삼성전자)
@@ -75,7 +108,7 @@ class StockDataFetcher:
             max_retries: 최대 재시도 횟수 (기본 3회)
 
         Returns:
-            DataFrame with columns: Open, High, Low, Close, Volume, Change
+            DataFrame with columns: Open, High, Low, Close, Volume
             실패시 None 반환
         """
         for attempt in range(max_retries):
@@ -83,24 +116,78 @@ class StockDataFetcher:
                 logger.debug(
                     f"종목 {symbol}: 데이터 가져오기 시도 {attempt + 1}/{max_retries}"
                 )
-                df = fdr.DataReader(symbol, start_date, end_date)
 
-                # 데이터 검증
-                if df is None or df.empty:
+                all_rows = []
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+
+                # 페이지별로 데이터 수집 (최대 20페이지)
+                for page in range(1, 21):
+                    url = f"https://finance.naver.com/item/sise_day.naver?code={symbol}&page={page}"
+                    response = requests.get(url, headers=self._headers, timeout=10)
+                    response.encoding = "euc-kr"
+                    soup = BeautifulSoup(response.text, "html.parser")
+
+                    page_rows = []
+                    for tr in soup.select("table.type2 tr"):
+                        tds = tr.select("td")
+                        if len(tds) >= 7:
+                            date_text = tds[0].text.strip()
+                            if date_text and "." in date_text:
+                                try:
+                                    # 날짜 파싱
+                                    row_date = datetime.strptime(date_text, "%Y.%m.%d")
+
+                                    # 날짜 범위 체크
+                                    if row_date < start_dt:
+                                        # 시작일보다 이전이면 수집 종료
+                                        break
+                                    if row_date > end_dt:
+                                        # 종료일보다 이후면 스킵
+                                        continue
+
+                                    close = int(tds[1].text.strip().replace(",", ""))
+                                    open_price = int(tds[3].text.strip().replace(",", ""))
+                                    high = int(tds[4].text.strip().replace(",", ""))
+                                    low = int(tds[5].text.strip().replace(",", ""))
+                                    volume = int(tds[6].text.strip().replace(",", ""))
+
+                                    page_rows.append({
+                                        "Date": row_date,
+                                        "Open": open_price,
+                                        "High": high,
+                                        "Low": low,
+                                        "Close": close,
+                                        "Volume": volume,
+                                    })
+                                except (ValueError, IndexError):
+                                    continue
+
+                    if not page_rows:
+                        break
+
+                    all_rows.extend(page_rows)
+
+                    # 시작일에 도달했으면 종료
+                    if page_rows and page_rows[-1]["Date"] <= start_dt:
+                        break
+
+                    time.sleep(0.1)  # 요청 간격
+
+                if not all_rows:
                     logger.warning(
                         f"종목 {symbol}: 데이터 없음 (시도 {attempt + 1}/{max_retries})"
                     )
                     if attempt < max_retries - 1:
-                        time.sleep(1)  # 1초 대기 후 재시도
+                        time.sleep(1)
                         continue
-                    else:
-                        logger.error(
-                            f"종목 {symbol}: 최대 재시도 횟수 초과 - 데이터 없음"
-                        )
-                        return None
+                    return None
 
-                # 데이터 정리
-                df = df.sort_index()
+                # DataFrame 생성
+                df = pd.DataFrame(all_rows)
+                df.set_index("Date", inplace=True)
+                df.sort_index(inplace=True)
+
                 logger.info(
                     f"종목 {symbol}: 데이터 가져오기 성공 "
                     f"({len(df)} 행, {start_date} ~ {end_date})"
@@ -109,18 +196,17 @@ class StockDataFetcher:
 
             except Exception as e:
                 logger.error(
-                    f"종목 {symbol}: API 호출 실패 - {str(e)} "
+                    f"종목 {symbol}: 크롤링 실패 - {str(e)} "
                     f"(시도 {attempt + 1}/{max_retries})"
                 )
 
                 if attempt < max_retries - 1:
-                    # 지수 백오프 (1초, 2초, 4초)
-                    wait_time = 2**attempt
+                    wait_time = 2 ** attempt
                     logger.info(f"종목 {symbol}: {wait_time}초 대기 후 재시도...")
                     time.sleep(wait_time)
                 else:
                     logger.error(
-                        f"종목 {symbol}: 최대 재시도 횟수 초과 - API 호출 실패"
+                        f"종목 {symbol}: 최대 재시도 횟수 초과"
                     )
                     return None
 
@@ -136,22 +222,29 @@ class StockDataFetcher:
         Returns:
             종목명 (실패시 종목 코드 반환)
         """
-        try:
-            logger.debug(f"종목 {symbol}: 종목명 조회 중...")
-            krx = self._get_krx_listing()
-            stock_info = krx[krx["Code"] == symbol]
+        # 캐시 확인
+        if symbol in self._stock_name_cache:
+            return self._stock_name_cache[symbol]
 
-            if not stock_info.empty:
-                name = stock_info.iloc[0]["Name"]
+        try:
+            url = f"https://finance.naver.com/item/main.naver?code={symbol}"
+            response = requests.get(url, headers=self._headers, timeout=10)
+            response.encoding = response.apparent_encoding or "utf-8"
+            soup = BeautifulSoup(response.text, "html.parser")
+
+            # 종목명 추출
+            wrap_company = soup.select_one("div.wrap_company h2 a")
+            if wrap_company:
+                name = wrap_company.text.strip()
+                self._stock_name_cache[symbol] = name
                 logger.debug(f"종목 {symbol}: 종목명 조회 성공 - {name}")
                 return name
-            else:
-                logger.warning(f"종목 {symbol}: 종목명 조회 실패 - 종목 코드 사용")
-                return symbol
 
         except Exception as e:
-            logger.warning(f"종목 {symbol}: 종목명 조회 오류 - {str(e)}")
-            return symbol
+            logger.debug(f"종목 {symbol}: 종목명 조회 실패 - {e}")
+
+        logger.warning(f"종목 {symbol}: 종목명 조회 실패 - 종목 코드 사용")
+        return symbol
 
     def calculate_technical_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -182,7 +275,7 @@ class StockDataFetcher:
         self, market: str = "KOSPI", top_n: int = 20
     ) -> List[StockInfo]:
         """
-        시가총액 상위 종목을 조회합니다.
+        시가총액 상위 종목을 조회합니다 (네이버 금융).
 
         Args:
             market: 시장 구분 ('KOSPI', 'KOSDAQ', 'KRX')
@@ -190,61 +283,89 @@ class StockDataFetcher:
 
         Returns:
             시가총액 상위 종목 리스트 (StockInfo)
+
+        Raises:
+            RuntimeError: 조회 실패 시
         """
+        logger.info(f"{market} 시가총액 상위 {top_n}개 종목 조회 중...")
+
+        result = self._get_market_cap_rank_naver(market, top_n)
+
+        if not result:
+            raise RuntimeError(f"{market} 시가총액 순위 조회 실패")
+
+        return result
+
+    def _get_market_cap_rank_naver(
+        self, market: str, top_n: int
+    ) -> List[StockInfo]:
+        """네이버 금융에서 시가총액 순위 크롤링"""
         try:
-            logger.info(f"{market} 시가총액 상위 {top_n}개 종목 조회 중...")
-
-            # 시장별 데이터 가져오기
-            if market.upper() == "KRX":
-                listing = self._get_krx_listing()
+            # 네이버 금융 시가총액 순위 URL
+            if market.upper() == "KOSPI":
+                url = "https://finance.naver.com/sise/sise_market_sum.naver?sosok=0"
+            elif market.upper() == "KOSDAQ":
+                url = "https://finance.naver.com/sise/sise_market_sum.naver?sosok=1"
             else:
-                listing = fdr.StockListing(market.upper())
-
-            if listing is None or listing.empty:
-                logger.warning(f"{market} 상장 종목 데이터를 가져올 수 없습니다.")
-                return []
-
-            # 시가총액 컬럼 확인 및 정렬
-            # FinanceDataReader의 컬럼명은 'Marcap' 또는 'Market'
-            market_cap_col = None
-            for col in ["Marcap", "Market", "MarketCap"]:
-                if col in listing.columns:
-                    market_cap_col = col
-                    break
-
-            if market_cap_col is None:
-                logger.warning(
-                    f"{market} 데이터에 시가총액 컬럼이 없습니다. "
-                    f"컬럼: {listing.columns.tolist()}"
-                )
-                return []
-
-            # 시가총액 기준 정렬 및 상위 N개 추출
-            sorted_listing = listing.nlargest(top_n, market_cap_col)
+                # KRX는 KOSPI + KOSDAQ 합산
+                kospi = self._get_market_cap_rank_naver("KOSPI", top_n)
+                kosdaq = self._get_market_cap_rank_naver("KOSDAQ", top_n)
+                combined = kospi + kosdaq
+                combined.sort(key=lambda x: x.market_cap or 0, reverse=True)
+                return combined[:top_n]
 
             result = []
-            for _, row in sorted_listing.iterrows():
-                # 시가총액을 억원 단위로 변환 (원 단위 -> 억원)
-                market_cap_value = row.get(market_cap_col, 0)
-                market_cap_billion = (
-                    market_cap_value / 100_000_000 if market_cap_value else None
-                )
+            # 첫 페이지만 조회 (상위 50개)
+            response = requests.get(url, headers=self._headers, timeout=10)
+            response.encoding = "euc-kr"
+            soup = BeautifulSoup(response.text, "html.parser")
+
+            table = soup.find("table", class_="type_2")
+            if not table:
+                logger.warning("네이버 금융 테이블 파싱 실패")
+                return []
+
+            rows = table.find_all("tr")
+            for row in rows:
+                cols = row.find_all("td")
+                if len(cols) < 7:
+                    continue
+
+                # 종목 링크에서 코드 추출
+                link = cols[1].find("a")
+                if not link:
+                    continue
+
+                href = link.get("href", "")
+                if "code=" not in href:
+                    continue
+
+                symbol = href.split("code=")[-1]
+                name = link.text.strip()
+
+                # 시가총액 (억원 단위)
+                try:
+                    market_cap_text = cols[6].text.strip().replace(",", "")
+                    market_cap = float(market_cap_text) if market_cap_text else 0
+                except (ValueError, IndexError):
+                    market_cap = 0
 
                 stock_info = StockInfo(
-                    symbol=row.get("Code", row.get("Symbol", "")),
-                    name=row.get("Name", ""),
-                    market_cap=market_cap_billion,
-                    sector=self._find_sector_by_symbol(
-                        row.get("Code", row.get("Symbol", ""))
-                    ),
+                    symbol=symbol,
+                    name=name,
+                    market_cap=market_cap,
+                    sector=self._find_sector_by_symbol(symbol),
                 )
                 result.append(stock_info)
 
-            logger.info(f"{market} 시가총액 상위 {len(result)}개 종목 조회 완료")
+                if len(result) >= top_n:
+                    break
+
+            logger.info(f"{market} 시가총액 상위 {len(result)}개 종목 조회 완료 (네이버)")
             return result
 
         except Exception as e:
-            logger.error(f"시가총액 순위 조회 실패: {str(e)}")
+            logger.error(f"네이버 금융 시가총액 순위 조회 실패: {e}")
             return []
 
     def get_sector_stocks(self, sector_name: str) -> List[StockInfo]:
@@ -267,37 +388,16 @@ class StockDataFetcher:
                 return []
 
             symbols = SECTORS[sector_name]
-            krx = self._get_krx_listing()
 
             result = []
             for symbol in symbols:
-                stock_row = krx[krx["Code"] == symbol]
-
-                if not stock_row.empty:
-                    row = stock_row.iloc[0]
-
-                    # 시가총액 컬럼 확인
-                    market_cap_value = None
-                    for col in ["Marcap", "Market", "MarketCap"]:
-                        if col in row.index and pd.notna(row[col]):
-                            market_cap_value = row[col] / 100_000_000  # 억원 단위
-                            break
-
-                    stock_info = StockInfo(
-                        symbol=symbol,
-                        name=row.get("Name", symbol),
-                        market_cap=market_cap_value,
-                        sector=sector_name,
-                    )
-                else:
-                    # KRX 리스트에 없는 경우 기본 정보만 생성
-                    stock_info = StockInfo(
-                        symbol=symbol,
-                        name=self.get_stock_name(symbol),
-                        market_cap=None,
-                        sector=sector_name,
-                    )
-
+                name = self.get_stock_name(symbol)
+                stock_info = StockInfo(
+                    symbol=symbol,
+                    name=name,
+                    market_cap=None,
+                    sector=sector_name,
+                )
                 result.append(stock_info)
 
             logger.info(f"섹터 '{sector_name}' 종목 {len(result)}개 조회 완료")
@@ -372,3 +472,139 @@ class StockDataFetcher:
             섹터명 리스트
         """
         return list(SECTORS.keys())
+
+    def get_foreign_institution_trading(
+        self, symbol: str, days: int = 5
+    ) -> tuple:
+        """
+        외국인/기관 순매수 데이터를 가져옵니다.
+
+        Args:
+            symbol: 종목 코드
+            days: 조회할 일수 (기본 5일)
+
+        Returns:
+            (외국인 순매수 리스트, 기관 순매수 리스트) - 각각 억원 단위
+        """
+        foreign_net = []
+        inst_net = []
+
+        try:
+            url = f"https://finance.naver.com/item/frgn.naver?code={symbol}"
+            response = requests.get(url, headers=self._headers, timeout=10)
+            response.encoding = "euc-kr"
+            soup = BeautifulSoup(response.text, "html.parser")
+
+            # 외국인/기관 매매 테이블 파싱 (두 번째 type2 테이블)
+            tables = soup.select("table.type2")
+            table = tables[1] if len(tables) > 1 else tables[0] if tables else None
+            if table:
+                rows = table.select("tr")
+                count = 0
+                for row in rows:
+                    tds = row.select("td")
+                    if len(tds) >= 9:
+                        # 날짜, 종가, 전일비, 등락률, 거래량, 기관순매매, 외국인순매매, 외국인보유, 외국인보유율
+                        try:
+                            date_text = tds[0].text.strip()
+                            if not date_text or "." not in date_text:
+                                continue
+
+                            # 기관 순매매 (6번째 컬럼)
+                            inst_text = tds[5].text.strip().replace(",", "").replace("+", "")
+                            inst_value = int(inst_text) if inst_text and inst_text != "-" else 0
+
+                            # 외국인 순매매 (7번째 컬럼)
+                            foreign_text = tds[6].text.strip().replace(",", "").replace("+", "")
+                            foreign_value = int(foreign_text) if foreign_text and foreign_text != "-" else 0
+
+                            # 억원 단위로 변환 (주 단위 -> 억원)
+                            # 현재가 * 수량 / 1억
+                            close_text = tds[1].text.strip().replace(",", "")
+                            close = int(close_text) if close_text else 0
+
+                            foreign_net.append(round(foreign_value * close / 100_000_000, 2))
+                            inst_net.append(round(inst_value * close / 100_000_000, 2))
+
+                            count += 1
+                            if count >= days:
+                                break
+
+                        except (ValueError, IndexError):
+                            continue
+
+        except Exception as e:
+            logger.warning(f"외국인/기관 매매 데이터 조회 실패 for {symbol}: {e}")
+
+        return foreign_net, inst_net
+
+    def get_kospi_index(self, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
+        """
+        KOSPI 지수 데이터를 가져옵니다.
+
+        Args:
+            start_date: 시작일 (YYYY-MM-DD)
+            end_date: 종료일 (YYYY-MM-DD)
+
+        Returns:
+            DataFrame with columns: Close (종가)
+        """
+        try:
+            all_rows = []
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+
+            # KOSPI 지수 일별 시세
+            for page in range(1, 21):
+                url = f"https://finance.naver.com/sise/sise_index_day.naver?code=KOSPI&page={page}"
+                response = requests.get(url, headers=self._headers, timeout=10)
+                response.encoding = "euc-kr"
+                soup = BeautifulSoup(response.text, "html.parser")
+
+                page_rows = []
+                for tr in soup.select("table.type_1 tr"):
+                    tds = tr.select("td")
+                    if len(tds) >= 4:
+                        date_text = tds[0].text.strip()
+                        if date_text and "." in date_text:
+                            try:
+                                row_date = datetime.strptime(date_text, "%Y.%m.%d")
+
+                                if row_date < start_dt:
+                                    break
+                                if row_date > end_dt:
+                                    continue
+
+                                close_text = tds[1].text.strip().replace(",", "")
+                                close = float(close_text) if close_text else 0
+
+                                page_rows.append({
+                                    "Date": row_date,
+                                    "Close": close,
+                                })
+                            except (ValueError, IndexError):
+                                continue
+
+                if not page_rows:
+                    break
+
+                all_rows.extend(page_rows)
+
+                if page_rows and page_rows[-1]["Date"] <= start_dt:
+                    break
+
+                time.sleep(0.1)
+
+            if not all_rows:
+                return None
+
+            df = pd.DataFrame(all_rows)
+            df.set_index("Date", inplace=True)
+            df.sort_index(inplace=True)
+
+            logger.info(f"KOSPI 지수 데이터 조회 완료 ({len(df)} 행)")
+            return df
+
+        except Exception as e:
+            logger.error(f"KOSPI 지수 조회 실패: {e}")
+            return None

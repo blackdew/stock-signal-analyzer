@@ -6,12 +6,13 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "beautifulsoup4>=4.14.2",
-    "finance-datareader>=0.9.96",
     "numpy>=2.2.6",
     "pandas>=2.3.3",
     "pandas-ta>=0.4.71b0",
     "requests>=2.32.5",
     "python-dotenv>=1.0.0",
+    "setuptools>=80.9.0",
+    "opendartreader>=0.2.3",
 ]
 
 [dependency-groups]
