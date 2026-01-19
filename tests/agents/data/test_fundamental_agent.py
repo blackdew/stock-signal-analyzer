@@ -2,6 +2,7 @@
 FundamentalAgent 테스트
 
 PER, PBR, ROE, 부채비율 조회 및 섹터 평균 계산을 테스트합니다.
+네이버 금융 크롤링 기반으로 동작합니다.
 """
 
 import asyncio
@@ -35,22 +36,7 @@ def mock_cache():
 def mock_fetcher():
     """Mock StockDataFetcher"""
     fetcher = Mock()
-
-    # 종목명 조회
     fetcher.get_stock_name.return_value = "삼성전자"
-
-    # KRX 리스트
-    krx_df = pd.DataFrame({
-        "Code": ["005930", "000660", "035420", "042700", "010140", "009540", "042660"],
-        "Name": ["삼성전자", "SK하이닉스", "NAVER", "한미반도체", "삼성중공업", "한국조선해양", "대우조선해양"],
-        "Market": ["KOSPI", "KOSPI", "KOSPI", "KOSDAQ", "KOSPI", "KOSPI", "KOSPI"],
-        "Marcap": [5000000000000000, 1000000000000000, 500000000000000,
-                   100000000000000, 200000000000000, 150000000000000, 100000000000000],
-        "PER": [15.0, 8.0, 25.0, 20.0, 12.0, 10.0, 8.0],
-        "PBR": [1.5, 1.2, 2.0, 3.0, 0.8, 0.7, 0.6],
-    })
-    fetcher._get_krx_listing.return_value = krx_df
-
     return fetcher
 
 
@@ -62,6 +48,30 @@ def agent(mock_cache, mock_fetcher):
 
 
 # =============================================================================
+# Mock 네이버 금융 데이터
+# =============================================================================
+
+MOCK_NAVER_DATA = {
+    "005930": {
+        "per": 15.0,
+        "pbr": 1.5,
+        "roe": 10.0,
+        "operating_margin": 15.0,
+        "operating_profit_growth": 8.0,
+        "debt_ratio": 30.0,
+    },
+    "000660": {
+        "per": 8.0,
+        "pbr": 1.2,
+        "roe": 15.0,
+        "operating_margin": 20.0,
+        "operating_profit_growth": 12.0,
+        "debt_ratio": 25.0,
+    },
+}
+
+
+# =============================================================================
 # 기본 데이터 조회 테스트
 # =============================================================================
 
@@ -69,21 +79,31 @@ def agent(mock_cache, mock_fetcher):
 @pytest.mark.asyncio
 async def test_collect_single(agent, mock_fetcher):
     """단일 종목 재무 데이터 수집 테스트"""
-    data = await agent._collect_single("005930")
+    # _fetch_from_naver 메서드 모킹
+    with patch.object(agent, '_fetch_from_naver', return_value=MOCK_NAVER_DATA["005930"]):
+        data = await agent._collect_single("005930")
 
     assert data is not None
     assert isinstance(data, FundamentalData)
     assert data.symbol == "005930"
     assert data.name == "삼성전자"
-    # PER, PBR은 KRX 데이터에서 가져옴
+    # 네이버 금융에서 가져온 데이터
     assert data.per == 15.0
     assert data.pbr == 1.5
+    assert data.roe == 10.0
+    assert data.operating_margin == 15.0
+    assert data.debt_ratio == 30.0
 
 
 @pytest.mark.asyncio
 async def test_collect_multiple(agent, mock_fetcher):
     """여러 종목 재무 데이터 수집 테스트"""
-    data = await agent.collect(["005930", "000660"])
+    def mock_fetch_from_naver(symbol):
+        return MOCK_NAVER_DATA.get(symbol, {})
+
+    with patch.object(agent, '_fetch_from_naver', side_effect=mock_fetch_from_naver):
+        mock_fetcher.get_stock_name.side_effect = lambda s: "삼성전자" if s == "005930" else "SK하이닉스"
+        data = await agent.collect(["005930", "000660"])
 
     assert isinstance(data, dict)
     assert len(data) == 2
@@ -96,8 +116,10 @@ async def test_collect_multiple(agent, mock_fetcher):
 @pytest.mark.asyncio
 async def test_collect_handles_unknown_symbol(agent, mock_fetcher):
     """알 수 없는 종목 처리 테스트"""
-    # KRX 리스트에 없는 종목
-    data = await agent._collect_single("999999")
+    # 네이버에서 데이터를 가져오지 못하는 경우
+    with patch.object(agent, '_fetch_from_naver', return_value={}):
+        mock_fetcher.get_stock_name.return_value = "999999"
+        data = await agent._collect_single("999999")
 
     # 기본 정보만 반환
     assert data is not None
@@ -114,13 +136,17 @@ async def test_collect_handles_unknown_symbol(agent, mock_fetcher):
 @pytest.mark.asyncio
 async def test_calculate_sector_averages(agent, mock_fetcher):
     """섹터 평균 계산 테스트"""
-    await agent._calculate_sector_averages()
+    # 섹터별 종목에 대해 모킹
+    mock_data = {
+        "per": 15.0,
+        "pbr": 1.5,
+    }
+    with patch.object(agent, '_fetch_financial_data', return_value=mock_data):
+        await agent._calculate_sector_averages()
 
-    # 반도체 섹터 평균 (005930, 000660, 042700)
+    # 섹터 평균이 계산됨
     assert "반도체" in agent._sector_averages_cache
     semi_avg = agent._sector_averages_cache["반도체"]
-    # PER: (15 + 8 + 20) / 3 = 14.33
-    # PBR: (1.5 + 1.2 + 3.0) / 3 = 1.9
     assert semi_avg["per"] is not None
     assert semi_avg["pbr"] is not None
 
@@ -128,7 +154,9 @@ async def test_calculate_sector_averages(agent, mock_fetcher):
 @pytest.mark.asyncio
 async def test_get_sector_average(agent, mock_fetcher):
     """섹터 평균 조회 테스트"""
-    await agent._calculate_sector_averages()
+    mock_data = {"per": 15.0, "pbr": 1.5}
+    with patch.object(agent, '_fetch_financial_data', return_value=mock_data):
+        await agent._calculate_sector_averages()
 
     avg = agent.get_sector_average("반도체")
     assert "per" in avg
@@ -171,15 +199,15 @@ async def test_cache_hit(mock_cache, mock_fetcher):
 
     assert data.per == 15.0
     assert data.roe == 10.0
-    # fetcher 호출 안함 (종목명 제외)
-    mock_fetcher._get_krx_listing.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_cache_set_on_miss(mock_cache, mock_fetcher):
     """캐시 미스 시 저장 테스트"""
     agent = FundamentalAgent(cache=mock_cache, fetcher=mock_fetcher)
-    await agent._collect_single("005930")
+
+    with patch.object(agent, '_fetch_from_naver', return_value=MOCK_NAVER_DATA["005930"]):
+        await agent._collect_single("005930")
 
     # 캐시 저장 호출됨
     mock_cache.set.assert_called()
@@ -191,30 +219,24 @@ async def test_cache_set_on_miss(mock_cache, mock_fetcher):
 
 
 def test_fetch_financial_data(agent, mock_fetcher):
-    """재무 데이터 가져오기 테스트"""
-    data = agent._fetch_financial_data("005930")
+    """재무 데이터 가져오기 테스트 (네이버 금융 크롤링)"""
+    with patch.object(agent, '_fetch_from_naver', return_value=MOCK_NAVER_DATA["005930"]):
+        data = agent._fetch_financial_data("005930")
 
-    # KRX 데이터에서 PER, PBR 가져옴
+    # 네이버 금융에서 PER, PBR 가져옴
     assert data.get("per") == 15.0
     assert data.get("pbr") == 1.5
+    assert data.get("roe") == 10.0
+    assert data.get("debt_ratio") == 30.0
 
 
-def test_fetch_financial_data_negative_values(agent, mock_fetcher):
-    """음수 PER/PBR 제외 테스트"""
-    # KRX 리스트에 음수 값 추가
-    krx_df = pd.DataFrame({
-        "Code": ["123456"],
-        "Name": ["테스트종목"],
-        "PER": [-5.0],  # 음수 PER
-        "PBR": [-1.0],  # 음수 PBR
-    })
-    mock_fetcher._get_krx_listing.return_value = krx_df
+def test_fetch_financial_data_empty_response(agent, mock_fetcher):
+    """네이버 금융 응답 없음 테스트"""
+    with patch.object(agent, '_fetch_from_naver', return_value={}):
+        data = agent._fetch_financial_data("123456")
 
-    data = agent._fetch_financial_data("123456")
-
-    # 음수는 제외됨
-    assert "per" not in data
-    assert "pbr" not in data
+    # 빈 딕셔너리 반환
+    assert data == {}
 
 
 # =============================================================================
