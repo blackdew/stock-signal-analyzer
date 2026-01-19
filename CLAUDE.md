@@ -62,6 +62,9 @@ uv run python main.py --sector-only
 # 캐시 없이 상세 로그
 uv run python main.py --no-cache -v
 
+# 데이터 품질 기준 미달 시 실행 중단 (strict 모드)
+uv run python main.py --strict
+
 # 도움말
 uv run python main.py --help
 ```
@@ -113,7 +116,8 @@ trading/
 │   │   │   ├── __init__.py
 │   │   │   ├── stock_analyzer.py       # 개별 종목 루브릭 점수
 │   │   │   ├── sector_analyzer.py      # 섹터 시가총액 가중 평균
-│   │   │   └── ranking_agent.py        # 4개 그룹 순위, 최종 18개, Top 5
+│   │   │   ├── ranking_agent.py        # 4개 그룹 순위, 최종 18개, Top 5
+│   │   │   └── data_quality.py         # 데이터 품질 검증
 │   │   │
 │   │   └── report/              # 리포트 에이전트
 │   │       ├── __init__.py
@@ -366,6 +370,12 @@ print(result.final_top5) # Top 5 종목
   - 4개 그룹에서 각 3개 종목 선정 (KOSPI 9개 + KOSDAQ 3개 + 섹터 9개)
   - 중복 제거 후 최종 18개 종목 집계
   - Top 5 선정 (가중치: 총점 70%, 수급 15%, 성장성 15%)
+
+- **DataQualityValidator**: 데이터 품질 검증
+  - 필수 항목: 현재가, 시가총액, 기술적 지표(MA20/RSI), 거래량
+  - 권장 항목: 펀더멘털(PER/PBR/ROE), 52주 고저
+  - 품질 점수 산출 (100점 만점)
+  - `--strict` 모드에서 필수 항목 누락 시 실행 중단
 
 ### src/agents/report/
 리포트 생성 에이전트 모듈.
