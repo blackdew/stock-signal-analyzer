@@ -57,6 +57,10 @@ class MarketData:
     max_drawdown_pct: Optional[float] = None  # 최대 낙폭 (%)
     return_20d: Optional[float] = None     # 20일 수익률 (%)
 
+    # 52주 가격 범위
+    low_52w: Optional[float] = None        # 52주 최저가
+    high_52w: Optional[float] = None       # 52주 최고가
+
     # 수급 데이터 (최근 5일)
     foreign_net_buy: List[float] = field(default_factory=list)  # 외국인 순매수 (억원)
     institution_net_buy: List[float] = field(default_factory=list)  # 기관 순매수 (억원)
@@ -101,7 +105,7 @@ class MarketDataAgent(BaseAgent):
     """
 
     fetcher: StockDataFetcher = field(default_factory=StockDataFetcher)
-    analysis_days: int = 180  # 분석 기간 (일)
+    analysis_days: int = 365  # 분석 기간 (일) - 52주 데이터 확보를 위해 1년
 
     async def collect(self, symbols: List[str]) -> Dict[str, MarketData]:
         """
@@ -191,6 +195,10 @@ class MarketDataAgent(BaseAgent):
         # 8. 베타 계산 (시장 대비)
         beta = self._calculate_beta(df, symbol)
 
+        # 9. 52주 최고/최저가 계산
+        low_52w = float(df["Low"].min()) if not df.empty else None
+        high_52w = float(df["High"].max()) if not df.empty else None
+
         # MarketData 생성
         market_data = MarketData(
             symbol=symbol,
@@ -212,6 +220,9 @@ class MarketDataAgent(BaseAgent):
             beta=beta,
             max_drawdown_pct=round(max_drawdown, 2) if max_drawdown else None,
             return_20d=round(return_20d, 2) if return_20d else None,
+            # 52주 가격 범위
+            low_52w=low_52w,
+            high_52w=high_52w,
             # 수급 데이터
             foreign_net_buy=foreign_net,
             institution_net_buy=inst_net,
@@ -241,6 +252,9 @@ class MarketDataAgent(BaseAgent):
             "beta": market_data.beta,
             "max_drawdown_pct": market_data.max_drawdown_pct,
             "return_20d": market_data.return_20d,
+            # 52주 가격 범위
+            "low_52w": market_data.low_52w,
+            "high_52w": market_data.high_52w,
             # 수급 데이터
             "foreign_net_buy": market_data.foreign_net_buy,
             "institution_net_buy": market_data.institution_net_buy,

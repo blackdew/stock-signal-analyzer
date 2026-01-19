@@ -205,6 +205,10 @@ class StockAnalyzer(BaseAgent):
         max_drawdown_pct = market_data.max_drawdown_pct if market_data and hasattr(market_data, 'max_drawdown_pct') else None
         stock_return_20d = market_data.return_20d if market_data and hasattr(market_data, 'return_20d') else None
 
+        # 52주 최고/최저가 추출
+        low_52w = market_data.low_52w if market_data and hasattr(market_data, 'low_52w') else None
+        high_52w = market_data.high_52w if market_data and hasattr(market_data, 'high_52w') else None
+
         # RubricEngine으로 점수 계산
         rubric_result = self.rubric_engine.calculate(
             symbol=symbol,
@@ -212,6 +216,8 @@ class StockAnalyzer(BaseAgent):
             market_data=market_data,
             fundamental_data=fundamental_data,
             news_data=news_data,
+            low_52w=low_52w,
+            high_52w=high_52w,
             atr_pct=atr_pct,
             beta=beta,
             max_drawdown_pct=max_drawdown_pct,
@@ -241,50 +247,30 @@ class StockAnalyzer(BaseAgent):
 
     def _get_market_caps(self, symbols: List[str]) -> Dict[str, float]:
         """
-        종목들의 시가총액을 조회합니다.
+        종목들의 시가총액을 조회합니다 (네이버 금융).
 
         Returns:
             종목코드를 키로 하는 시가총액 딕셔너리 (억원 단위)
         """
         result: Dict[str, float] = {}
-        missing_symbols: List[str] = []
 
         try:
-            # 1차: KRX 상장 종목 정보에서 시가총액 조회
-            krx = self.fetcher._get_krx_listing()
+            # 네이버 금융에서 KOSPI, KOSDAQ 시가총액 순위 조회
+            kospi_data = self.fetcher.get_market_cap_rank("KOSPI", 100)
+            kosdaq_data = self.fetcher.get_market_cap_rank("KOSDAQ", 100)
+
+            # 심볼별 시가총액 매핑
+            market_cap_map = {}
+            for stock in kospi_data + kosdaq_data:
+                market_cap_map[stock.symbol] = stock.market_cap or 0
 
             for symbol in symbols:
-                stock = krx[krx["Code"] == symbol]
-                if not stock.empty and "Marcap" in stock.columns:
-                    marcap = stock.iloc[0]["Marcap"]
-                    if marcap and marcap > 0:
-                        result[symbol] = float(marcap) / 100_000_000
-                        continue
-                missing_symbols.append(symbol)
+                result[symbol] = market_cap_map.get(symbol, 0)
 
         except Exception as e:
-            self._log_warning(f"Failed to get market caps from KRX: {e}")
-            missing_symbols = list(symbols)
-
-        # 2차: 네이버 금융 크롤링으로 누락된 시가총액 조회
-        if missing_symbols:
-            try:
-                # KOSPI, KOSDAQ 모두에서 시가총액 데이터 가져오기
-                kospi_data = self.fetcher._get_market_cap_rank_naver("KOSPI", 100)
-                kosdaq_data = self.fetcher._get_market_cap_rank_naver("KOSDAQ", 100)
-
-                # 심볼별 시가총액 매핑
-                market_cap_map = {}
-                for stock in kospi_data + kosdaq_data:
-                    market_cap_map[stock.symbol] = stock.market_cap or 0
-
-                for symbol in missing_symbols:
-                    result[symbol] = market_cap_map.get(symbol, 0)
-
-            except Exception as e:
-                self._log_warning(f"Failed to get market caps from Naver: {e}")
-                for symbol in missing_symbols:
-                    result[symbol] = 0
+            self._log_warning(f"Failed to get market caps from Naver: {e}")
+            for symbol in symbols:
+                result[symbol] = 0
 
         return result
 
