@@ -206,7 +206,7 @@ INVESTMENT_GRADES = {
 - `get_sector_by_symbol(symbol)`: 종목 코드 -> 섹터명
 
 ### src/data/fetcher.py
-FinanceDataReader를 사용한 주식 데이터 수집.
+네이버 금융을 사용한 주식 데이터 수집.
 
 ```python
 from src.data.fetcher import StockDataFetcher, StockInfo, StockData
@@ -494,5 +494,5 @@ uv run python -c "from src.새모듈 import 클래스; print('OK')"
 ## 주의사항
 
 - 이 앱은 투자 참고용이며, 실제 투자 결정은 본인의 판단에 따라야 합니다
-- FinanceDataReader는 데이터 제공사 정책에 따라 제한이 있을 수 있습니다
+- 네이버 금융 크롤링은 서버 정책에 따라 제한이 있을 수 있습니다
 - 분석 결과는 과거 데이터 기반이므로 미래 수익을 보장하지 않습니다

@@ -78,8 +78,8 @@ class BaseAgent(ABC):
 
 | 에이전트 | 역할 | 데이터 소스 | 캐시 TTL |
 |----------|------|-------------|----------|
-| MarketDataAgent | 시장 데이터 | FinanceDataReader | 4시간 |
-| FundamentalAgent | 재무제표 | FinanceDataReader | 7일 |
+| MarketDataAgent | 시장 데이터 | 네이버 금융 | 4시간 |
+| FundamentalAgent | 재무제표 | 네이버 금융 | 7일 |
 | NewsAgent | 뉴스/센티먼트 | NEWS API | 24시간 |
 
 ### 분석 에이전트 구성
