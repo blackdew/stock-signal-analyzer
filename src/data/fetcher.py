@@ -54,6 +54,7 @@ class StockDataFetcher:
     def __init__(self):
         self._stock_name_cache: Dict[str, str] = {}
         self._market_cap_cache: Dict[str, float] = {}
+        self._sector_cache: Dict[str, str] = {}  # 섹터 캐시 추가
         self._latest_trading_date_cache: Optional[str] = None
         self._headers = {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
@@ -411,16 +412,64 @@ class StockDataFetcher:
         """
         종목 코드로 섹터를 찾습니다.
 
+        우선순위:
+        1. config.py의 SECTORS에서 검색 (수동 매핑된 섹터)
+        2. 네이버 금융 WiseReport에서 업종 정보 크롤링
+
         Args:
             symbol: 종목 코드
 
         Returns:
             섹터명 (찾지 못하면 None)
         """
+        # 1. SECTORS에서 먼저 검색 (수동 매핑 우선)
         for sector_name, symbols in SECTORS.items():
             if symbol in symbols:
                 return sector_name
+
+        # 2. 캐시 확인
+        if symbol in self._sector_cache:
+            return self._sector_cache[symbol]
+
+        # 3. 네이버 금융에서 자동 조회
+        sector = self._get_sector_from_naver(symbol)
+        if sector:
+            self._sector_cache[symbol] = sector
+            return sector
+
         return None
+
+    def _get_sector_from_naver(self, symbol: str) -> Optional[str]:
+        """
+        네이버 금융 WiseReport에서 종목의 업종 정보를 가져옵니다.
+
+        Args:
+            symbol: 종목 코드
+
+        Returns:
+            업종명 (예: "코스피 전기·전자", "코스닥 제약")
+            실패시 None
+        """
+        try:
+            url = f"https://navercomp.wisereport.co.kr/v2/company/c1010001.aspx?cmp_cd={symbol}"
+            response = requests.get(url, headers=self._headers, timeout=10)
+            soup = BeautifulSoup(response.text, "html.parser")
+
+            # KOSPI/KOSDAQ 업종 정보 추출
+            for elem in soup.select("span, dt, dd"):
+                text = elem.text.strip()
+                if text.startswith("KOSPI :") or text.startswith("KOSDAQ :"):
+                    # "KOSPI : 코스피 전기·전자" -> "코스피 전기·전자"
+                    sector = text.split(":")[-1].strip()
+                    logger.debug(f"종목 {symbol}: 네이버 업종 조회 성공 - {sector}")
+                    return sector
+
+            logger.debug(f"종목 {symbol}: 네이버 업종 정보 없음")
+            return None
+
+        except Exception as e:
+            logger.warning(f"종목 {symbol}: 네이버 업종 조회 실패 - {e}")
+            return None
 
     def fetch_stock_data_with_info(
         self, symbol: str, start_date: str, end_date: str, max_retries: int = 3
