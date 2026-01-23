@@ -22,7 +22,7 @@ import {
   StockAnalysis,
   SavedReport
 } from './types';
-import * as GeminiService from './services/geminiService';
+import * as ApiService from './services/apiService';
 import StockCard from './components/StockCard';
 import StockModal from './components/StockModal';
 import ChatSidebar from './components/ChatSidebar';
@@ -66,26 +66,49 @@ const App = () => {
     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${message}`]);
   };
 
-  const checkApiKey = async () => {
-     if (window.aistudio && window.aistudio.hasSelectedApiKey) {
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        setApiKeySet(hasKey);
-     } else {
-         if (process.env.API_KEY) {
-             setApiKeySet(true);
-         }
-     }
+  const checkBackendHealth = async () => {
+    const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    try {
+      const response = await fetch(`${API_BASE}/api/health`);
+      if (response.ok) {
+        setApiKeySet(true);
+        return;
+      }
+    } catch {
+      // 백엔드 연결 실패 시 Gemini API 키 확인 (폴백)
+    }
+
+    // 폴백: 기존 AI Studio API 키 체크
+    if (window.aistudio && window.aistudio.hasSelectedApiKey) {
+      const hasKey = await window.aistudio.hasSelectedApiKey();
+      setApiKeySet(hasKey);
+    } else if (process.env.API_KEY) {
+      setApiKeySet(true);
+    }
   };
 
   useEffect(() => {
-      checkApiKey();
+    checkBackendHealth();
   }, []);
 
   const handleSelectKey = async () => {
-      if (window.aistudio && window.aistudio.openSelectKey) {
-          await window.aistudio.openSelectKey();
-          setApiKeySet(true); 
+    // 먼저 백엔드 헬스 체크 재시도
+    const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    try {
+      const response = await fetch(`${API_BASE}/api/health`);
+      if (response.ok) {
+        setApiKeySet(true);
+        return;
       }
+    } catch {
+      // 백엔드 연결 실패
+    }
+
+    // AI Studio API 키 선택 (폴백)
+    if (window.aistudio && window.aistudio.openSelectKey) {
+      await window.aistudio.openSelectKey();
+      setApiKeySet(true);
+    }
   };
 
   const saveCurrentReport = (currentReport: AnalysisReport) => {
@@ -162,72 +185,74 @@ const App = () => {
   };
 
   const runAnalysis = async () => {
-    if (!apiKeySet) return;
-    
     setLogs([]);
     setReport({});
-    
+
     try {
-      // Step 1: Sectors
+      // Step 1: 기존 분석 결과 확인 시도
       setStatus(AgentStatus.ANALYZING_SECTORS);
-      addLog("서브 에이전트: 섹터 분석가 시작 (Sector Analyst)...");
-      const sectors = await GeminiService.analyzeSectors();
-      setReport(prev => ({ ...prev, topSectors: sectors }));
-      addLog(`유망 섹터 ${sectors.length}개 식별: ${sectors.map(s => s.name).join(', ')}`);
+      addLog("백엔드 API: 기존 분석 결과 확인 중...");
 
-      // Step 2: KOSPI Top 10
-      setStatus(AgentStatus.ANALYZING_KOSPI_10);
-      addLog("서브 에이전트: 대형주 분석가 시작 (KOSPI Top 10)...");
-      const kospi10 = await GeminiService.analyzeMarketGroup("KOSPI 시가총액 상위 1위~10위");
-      setReport(prev => ({ ...prev, kospiTop10Picks: kospi10 }));
-      addLog("KOSPI 상위 10개 기업 분석 완료.");
+      let analysisReport: AnalysisReport | null = null;
 
-      // Step 3: KOSPI 11-20
-      setStatus(AgentStatus.ANALYZING_KOSPI_MID);
-      addLog("서브 에이전트: 중대형주 분석가 시작 (KOSPI 11-20위)...");
-      const kospiMid = await GeminiService.analyzeMarketGroup("KOSPI 시가총액 상위 11위~20위");
-      setReport(prev => ({ ...prev, kospiMidPicks: kospiMid }));
-      addLog("KOSPI 11~20위 기업 분석 완료.");
+      try {
+        // 먼저 기존 분석 결과가 있는지 확인
+        analysisReport = await ApiService.getLatestAnalysis();
+        addLog("기존 분석 결과를 발견했습니다. 데이터 로드 중...");
+      } catch {
+        // 기존 결과가 없으면 새로 분석 실행
+        addLog("기존 분석 결과가 없습니다. 새로운 분석을 시작합니다...");
 
-      // Step 4: KOSDAQ Top 10
+        // Step 2: 분석 실행
+        setStatus(AgentStatus.ANALYZING_KOSPI_10);
+        addLog("백엔드 API: 분석 태스크 시작...");
+        const taskResponse = await ApiService.runAnalysis({ mode: 'daily', use_cache: true });
+        addLog(`태스크 ID: ${taskResponse.task_id}`);
+
+        // Step 3: 폴링으로 완료 대기
+        setStatus(AgentStatus.ANALYZING_KOSPI_MID);
+        addLog("백엔드 API: 분석 진행 중 (폴링)...");
+
+        analysisReport = await ApiService.pollAnalysisTask(
+          taskResponse.task_id,
+          (status, message) => {
+            if (status === 'running') {
+              addLog(`진행 중: ${message || '분석 실행 중...'}`);
+            }
+          },
+          3000, // 3초 간격
+          600000 // 10분 타임아웃
+        );
+      }
+
+      // Step 4: 결과 로드 및 표시
       setStatus(AgentStatus.ANALYZING_KOSDAQ);
-      addLog("서브 에이전트: 기술주 분석가 시작 (KOSDAQ Top 10)...");
-      const kosdaq = await GeminiService.analyzeMarketGroup("KOSDAQ 시가총액 상위 1위~10위");
-      setReport(prev => ({ ...prev, kosdaqTop10Picks: kosdaq }));
-      addLog("KOSDAQ 상위 기업 분석 완료.");
+      addLog(`유망 섹터 ${analysisReport.topSectors?.length || 0}개 식별`);
+      setReport(prev => ({ ...prev, topSectors: analysisReport!.topSectors }));
 
-      // Step 5: Sector Picks Deep Dive
       setStatus(AgentStatus.ANALYZING_SECTOR_STOCKS);
-      addLog("서브 에이전트: 섹터 전문 분석가 시작 (유망 섹터 심층 분석)...");
-      const sectorPicks = await GeminiService.analyzeSectorSpecificStocks(sectors);
-      setReport(prev => ({ ...prev, sectorBestPicks: sectorPicks }));
-      addLog(`${sectorPicks.length}개 섹터별 유망주 심층 분석 완료.`);
+      addLog(`KOSPI Top 10: ${analysisReport.kospiTop10Picks?.length || 0}개 종목 분석 완료`);
+      addLog(`KOSPI 11-20: ${analysisReport.kospiMidPicks?.length || 0}개 종목 분석 완료`);
+      addLog(`KOSDAQ Top 10: ${analysisReport.kosdaqTop10Picks?.length || 0}개 종목 분석 완료`);
+      setReport(prev => ({
+        ...prev,
+        kospiTop10Picks: analysisReport!.kospiTop10Picks,
+        kospiMidPicks: analysisReport!.kospiMidPicks,
+        kosdaqTop10Picks: analysisReport!.kosdaqTop10Picks,
+        sectorBestPicks: analysisReport!.sectorBestPicks,
+      }));
 
-      // Step 6: Final Synthesis
+      // Step 5: 최종 결과
       setStatus(AgentStatus.SYNTHESIZING_FINAL);
-      addLog("메인 에이전트: 최고 투자 책임자(CIO) 최종 선별 중...");
-      
-      const allCandidates = [
-        ...kospi10, 
-        ...kospiMid, 
-        ...kosdaq, 
-        ...sectorPicks
-      ];
+      addLog("최종 Top 3 종목 선별 완료.");
 
-      const final3 = await GeminiService.selectFinalTop3(allCandidates);
       const finalReport = {
-          ...report,
-          topSectors: sectors,
-          kospiTop10Picks: kospi10,
-          kospiMidPicks: kospiMid,
-          kosdaqTop10Picks: kosdaq,
-          sectorBestPicks: sectorPicks,
-          finalTop3: final3,
-          timestamp: new Date().toISOString()
+        ...analysisReport,
+        timestamp: analysisReport.timestamp || new Date().toISOString()
       };
 
       setReport(finalReport);
-      addLog("최종 선별 완료. 리포트 생성 중.");
+      addLog("리포트 생성 완료!");
 
       setStatus(AgentStatus.COMPLETE);
       setActiveTab('final');
@@ -258,13 +283,16 @@ const App = () => {
                   </div>
                   <h1 className="text-3xl font-bold text-white">AlphaInvest AI</h1>
                   <p className="text-slate-400">
-                      고급 시장 분석 에이전트(Veo/Gemini Pro)를 사용하려면 유료 API 키를 선택해야 합니다.
+                      백엔드 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인하거나 API 키를 선택해주세요.
                   </p>
-                  <button 
+                  <p className="text-slate-500 text-sm">
+                      백엔드 실행: <code className="bg-slate-800 px-2 py-1 rounded">uv run python main.py --web</code>
+                  </p>
+                  <button
                     onClick={handleSelectKey}
                     className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-6 rounded-lg transition-all w-full"
                   >
-                      API Key 선택하기
+                      다시 연결 시도
                   </button>
               </div>
           </div>
@@ -300,10 +328,10 @@ const App = () => {
                             <span className="text-emerald-400 font-bold text-xl">Score: {stock.rubric.total}</span>
                         </div>
                         <div className="grid grid-cols-2 gap-4 mb-4 text-sm bg-slate-900 p-2 rounded">
-                            <div>밸류에이션: {stock.rubric.valuation}</div>
-                            <div>펀더멘털: {stock.rubric.fundamentals}</div>
-                            <div>수급: {stock.rubric.supplyDemand}</div>
-                            <div>기술적: {stock.rubric.technical}</div>
+                            <div>기술적: {stock.rubric.technical.toFixed(1)}</div>
+                            <div>수급: {stock.rubric.supply.toFixed(1)}</div>
+                            <div>펀더멘털: {stock.rubric.fundamental.toFixed(1)}</div>
+                            <div>시장환경: {stock.rubric.market.toFixed(1)}</div>
                         </div>
                         <div className="prose prose-invert prose-sm max-w-none">
                             <h4 className="font-bold text-emerald-300">종합 분석</h4>
