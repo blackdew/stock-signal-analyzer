@@ -12,6 +12,7 @@
 - **Phase 2 완료**: 분석 에이전트 (StockAnalyzer, SectorAnalyzer, RankingAgent)
 - **Phase 4 완료**: 리포트 에이전트 (StockReportAgent, SectorReportAgent, SummaryAgent)
 - **Phase 5 완료**: Orchestrator 및 CLI (main.py)
+- **Phase 6 완료**: Web API (FastAPI 기반 REST API)
 
 ## 실행 방법
 
@@ -64,6 +65,15 @@ uv run python main.py --no-cache -v
 
 # 데이터 품질 기준 미달 시 실행 중단 (strict 모드)
 uv run python main.py --strict
+
+# API 서버 실행
+uv run python main.py --web
+
+# 커스텀 포트로 API 서버 실행
+uv run python main.py --web --port 8080
+
+# 커스텀 호스트로 API 서버 실행
+uv run python main.py --web --host 127.0.0.1 --port 3000
 
 # 도움말
 uv run python main.py --help
@@ -125,6 +135,16 @@ trading/
 │   │       ├── sector_report_agent.py  # 섹터 분석 마크다운 리포트
 │   │       ├── summary_agent.py        # 종합 리포트 및 JSON 데이터
 │   │       └── weekly_sector_report_agent.py  # 주간 섹터 분석 리포트
+│   │
+│   ├── web/                     # Web API (FastAPI)
+│   │   ├── __init__.py
+│   │   ├── app.py               # FastAPI 앱 생성 및 CORS 설정
+│   │   ├── schemas.py           # Pydantic 스키마 정의
+│   │   └── routes/              # API 라우터
+│   │       ├── __init__.py
+│   │       ├── analysis.py      # 분석 실행/결과 조회 API
+│   │       ├── sectors.py       # 섹터 분석 API
+│   │       └── stocks.py        # 종목 분석 API
 │   │
 │   └── output/                  # 출력 디렉토리
 │       ├── data/
@@ -453,6 +473,77 @@ output/reports/
 **실행 명령:**
 - `uv run python main.py --daily`: 일간 리포트 생성 (기본값)
 - `uv run python main.py --weekly`: 주간 섹터 리포트 생성
+- `uv run python main.py --web`: API 서버 실행
+
+## Web API
+
+### API 서버 실행
+```bash
+# 기본 실행 (0.0.0.0:8000)
+uv run python main.py --web
+
+# 커스텀 포트
+uv run python main.py --web --port 8080
+
+# 커스텀 호스트/포트
+uv run python main.py --web --host 127.0.0.1 --port 3000
+```
+
+서버 실행 후:
+- API 문서: http://localhost:8000/docs (Swagger UI)
+- ReDoc: http://localhost:8000/redoc
+
+### API 엔드포인트
+
+#### 헬스 체크
+- `GET /api/health` - 서버 상태 확인
+
+#### 분석 API (`/api/analysis`)
+- `GET /api/analysis/latest` - 최신 분석 결과 조회
+- `POST /api/analysis/run` - 분석 비동기 실행
+- `GET /api/analysis/task/{task_id}` - 분석 태스크 상태 조회
+- `GET /api/ranking` - Top 18, Top 5 순위 조회
+
+#### 섹터 API (`/api/sectors`)
+- `GET /api/sectors` - 전체 섹터 분석 결과 조회
+- `GET /api/sectors/available` - 분석 가능한 섹터 목록
+- `GET /api/sectors/{sector_name}` - 특정 섹터 상세 정보
+- `GET /api/sectors/{sector_name}/stocks` - 섹터별 종목 리스트
+
+#### 종목 API (`/api/stocks`)
+- `GET /api/stocks` - 분석된 종목 리스트 (페이지네이션, 그룹 필터)
+- `GET /api/stocks/{symbol}` - 특정 종목 상세 정보
+- `GET /api/stocks/top/{n}` - 상위 N개 종목
+- `GET /api/stocks/group/{group}` - 그룹별 종목 리스트
+
+### 사용 예시
+
+```python
+import httpx
+
+# 최신 분석 결과 조회
+response = httpx.get("http://localhost:8000/api/analysis/latest")
+data = response.json()
+
+# Top 5 종목 조회
+response = httpx.get("http://localhost:8000/api/stocks/top/5")
+top5 = response.json()
+
+# 반도체 섹터 상세 조회
+response = httpx.get("http://localhost:8000/api/sectors/반도체")
+semiconductor = response.json()
+
+# 분석 비동기 실행
+response = httpx.post("http://localhost:8000/api/analysis/run", json={
+    "mode": "daily",
+    "use_cache": True
+})
+task_id = response.json()["task_id"]
+
+# 태스크 상태 확인
+response = httpx.get(f"http://localhost:8000/api/analysis/task/{task_id}")
+status = response.json()["status"]
+```
 
 ## 개발 가이드
 
@@ -475,6 +566,9 @@ uv run python script.py
 새 모듈 추가 후 반드시 import 테스트:
 ```bash
 uv run python -c "from src.새모듈 import 클래스; print('OK')"
+
+# web 모듈 테스트
+uv run python -c "from src.web import create_app; print('Web API OK')"
 ```
 
 ### 코드 스타일

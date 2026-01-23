@@ -12,7 +12,8 @@
 | Phase 1 | 완료 | 데이터 에이전트 (MarketDataAgent, FundamentalAgent, NewsAgent) |
 | Phase 2 | 완료 | 분석 에이전트 (StockAnalyzer, SectorAnalyzer, RankingAgent) |
 | Phase 4 | 완료 | 리포트 에이전트 (StockReportAgent, SectorReportAgent, SummaryAgent) |
-| Phase 3 | 대기 중 | Orchestrator 및 전체 파이프라인 연결 |
+| Phase 5 | 완료 | Orchestrator 및 CLI (main.py) |
+| Phase 6 | 완료 | Web API (FastAPI 기반 REST API) |
 
 ### 테스트 현황
 - **총 279개 테스트**
@@ -25,6 +26,7 @@
 - **Python 3.12+**
 - **네이버 금융 크롤링**: 한국 주식 데이터 수집
 - **pandas / pandas-ta**: 데이터 분석 및 기술적 지표
+- **FastAPI / uvicorn**: REST API 서버
 - **uv**: 패키지 관리 및 실행
 
 ## 빠른 시작
@@ -51,6 +53,20 @@ uv run python -c "from src.data.fetcher import StockDataFetcher; f = StockDataFe
 
 # 루브릭 엔진 확인
 uv run python -c "from src.core.rubric import RubricEngine; print(RubricEngine().weights)"
+```
+
+### 3. 실행
+
+```bash
+# CLI: 일간 리포트 생성
+uv run python main.py --daily
+
+# CLI: 주간 리포트 생성
+uv run python main.py --weekly
+
+# API 서버 실행
+uv run python main.py --web
+# API 문서: http://localhost:8000/docs
 ```
 
 ## 핵심 기능
@@ -93,6 +109,15 @@ uv run python -c "from src.core.rubric import RubricEngine; print(RubricEngine()
 - **SummaryAgent**: 종합 리포트 및 JSON 데이터 생성
 - **WeeklySectorReportAgent**: 주간 섹터 분석 리포트 생성
 
+### Web API
+- **FastAPI 기반 REST API**: 분석 결과 조회 및 실행
+- **주요 엔드포인트**:
+  - `GET /api/analysis/latest` - 최신 분석 결과
+  - `GET /api/ranking` - Top 18, Top 5 순위
+  - `GET /api/sectors` - 섹터 분석 결과
+  - `GET /api/stocks` - 종목 분석 결과
+  - `POST /api/analysis/run` - 분석 비동기 실행
+
 ## 프로젝트 구조
 
 ```
@@ -101,7 +126,7 @@ trading/
 │   ├── core/               # 설정 및 평가 엔진
 │   │   ├── config.py       # SECTORS(11개), RUBRIC_WEIGHTS(V2)
 │   │   ├── rubric.py       # RubricEngine V2 (6개 카테고리)
-│   │   └── orchestrator.py # (미구현)
+│   │   └── orchestrator.py # 전체 파이프라인 조율
 │   ├── data/               # 데이터 수집 및 캐싱
 │   │   ├── fetcher.py      # StockDataFetcher
 │   │   └── cache.py        # CacheManager
@@ -120,6 +145,13 @@ trading/
 │           ├── sector_report_agent.py
 │           ├── summary_agent.py
 │           └── weekly_sector_report_agent.py
+│   └── web/                # Web API (FastAPI)
+│       ├── app.py          # FastAPI 앱 생성
+│       ├── schemas.py      # Pydantic 스키마
+│       └── routes/         # API 라우터
+│           ├── analysis.py # 분석 API
+│           ├── sectors.py  # 섹터 API
+│           └── stocks.py   # 종목 API
 ├── tests/                  # 테스트 (279개)
 ├── docs/
 │   └── architecture.md     # 아키텍처 문서
