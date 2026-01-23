@@ -9,7 +9,7 @@
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Orchestrator                              │
-│                    (전체 파이프라인 조율) [미구현]               │
+│                    (전체 파이프라인 조율) [완료]                 │
 └─────────────────────────────────────────────────────────────────┘
                                 │
         ┌───────────────────────┼───────────────────────┐
@@ -344,20 +344,29 @@ CacheManager
 }
 ```
 
-## 확장 계획
+## 구현 현황
 
-### Phase 3 (대기 중)
+### Phase 3 (완료)
 - Orchestrator 구현
 - 전체 파이프라인 연결
-- CLI 인터페이스
 
 ### Phase 4 (완료)
 - StockReportAgent: 개별 종목 마크다운 리포트
 - SectorReportAgent: 섹터 분석 마크다운 리포트
 - SummaryAgent: 종합 리포트 및 JSON 데이터
 
-### Phase 5 (계획)
-- 웹 대시보드
+### Phase 5 (완료)
+- Orchestrator 및 CLI (main.py)
+- 일간/주간 리포트 모드
+- 데이터 품질 검증 (strict 모드)
+
+### Phase 6 (완료)
+- FastAPI 기반 REST API (src/web/)
+- 분석 실행/결과 조회 API
+- 섹터/종목 분석 API
+
+### 향후 계획
+- 웹 대시보드 (poc-web에서 PoC 진행 중)
 - 알림 시스템
 - 백테스팅 엔진
 - 포트폴리오 최적화
@@ -369,7 +378,8 @@ src/
 ├── core/                        # 핵심 모듈
 │   ├── config.py                # 전역 설정 (11개 섹터, RUBRIC_WEIGHTS V2)
 │   ├── rubric.py                # 루브릭 엔진 V2 (6개 카테고리)
-│   └── orchestrator.py          # (미구현) 파이프라인 조율
+│   ├── orchestrator.py          # 파이프라인 조율
+│   └── logging_config.py        # 로깅 설정
 │
 ├── data/                        # 데이터 계층
 │   ├── fetcher.py               # 데이터 수집
@@ -395,6 +405,16 @@ src/
 │       ├── summary_agent.py        # 종합 리포트 및 JSON 데이터
 │       └── weekly_sector_report_agent.py  # 주간 섹터 분석 리포트
 │
+├── web/                         # Web API (FastAPI)
+│   ├── __init__.py
+│   ├── app.py                   # FastAPI 앱 생성 및 CORS 설정
+│   ├── schemas.py               # Pydantic 스키마 정의
+│   └── routes/                  # API 라우터
+│       ├── __init__.py
+│       ├── analysis.py          # 분석 실행/결과 조회 API
+│       ├── sectors.py           # 섹터 분석 API
+│       └── stocks.py            # 종목 분석 API
+│
 └── output/                      # 출력
     ├── data/cache/              # 캐시 저장소
     └── reports/                 # 리포트 저장소
@@ -410,4 +430,15 @@ tests/                           # 테스트 (279개)
 ├── agents/
 │   ├── data/                    # 데이터 에이전트 테스트 (64개)
 │   └── analysis/                # 분석 에이전트 테스트 (49개)
+
+poc-web/                         # 프론트엔드 PoC (Gemini AI Studio)
+├── index.tsx                    # 메인 앱 엔트리
+├── types.ts                     # TypeScript 타입 정의 (6개 루브릭 카테고리)
+├── components/                  # React 컴포넌트
+│   ├── StockCard.tsx            # 종목 카드
+│   ├── StockModal.tsx           # 종목 상세 모달
+│   ├── RubricChart.tsx          # 루브릭 점수 차트
+│   └── ChatSidebar.tsx          # 채팅 사이드바
+└── services/
+    └── geminiService.ts         # Gemini API 연동
 ```

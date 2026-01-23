@@ -155,6 +155,10 @@ trading/
 ├── tests/                  # 테스트 (279개)
 ├── docs/
 │   └── architecture.md     # 아키텍처 문서
+├── poc-web/                # 프론트엔드 PoC (Gemini AI Studio)
+│   ├── index.tsx           # 메인 앱 엔트리
+│   ├── types.ts            # TypeScript 타입 정의
+│   └── components/         # React 컴포넌트
 ├── CLAUDE.md               # Claude Code 가이드
 └── pyproject.toml
 ```

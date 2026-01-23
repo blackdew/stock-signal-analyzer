@@ -167,8 +167,19 @@ trading/
 │   │   ├── data/                # 데이터 에이전트 테스트 (64개)
 │   │   └── analysis/            # 분석 에이전트 테스트 (49개)
 │
-└── docs/
-    └── architecture.md          # 아키텍처 설명
+├── docs/
+│   └── architecture.md          # 아키텍처 설명
+│
+└── poc-web/                     # 프론트엔드 PoC (Gemini AI Studio)
+    ├── index.tsx                # 메인 앱 엔트리
+    ├── types.ts                 # TypeScript 타입 정의 (6개 루브릭 카테고리)
+    ├── components/              # React 컴포넌트
+    │   ├── StockCard.tsx        # 종목 카드
+    │   ├── StockModal.tsx       # 종목 상세 모달
+    │   ├── RubricChart.tsx      # 루브릭 점수 차트
+    │   └── ChatSidebar.tsx      # 채팅 사이드바
+    └── services/
+        └── geminiService.ts     # Gemini API 연동
 ```
 
 ## 핵심 모듈 설명
