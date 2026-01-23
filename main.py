@@ -15,6 +15,46 @@ from src.core.orchestrator import Orchestrator, RunOptions, print_summary
 from src.agents.analysis.data_quality import DataQualityError
 
 
+def run_web_server(host: str, port: int, verbose: bool) -> int:
+    """
+    API 서버를 시작합니다.
+
+    Args:
+        host: 호스트 주소
+        port: 포트 번호
+        verbose: 상세 로그 출력
+
+    Returns:
+        종료 코드
+    """
+    try:
+        import uvicorn
+        from src.web.app import create_app
+
+        print(f"🚀 API 서버 시작: http://{host}:{port}")
+        print(f"📚 API 문서: http://{host}:{port}/docs")
+        print("종료하려면 Ctrl+C를 누르세요.")
+
+        log_level = "debug" if verbose else "info"
+        uvicorn.run(
+            "src.web.app:app",
+            host=host,
+            port=port,
+            log_level=log_level,
+            reload=False,
+        )
+        return 0
+
+    except ImportError as e:
+        print(f"❌ 웹 서버 실행 실패: {e}")
+        print("💡 fastapi와 uvicorn을 설치하세요: uv add fastapi uvicorn[standard]")
+        return 1
+
+    except Exception as e:
+        print(f"❌ 웹 서버 오류: {e}")
+        return 1
+
+
 def parse_args() -> argparse.Namespace:
     """
     CLI 인자를 파싱합니다.
@@ -32,6 +72,8 @@ def parse_args() -> argparse.Namespace:
   uv run main.py --weekly           # 주간 섹터 리포트 생성
   uv run main.py --sector-only      # 섹터 분석만
   uv run main.py --no-cache -v      # 캐시 없이 상세 로그
+  uv run main.py --web              # API 서버 시작
+  uv run main.py --web --port 8080  # 커스텀 포트로 API 서버 시작
   uv run main.py --help             # 도움말
         """
     )
@@ -47,6 +89,24 @@ def parse_args() -> argparse.Namespace:
         "--weekly",
         action="store_true",
         help="주간 섹터 리포트 생성"
+    )
+    mode_group.add_argument(
+        "--web",
+        action="store_true",
+        help="API 서버 시작"
+    )
+
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="API 서버 포트 (기본값: 8000)"
+    )
+
+    parser.add_argument(
+        "--host",
+        default="0.0.0.0",
+        help="API 서버 호스트 (기본값: 0.0.0.0)"
     )
 
     parser.add_argument(
@@ -121,6 +181,10 @@ def main() -> int:
     # 로깅 설정
     log_dir = Path(args.output_dir) / "logs"
     setup_logging(verbose=args.verbose, log_dir=log_dir)
+
+    # API 서버 모드
+    if args.web:
+        return run_web_server(args.host, args.port, args.verbose)
 
     # 모드 결정: --weekly 이면 "weekly", 아니면 "daily" (기본값)
     mode = "weekly" if args.weekly else "daily"
