@@ -74,6 +74,10 @@ class StockAnalysisSchema(BaseModel):
     total_score: float = Field(description="총점 (100점 만점)")
     investment_grade: str = Field(description="투자 등급", examples=["Buy"])
 
+    # 52주 고저가
+    high_52w: Optional[float] = Field(default=None, description="52주 최고가")
+    low_52w: Optional[float] = Field(default=None, description="52주 최저가")
+
     rank_in_group: int = Field(description="그룹 내 순위")
     final_rank: Optional[int] = Field(default=None, description="최종 순위")
 
@@ -84,6 +88,42 @@ class StockListResponse(BaseModel):
     """종목 리스트 응답"""
     count: int
     stocks: List[StockAnalysisSchema]
+
+
+# =============================================================================
+# 차트 데이터 스키마
+# =============================================================================
+
+
+class PriceHistoryItem(BaseModel):
+    """일별 주가 데이터"""
+    date: str = Field(description="날짜 (YYYY-MM-DD)", examples=["2025-01-24"])
+    open: float = Field(description="시가")
+    high: float = Field(description="고가")
+    low: float = Field(description="저가")
+    close: float = Field(description="종가")
+    volume: int = Field(description="거래량")
+
+
+class StockHistoryResponse(BaseModel):
+    """주가 히스토리 응답"""
+    symbol: str = Field(description="종목 코드", examples=["005930"])
+    name: str = Field(description="종목명", examples=["삼성전자"])
+    history: List[PriceHistoryItem] = Field(description="일별 주가 데이터")
+
+
+class SupplyItem(BaseModel):
+    """일별 수급 데이터"""
+    date: str = Field(description="날짜 (YYYY-MM-DD)", examples=["2025-01-24"])
+    foreign_net: float = Field(description="외국인 순매수 (억원)")
+    institution_net: float = Field(description="기관 순매수 (억원)")
+
+
+class StockSupplyResponse(BaseModel):
+    """수급 데이터 응답"""
+    symbol: str = Field(description="종목 코드", examples=["005930"])
+    name: str = Field(description="종목명", examples=["삼성전자"])
+    supply: List[SupplyItem] = Field(description="일별 수급 데이터")
 
 
 # =============================================================================

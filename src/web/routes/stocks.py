@@ -6,15 +6,24 @@ Stocks API Routes
 
 import json
 import logging
+import time
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
+import requests
+from bs4 import BeautifulSoup
 from fastapi import APIRouter, HTTPException, Query
 
+from src.data.fetcher import StockDataFetcher
 from src.web.schemas import (
     ErrorResponse,
+    PriceHistoryItem,
     StockAnalysisSchema,
+    StockHistoryResponse,
     StockListResponse,
+    StockSupplyResponse,
+    SupplyItem,
 )
 
 logger = logging.getLogger(__name__)
@@ -62,6 +71,8 @@ def _stock_dict_to_schema(stock_dict: Dict[str, Any]) -> StockAnalysisSchema:
         relative_strength_score=stock_dict.get("relative_strength_score", 0),
         total_score=stock_dict.get("total_score", 0),
         investment_grade=stock_dict.get("investment_grade", "Hold"),
+        high_52w=stock_dict.get("high_52w"),
+        low_52w=stock_dict.get("low_52w"),
         rank_in_group=stock_dict.get("rank_in_group", 0),
         final_rank=stock_dict.get("final_rank"),
     )
@@ -280,3 +291,194 @@ async def get_stocks_by_group(group: str) -> List[StockAnalysisSchema]:
         )
 
     return [_stock_dict_to_schema(s) for s in stocks]
+
+
+# =============================================================================
+# 차트 데이터 API
+# =============================================================================
+
+
+@router.get(
+    "/stocks/{symbol}/history",
+    response_model=StockHistoryResponse,
+    responses={404: {"model": ErrorResponse}},
+)
+async def get_stock_history(
+    symbol: str,
+    days: int = Query(60, ge=1, le=365, description="조회할 일수 (기본값: 60, 최대: 365)"),
+) -> StockHistoryResponse:
+    """
+    특정 종목의 일별 주가 히스토리를 조회합니다.
+
+    Args:
+        symbol: 종목 코드 (예: 005930)
+        days: 조회할 일수 (기본값: 60)
+
+    Returns:
+        StockHistoryResponse
+    """
+    # 종목 코드 정규화
+    symbol = symbol.zfill(6)
+
+    fetcher = StockDataFetcher()
+
+    # 종목명 조회
+    name = fetcher.get_stock_name(symbol)
+    if name == symbol:
+        # 종목명 조회 실패 시 종목 코드 유효성 확인
+        logger.warning(f"종목명 조회 실패: {symbol}")
+
+    # 날짜 범위 계산
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days + 30)  # 여유분 추가
+    start_str = start_date.strftime("%Y-%m-%d")
+    end_str = end_date.strftime("%Y-%m-%d")
+
+    # 주가 데이터 조회
+    df = fetcher.fetch_stock_data(symbol, start_str, end_str)
+
+    if df is None or df.empty:
+        raise HTTPException(
+            status_code=404,
+            detail=f"종목 '{symbol}'의 주가 데이터를 찾을 수 없습니다.",
+        )
+
+    # 최근 N일만 선택
+    df = df.tail(days)
+
+    # 응답 데이터 구성
+    history = [
+        PriceHistoryItem(
+            date=row.name.strftime("%Y-%m-%d"),
+            open=float(row["Open"]),
+            high=float(row["High"]),
+            low=float(row["Low"]),
+            close=float(row["Close"]),
+            volume=int(row["Volume"]),
+        )
+        for _, row in df.iterrows()
+    ]
+
+    return StockHistoryResponse(
+        symbol=symbol,
+        name=name,
+        history=history,
+    )
+
+
+@router.get(
+    "/stocks/{symbol}/supply",
+    response_model=StockSupplyResponse,
+    responses={404: {"model": ErrorResponse}},
+)
+async def get_stock_supply(
+    symbol: str,
+    days: int = Query(20, ge=1, le=60, description="조회할 일수 (기본값: 20, 최대: 60)"),
+) -> StockSupplyResponse:
+    """
+    특정 종목의 외국인/기관 순매수 추이를 조회합니다.
+
+    Args:
+        symbol: 종목 코드 (예: 005930)
+        days: 조회할 일수 (기본값: 20)
+
+    Returns:
+        StockSupplyResponse
+    """
+    # 종목 코드 정규화
+    symbol = symbol.zfill(6)
+
+    fetcher = StockDataFetcher()
+
+    # 종목명 조회
+    name = fetcher.get_stock_name(symbol)
+    if name == symbol:
+        logger.warning(f"종목명 조회 실패: {symbol}")
+
+    # 수급 데이터 조회 (네이버 금융에서 직접 크롤링)
+    supply_data = _fetch_supply_data(symbol, days, fetcher)
+
+    if not supply_data:
+        raise HTTPException(
+            status_code=404,
+            detail=f"종목 '{symbol}'의 수급 데이터를 찾을 수 없습니다.",
+        )
+
+    return StockSupplyResponse(
+        symbol=symbol,
+        name=name,
+        supply=supply_data,
+    )
+
+
+def _fetch_supply_data(symbol: str, days: int, fetcher: StockDataFetcher) -> List[SupplyItem]:
+    """
+    네이버 금융에서 외국인/기관 수급 데이터를 크롤링합니다.
+    """
+    result = []
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+    }
+
+    try:
+        # 페이지 수 계산 (한 페이지당 약 10개 행)
+        pages_needed = (days // 10) + 2
+
+        for page in range(1, pages_needed + 1):
+            url = f"https://finance.naver.com/item/frgn.naver?code={symbol}&page={page}"
+            response = requests.get(url, headers=headers, timeout=10)
+            response.encoding = "euc-kr"
+            soup = BeautifulSoup(response.text, "html.parser")
+
+            # 외국인/기관 매매 테이블 파싱 (두 번째 type2 테이블)
+            tables = soup.select("table.type2")
+            table = tables[1] if len(tables) > 1 else tables[0] if tables else None
+            if not table:
+                break
+
+            rows = table.select("tr")
+            for row in rows:
+                tds = row.select("td")
+                if len(tds) >= 9:
+                    try:
+                        date_text = tds[0].text.strip()
+                        if not date_text or "." not in date_text:
+                            continue
+
+                        # 날짜 파싱 (2025.01.24 -> 2025-01-24)
+                        date_str = date_text.replace(".", "-")
+
+                        # 종가
+                        close_text = tds[1].text.strip().replace(",", "")
+                        close = int(close_text) if close_text else 0
+
+                        # 기관 순매매 (6번째 컬럼) - 주 단위
+                        inst_text = tds[5].text.strip().replace(",", "").replace("+", "")
+                        inst_value = int(inst_text) if inst_text and inst_text != "-" else 0
+
+                        # 외국인 순매매 (7번째 컬럼) - 주 단위
+                        foreign_text = tds[6].text.strip().replace(",", "").replace("+", "")
+                        foreign_value = int(foreign_text) if foreign_text and foreign_text != "-" else 0
+
+                        # 억원 단위로 변환 (주 * 종가 / 1억)
+                        foreign_net = round(foreign_value * close / 100_000_000, 2) if close else 0
+                        inst_net = round(inst_value * close / 100_000_000, 2) if close else 0
+
+                        result.append(SupplyItem(
+                            date=date_str,
+                            foreign_net=foreign_net,
+                            institution_net=inst_net,
+                        ))
+
+                        if len(result) >= days:
+                            return result
+
+                    except (ValueError, IndexError):
+                        continue
+
+            time.sleep(0.1)  # 요청 간격
+
+    except Exception as e:
+        logger.error(f"수급 데이터 조회 실패 for {symbol}: {e}")
+
+    return result
