@@ -136,6 +136,8 @@ const transformSector = (backend: BackendSectorAnalysis): SectorAnalysis => ({
   name: backend.sector_name,
   reasoning: `가중 평균 점수: ${backend.weighted_score.toFixed(1)}점 / 단순 평균: ${backend.simple_score.toFixed(1)}점 / 총 시가총액: ${(backend.total_market_cap / 10000).toFixed(1)}조원`,
   topStocks: backend.top_stocks.map(s => s.name),
+  weightedScore: backend.weighted_score,
+  rank: backend.rank,
 });
 
 /**
@@ -173,19 +175,29 @@ const transformToReport = (backend: BackendAnalysisResult): AnalysisReport => {
     .slice(0, 9)
     .map(transformStock);
 
-  // 최종 Top 5에서 상위 3개 선정 (프론트엔드는 Top 3 사용)
-  const finalTop3 = ranking.final_top5
-    .slice(0, 3)
+  // 최종 Top 5 선정
+  const finalTop5 = ranking.final_top5
+    .slice(0, 5)
     .map(transformStock);
+
+  // 최종 18개 종목
+  const final18 = ranking.final_18
+    .map(transformStock);
+
+  // 전체 섹터 (차트 시각화용)
+  const allSectors = ranking.top_sectors
+    .map(transformSector);
 
   return {
     timestamp: backend.generated_at,
     topSectors,
+    allSectors,
     kospiTop10Picks,
     kospiMidPicks,
     kosdaqTop10Picks,
     sectorBestPicks,
-    finalTop3,
+    finalTop5,
+    final18,
   };
 };
 

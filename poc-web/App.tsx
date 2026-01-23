@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Briefcase, 
-  TrendingUp, 
-  BarChart2, 
-  Zap, 
-  LayoutDashboard, 
+import {
+  Briefcase,
+  TrendingUp,
+  BarChart2,
+  Zap,
+  LayoutDashboard,
   PlayCircle,
   CheckCircle2,
   Loader2,
@@ -14,7 +14,11 @@ import {
   Download,
   History,
   Trash2,
-  FileText
+  FileText,
+  List,
+  Award,
+  Menu,
+  X
 } from 'lucide-react';
 import { 
   AgentStatus, 
@@ -26,6 +30,7 @@ import * as ApiService from './services/apiService';
 import StockCard from './components/StockCard';
 import StockModal from './components/StockModal';
 import ChatSidebar from './components/ChatSidebar';
+import SectorBarChart from './components/SectorBarChart';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import ReactMarkdown from 'react-markdown';
@@ -36,10 +41,11 @@ const App = () => {
   const [logs, setLogs] = useState<string[]>([]);
   const [report, setReport] = useState<Partial<AnalysisReport>>({});
   const [selectedStock, setSelectedStock] = useState<StockAnalysis | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'sectors' | 'kospi10' | 'kospiMid' | 'kosdaq' | 'final'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'sectors' | 'kospi10' | 'kospiMid' | 'kosdaq' | 'all18' | 'final'>('overview');
   
   // New State Features
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [savedReports, setSavedReports] = useState<SavedReport[]>([]);
   
   // References
@@ -271,7 +277,8 @@ const App = () => {
     { id: 'kospi10', label: '코스피 상위 10', icon: TrendingUp },
     { id: 'kospiMid', label: '코스피 11-20위', icon: BarChart2 },
     { id: 'kosdaq', label: '코스닥 상위 10', icon: Zap },
-    { id: 'final', label: '최종 TOP 3', icon: CheckCircle2 },
+    { id: 'all18', label: '전체 18종목', icon: List },
+    { id: 'final', label: '최종 TOP 5', icon: CheckCircle2 },
   ];
 
   if (!apiKeySet) {
@@ -320,8 +327,8 @@ const App = () => {
             </section>
 
             <section>
-                <h2 className="text-2xl font-bold mb-4 text-emerald-400">2. 최종 추천 TOP 3</h2>
-                {report.finalTop3?.map((stock, i) => (
+                <h2 className="text-2xl font-bold mb-4 text-emerald-400">2. 최종 추천 TOP 5</h2>
+                {report.finalTop5?.map((stock, i) => (
                      <div key={i} className="mb-6 bg-slate-800 p-6 rounded border border-slate-700">
                         <div className="flex justify-between items-center mb-2">
                             <h3 className="text-2xl font-bold">{stock.name}</h3>
@@ -356,21 +363,49 @@ const App = () => {
         </div>
       )}
 
+      {/* Mobile Menu Button */}
+      <button
+        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+        className="fixed top-4 left-4 z-50 md:hidden bg-slate-800 p-2 rounded-lg border border-slate-700 text-white"
+      >
+        {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+      </button>
+
+      {/* Mobile Overlay */}
+      {isMobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-30 md:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Sidebar Navigation */}
-      <aside className="w-full md:w-64 bg-slate-950 border-r border-slate-800 p-6 flex flex-col shrink-0 overflow-y-auto z-20 h-screen">
-        <h1 className="text-2xl font-bold text-emerald-500 mb-8 flex items-center gap-2">
+      <aside className={`
+        fixed md:relative
+        top-0 left-0
+        w-64 h-screen
+        bg-slate-950 border-r border-slate-800
+        p-6 flex flex-col shrink-0 overflow-y-auto
+        z-40
+        transform transition-transform duration-300 ease-in-out
+        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+      `}>
+        <h1 className="text-2xl font-bold text-emerald-500 mb-8 flex items-center gap-2 mt-8 md:mt-0">
           <TrendingUp /> AlphaInvest
         </h1>
-        
+
         <nav className="space-y-2 mb-8">
           {navItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id as any)}
+              onClick={() => {
+                setActiveTab(item.id as any);
+                setIsMobileMenuOpen(false);
+              }}
               disabled={status !== AgentStatus.COMPLETE && item.id !== 'overview'}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-sm font-medium ${
-                activeTab === item.id 
-                  ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-600/50' 
+                activeTab === item.id
+                  ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-600/50'
                   : status !== AgentStatus.COMPLETE && item.id !== 'overview'
                     ? 'opacity-50 cursor-not-allowed text-slate-500'
                     : 'text-slate-400 hover:bg-slate-800 hover:text-white'
@@ -390,8 +425,11 @@ const App = () => {
            <div className="space-y-2">
                {savedReports.length === 0 && <p className="text-xs text-slate-600 italic">저장된 내역 없음</p>}
                {savedReports.map(saved => (
-                   <div key={saved.id} 
-                        onClick={() => loadReport(saved)}
+                   <div key={saved.id}
+                        onClick={() => {
+                          loadReport(saved);
+                          setIsMobileMenuOpen(false);
+                        }}
                         className="group flex items-center justify-between text-xs text-slate-400 hover:text-emerald-400 hover:bg-slate-900 p-2 rounded cursor-pointer transition-colors">
                        <span>{saved.date}</span>
                        <button onClick={(e) => deleteReport(saved.id, e)} className="opacity-0 group-hover:opacity-100 hover:text-red-400">
@@ -404,7 +442,7 @@ const App = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-grow p-6 md:p-12 overflow-y-auto relative">
+      <main className="flex-grow p-4 pt-16 md:pt-4 md:p-12 overflow-y-auto relative md:ml-0">
         
         {/* Top Right Controls */}
         <div className="absolute top-6 right-6 flex items-center gap-3 z-30" id="no-print">
@@ -434,8 +472,8 @@ const App = () => {
                 AI 기반 주식 시장 분석
               </h2>
               <p className="text-slate-400 max-w-2xl mx-auto">
-                6개의 특화된 AI 에이전트가 시장 섹터를 정밀 분석하고, 18개의 유망 종목을 선별하여 
-                자체 루브릭 모델을 통해 최상위 3개 투자 종목을 추천합니다.
+                6개의 특화된 AI 에이전트가 시장 섹터를 정밀 분석하고, 18개의 유망 종목을 선별하여
+                자체 루브릭 모델을 통해 최상위 5개 투자 종목을 추천합니다.
               </p>
             </header>
 
@@ -481,8 +519,8 @@ const App = () => {
                 </div>
                 <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700">
                     <div className="w-10 h-10 bg-emerald-500/20 text-emerald-400 rounded-lg flex items-center justify-center mb-4"><CheckCircle2 /></div>
-                    <h3 className="font-bold mb-2">최종 Top 3 선정</h3>
-                    <p className="text-sm text-slate-400">18개의 후보군 중 최고의 투자 기회를 가진 3개 종목을 엄선합니다.</p>
+                    <h3 className="font-bold mb-2">최종 Top 5 선정</h3>
+                    <p className="text-sm text-slate-400">18개의 후보군 중 최고의 투자 기회를 가진 5개 종목을 엄선합니다.</p>
                 </div>
             </div>
           </div>
@@ -490,29 +528,48 @@ const App = () => {
 
         {/* Dynamic Views based on Tabs */}
         {(activeTab === 'sectors' && report.topSectors) && (
-            <div className="space-y-6 pt-10">
-               <h2 className="text-2xl font-bold flex items-center gap-2"><Briefcase className="text-emerald-400"/> 유망 섹터 Top 3</h2>
-               <div className="grid grid-cols-1 gap-6">
-                   {report.topSectors.map((sector, idx) => (
-                       <div key={idx} className="bg-slate-800 border border-slate-700 rounded-xl p-6 break-inside-avoid">
-                           <div className="flex justify-between items-start mb-4">
-                               <h3 className="text-xl font-bold text-white">{sector.name}</h3>
-                               <span className="bg-emerald-500/20 text-emerald-400 text-xs px-2 py-1 rounded font-bold">순위 {idx + 1}</span>
-                           </div>
-                           <p className="text-slate-300 mb-6">{sector.reasoning}</p>
-                           <div>
-                               <h4 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">대장주 (Leading Stocks)</h4>
-                               <div className="flex flex-wrap gap-2">
-                                   {sector.topStocks.map((stock, sIdx) => (
-                                       <span key={sIdx} className="bg-slate-900 text-slate-200 px-3 py-1 rounded border border-slate-700 text-sm">
-                                           {stock}
-                                       </span>
-                                   ))}
+            <div className="space-y-8 pt-10">
+               <h2 className="text-2xl font-bold flex items-center gap-2"><Briefcase className="text-emerald-400"/> 섹터 분석</h2>
+
+               {/* Sector Bar Chart */}
+               {report.allSectors && report.allSectors.length > 0 && (
+                   <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+                       <h3 className="text-lg font-semibold text-white mb-4">섹터별 점수 순위</h3>
+                       <SectorBarChart sectors={report.allSectors} />
+                   </div>
+               )}
+
+               {/* Top 3 Sectors Detail */}
+               <div>
+                   <h3 className="text-lg font-semibold text-white mb-4">상위 3개 섹터 상세</h3>
+                   <div className="grid grid-cols-1 gap-6">
+                       {report.topSectors.map((sector, idx) => (
+                           <div key={idx} className="bg-slate-800 border border-slate-700 rounded-xl p-6 break-inside-avoid">
+                               <div className="flex justify-between items-start mb-4">
+                                   <h3 className="text-xl font-bold text-white">{sector.name}</h3>
+                                   <div className="flex items-center gap-2">
+                                       {sector.weightedScore && (
+                                           <span className="text-emerald-400 font-bold">{sector.weightedScore.toFixed(1)}점</span>
+                                       )}
+                                       <span className="bg-emerald-500/20 text-emerald-400 text-xs px-2 py-1 rounded font-bold">#{idx + 1}</span>
+                                   </div>
+                               </div>
+                               <p className="text-slate-300 mb-6">{sector.reasoning}</p>
+                               <div>
+                                   <h4 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">대장주 (Leading Stocks)</h4>
+                                   <div className="flex flex-wrap gap-2">
+                                       {sector.topStocks.map((stock, sIdx) => (
+                                           <span key={sIdx} className="bg-slate-900 text-slate-200 px-3 py-1 rounded border border-slate-700 text-sm">
+                                               {stock}
+                                           </span>
+                                       ))}
+                                   </div>
                                </div>
                            </div>
-                       </div>
-                   ))}
+                       ))}
+                   </div>
                </div>
+
                {report.sectorBestPicks && (
                    <div className="mt-12 break-before-page">
                        <h3 className="text-xl font-bold mb-4 text-slate-300">상세 분석: 섹터별 추천주</h3>
@@ -559,15 +616,76 @@ const App = () => {
             </div>
         )}
 
-        {(activeTab === 'final' && report.finalTop3) && (
+        {(activeTab === 'all18' && report.final18) && (
+            <div className="space-y-6 pt-10">
+                <h2 className="text-2xl font-bold flex items-center gap-2"><List className="text-emerald-400"/> 전체 18개 선정 종목</h2>
+                <p className="text-slate-400 text-sm">KOSPI Top 10, KOSPI 11-20, KOSDAQ Top 10, 섹터별 상위 종목에서 선별된 최종 18개 종목입니다.</p>
+
+                <div className="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead className="bg-slate-900/50">
+                                <tr className="text-left">
+                                    <th className="px-4 py-3 font-semibold text-slate-300 w-12">#</th>
+                                    <th className="px-4 py-3 font-semibold text-slate-300">종목명</th>
+                                    <th className="px-4 py-3 font-semibold text-slate-300">섹터</th>
+                                    <th className="px-4 py-3 font-semibold text-slate-300 text-right">총점</th>
+                                    <th className="px-4 py-3 font-semibold text-slate-300 text-center">등급</th>
+                                    <th className="px-4 py-3 font-semibold text-slate-300 text-right">기술적</th>
+                                    <th className="px-4 py-3 font-semibold text-slate-300 text-right">수급</th>
+                                    <th className="px-4 py-3 font-semibold text-slate-300 text-right">펀더멘털</th>
+                                    <th className="px-4 py-3 font-semibold text-slate-300 text-right">시장</th>
+                                    <th className="px-4 py-3 font-semibold text-slate-300 w-20"></th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-700/50">
+                                {report.final18.map((stock, i) => {
+                                    const gradeColor = stock.rubric.grade === 'Strong Buy' ? 'text-emerald-400 bg-emerald-500/20'
+                                        : stock.rubric.grade === 'Buy' ? 'text-green-400 bg-green-500/20'
+                                        : stock.rubric.grade === 'Hold' ? 'text-yellow-400 bg-yellow-500/20'
+                                        : 'text-orange-400 bg-orange-500/20';
+                                    return (
+                                        <tr key={i} className="hover:bg-slate-700/30 transition-colors cursor-pointer" onClick={() => setSelectedStock(stock)}>
+                                            <td className="px-4 py-3 text-slate-400 font-mono">{i + 1}</td>
+                                            <td className="px-4 py-3">
+                                                <div className="font-semibold text-white">{stock.name}</div>
+                                                <div className="text-xs text-slate-500">{stock.ticker}</div>
+                                            </td>
+                                            <td className="px-4 py-3 text-slate-400">{stock.sector}</td>
+                                            <td className="px-4 py-3 text-right font-bold text-emerald-400">{stock.rubric.total.toFixed(1)}</td>
+                                            <td className="px-4 py-3 text-center">
+                                                <span className={`px-2 py-1 rounded text-xs font-semibold ${gradeColor}`}>
+                                                    {stock.rubric.grade}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 text-right text-slate-300">{stock.rubric.technical.toFixed(1)}</td>
+                                            <td className="px-4 py-3 text-right text-slate-300">{stock.rubric.supply.toFixed(1)}</td>
+                                            <td className="px-4 py-3 text-right text-slate-300">{stock.rubric.fundamental.toFixed(1)}</td>
+                                            <td className="px-4 py-3 text-right text-slate-300">{stock.rubric.market.toFixed(1)}</td>
+                                            <td className="px-4 py-3 text-center">
+                                                <button className="text-emerald-400 hover:text-emerald-300 text-xs font-medium">
+                                                    상세 →
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {(activeTab === 'final' && report.finalTop5) && (
             <div className="space-y-8 pt-10">
                 <div className="text-center mb-10">
                     <h2 className="text-3xl font-bold text-white mb-2">최종 투자 추천 (Final Recommendations)</h2>
-                    <p className="text-slate-400">18개의 유망 후보군 중 다각도 분석을 통해 선정된 TOP 3 종목입니다.</p>
+                    <p className="text-slate-400">18개의 유망 후보군 중 다각도 분석을 통해 선정된 TOP 5 종목입니다.</p>
                 </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    {report.finalTop3.map((stock, i) => (
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+                    {report.finalTop5.map((stock, i) => (
                         <div key={i} className="relative break-inside-avoid">
                             <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-emerald-500 to-cyan-500 text-white px-4 py-1 rounded-full text-sm font-bold shadow-lg z-10">
                                 #{i + 1} PICK
@@ -582,8 +700,8 @@ const App = () => {
                 <div className="mt-12 bg-slate-800/30 rounded-xl p-8 border border-slate-700 break-inside-avoid">
                     <h3 className="text-xl font-bold mb-4 text-slate-300">투자 전략 노트 & 밸류에이션 코멘트</h3>
                     <p className="text-slate-400 leading-relaxed">
-                        선정된 3개 종목은 현재 시장 상황에서 기술적 모멘텀, 펀더멘털 가치, 그리고 기관 수급이 가장 강력하게 결합된 기회를 나타냅니다. 
-                        AI 에이전트들은 특히 <span className="text-emerald-400 font-semibold">현재 주가 수준(Price Level)</span>이 고평가되지 않았는지 집중적으로 점검하였습니다. 
+                        선정된 5개 종목은 현재 시장 상황에서 기술적 모멘텀, 펀더멘털 가치, 그리고 기관 수급이 가장 강력하게 결합된 기회를 나타냅니다.
+                        AI 에이전트들은 특히 <span className="text-emerald-400 font-semibold">현재 주가 수준(Price Level)</span>이 고평가되지 않았는지 집중적으로 점검하였습니다.
                         재무 건전성과 실적 대비 저평가 매력이 있거나, 강력한 상승 재료가 밸류에이션 부담을 상쇄하는 종목을 우선했습니다.
                         <br/><br/>
                         투자는 개인의 책임하에 신중하게 결정하시기 바랍니다.

@@ -52,16 +52,20 @@ export interface SectorAnalysis {
   name: string;
   reasoning: string;
   topStocks: string[]; // Names of the top 3 stocks in this sector
+  weightedScore?: number; // 시가총액 가중 평균 점수
+  rank?: number; // 섹터 순위
 }
 
 export interface AnalysisReport {
   timestamp: string;
   topSectors: SectorAnalysis[];
+  allSectors?: SectorAnalysis[]; // All sectors for chart visualization
   kospiTop10Picks: StockAnalysis[];
   kospiMidPicks: StockAnalysis[]; // 11-20
   kosdaqTop10Picks: StockAnalysis[];
   sectorBestPicks: StockAnalysis[]; // From the top 3 sectors
-  finalTop3: StockAnalysis[]; // The absolute best 3 from all 18
+  finalTop5: StockAnalysis[]; // The absolute best 5 from all 18
+  final18: StockAnalysis[]; // All 18 selected stocks
 }
 
 export enum AgentStatus {

@@ -31,7 +31,7 @@ const ChatSidebar: React.FC<Props> = ({ isOpen, onClose, report }) => {
     setLoading(true);
 
     try {
-      if (!report.finalTop3) {
+      if (!report.finalTop5) {
          setMessages(prev => [...prev, { role: 'model', text: '먼저 시장 분석을 실행하여 리포트를 생성해주세요.' }]);
          setLoading(false);
          return;
