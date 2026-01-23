@@ -53,3 +53,6 @@ src/screener/cache/
 # Environment variables
 .env
 
+# Frontend static files (built from poc-web)
+src/web/static/
+

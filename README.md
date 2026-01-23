@@ -64,9 +64,33 @@ uv run python main.py --daily
 # CLI: 주간 리포트 생성
 uv run python main.py --weekly
 
-# API 서버 실행
+# API 서버만 실행
 uv run python main.py --web
 # API 문서: http://localhost:8000/docs
+```
+
+### 4. 통합 실행 (백엔드 + 프론트엔드)
+
+```bash
+# 프론트엔드 빌드 및 배포
+./scripts/build_frontend.sh
+
+# 웹 서버 실행 (백엔드 API + 프론트엔드)
+uv run python main.py --web
+# 브라우저: http://localhost:8000
+```
+
+### 5. 개발 모드 (Hot Reload)
+
+개발 시에는 백엔드와 프론트엔드를 별도 터미널에서 실행합니다:
+
+```bash
+# 터미널 1: 백엔드 API 서버
+uv run python main.py --web
+
+# 터미널 2: 프론트엔드 개발 서버 (Hot Reload)
+cd poc-web && npm run dev
+# 브라우저: http://localhost:3000
 ```
 
 ## 핵심 기능
