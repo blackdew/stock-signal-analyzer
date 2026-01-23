@@ -95,3 +95,34 @@ export interface SavedReport {
   date: string;
   report: AnalysisReport;
 }
+
+// =============================================================================
+// 차트 데이터 타입
+// =============================================================================
+
+export interface PriceHistoryItem {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface SupplyItem {
+  date: string;
+  foreign_net: number;      // 외국인 순매수 (억원)
+  institution_net: number;  // 기관 순매수 (억원)
+}
+
+export interface StockHistoryResponse {
+  symbol: string;
+  name: string;
+  history: PriceHistoryItem[];
+}
+
+export interface StockSupplyResponse {
+  symbol: string;
+  name: string;
+  supply: SupplyItem[];
+}

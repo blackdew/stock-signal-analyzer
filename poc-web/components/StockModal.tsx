@@ -1,7 +1,10 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { StockAnalysis, INVESTMENT_GRADES } from '../types';
 import RubricChart from './RubricChart';
-import { X, TrendingUp, AlertTriangle, Newspaper, BarChart3, FileText, Download, Activity, PieChart, Award } from 'lucide-react';
+import PriceRangeIndicator from './PriceRangeIndicator';
+import PriceChart from './PriceChart';
+import SupplyChart from './SupplyChart';
+import { X, TrendingUp, AlertTriangle, Newspaper, BarChart3, FileText, Download, Activity, PieChart, Award, LineChart, Users } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -9,10 +12,16 @@ import jsPDF from 'jspdf';
 interface Props {
   stock: StockAnalysis | null;
   onClose: () => void;
+  high52w?: number;
+  low52w?: number;
+  currentPrice?: number;
 }
 
-const StockModal: React.FC<Props> = ({ stock, onClose }) => {
+type ChartTab = 'price' | 'supply';
+
+const StockModal: React.FC<Props> = ({ stock, onClose, high52w, low52w, currentPrice }) => {
   const reportRef = useRef<HTMLDivElement>(null);
+  const [activeChartTab, setActiveChartTab] = useState<ChartTab>('price');
 
   if (!stock) return null;
 
@@ -117,6 +126,20 @@ const StockModal: React.FC<Props> = ({ stock, onClose }) => {
                         ))}
                     </ul>
                 </div>
+
+                {/* 52주 고저 표시기 */}
+                {high52w && low52w && currentPrice && (
+                  <div className="bg-slate-800/50 rounded-xl p-5 border border-slate-700">
+                    <h3 className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+                      <TrendingUp size={16} /> 52주 가격 범위
+                    </h3>
+                    <PriceRangeIndicator
+                      currentPrice={currentPrice}
+                      low52w={low52w}
+                      high52w={high52w}
+                    />
+                  </div>
+                )}
             </div>
 
             {/* Right Column: Detailed Markdown Analysis */}
@@ -161,6 +184,44 @@ const StockModal: React.FC<Props> = ({ stock, onClose }) => {
                     <div className="prose prose-invert prose-base max-w-none text-slate-200">
                         <ReactMarkdown>{stock.comprehensiveAnalysis || "종합 분석 데이터 없음"}</ReactMarkdown>
                     </div>
+                </section>
+
+                {/* 차트 섹션 */}
+                <section className="bg-slate-800/30 p-6 rounded-xl border border-slate-700/50">
+                    {/* 탭 헤더 */}
+                    <div className="flex gap-2 mb-6">
+                      <button
+                        onClick={() => setActiveChartTab('price')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                          activeChartTab === 'price'
+                            ? 'bg-slate-700 text-white'
+                            : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                        }`}
+                      >
+                        <LineChart size={16} /> 가격 추이
+                      </button>
+                      <button
+                        onClick={() => setActiveChartTab('supply')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                          activeChartTab === 'supply'
+                            ? 'bg-slate-700 text-white'
+                            : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                        }`}
+                      >
+                        <Users size={16} /> 수급 동향
+                      </button>
+                    </div>
+
+                    {/* 탭 컨텐츠 */}
+                    {activeChartTab === 'price' && stock.ticker && (
+                      <PriceChart symbol={stock.ticker} days={60} />
+                    )}
+                    {activeChartTab === 'supply' && stock.ticker && (
+                      <SupplyChart symbol={stock.ticker} days={20} />
+                    )}
+                    {!stock.ticker && (
+                      <p className="text-slate-500 text-sm">종목 코드 정보가 없어 차트를 표시할 수 없습니다.</p>
+                    )}
                 </section>
             </div>
             </div>

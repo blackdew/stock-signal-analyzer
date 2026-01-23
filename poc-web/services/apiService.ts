@@ -5,7 +5,16 @@
  * 기존 geminiService.ts를 대체합니다.
  */
 
-import { StockAnalysis, SectorAnalysis, AnalysisReport, RubricScore, getGradeFromScore, InvestmentGrade } from '../types';
+import {
+  StockAnalysis,
+  SectorAnalysis,
+  AnalysisReport,
+  RubricScore,
+  getGradeFromScore,
+  InvestmentGrade,
+  StockHistoryResponse,
+  StockSupplyResponse,
+} from '../types';
 
 // API Base URL from environment variable
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -379,4 +388,40 @@ export const getTopStocks = async (n: number = 5): Promise<StockAnalysis[]> => {
 
   const data = await response.json();
   return data.stocks.map(transformStock);
+};
+
+// =============================================================================
+// 차트 데이터 API
+// =============================================================================
+
+/**
+ * 종목의 주가 히스토리를 조회합니다.
+ */
+export const getStockHistory = async (
+  symbol: string,
+  days: number = 60
+): Promise<StockHistoryResponse> => {
+  const response = await fetch(`${API_BASE}/api/stocks/${symbol}/history?days=${days}`);
+
+  if (!response.ok) {
+    await handleApiError(response);
+  }
+
+  return response.json();
+};
+
+/**
+ * 종목의 수급 데이터를 조회합니다.
+ */
+export const getStockSupply = async (
+  symbol: string,
+  days: number = 20
+): Promise<StockSupplyResponse> => {
+  const response = await fetch(`${API_BASE}/api/stocks/${symbol}/supply?days=${days}`);
+
+  if (!response.ok) {
+    await handleApiError(response);
+  }
+
+  return response.json();
 };
