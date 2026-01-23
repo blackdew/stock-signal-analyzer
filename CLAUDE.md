@@ -171,15 +171,19 @@ trading/
 │   └── architecture.md          # 아키텍처 설명
 │
 └── poc-web/                     # 프론트엔드 PoC (Gemini AI Studio)
-    ├── index.tsx                # 메인 앱 엔트리
-    ├── types.ts                 # TypeScript 타입 정의 (6개 루브릭 카테고리)
+    ├── index.tsx                # 앱 엔트리 포인트
+    ├── App.tsx                  # 메인 앱 컴포넌트 (라우팅, 상태 관리)
+    ├── types.ts                 # TypeScript 타입 정의 (6개 루브릭 카테고리, finalTop5, final18, allSectors)
     ├── vite-env.d.ts            # Vite 환경 변수 타입 선언
     ├── .env.example             # 환경 변수 예시 (VITE_API_URL, GEMINI_API_KEY)
     ├── components/              # React 컴포넌트
     │   ├── StockCard.tsx        # 종목 카드
     │   ├── StockModal.tsx       # 종목 상세 모달
     │   ├── RubricChart.tsx      # 루브릭 점수 차트
-    │   └── ChatSidebar.tsx      # 채팅 사이드바
+    │   ├── ChatSidebar.tsx      # 채팅 사이드바
+    │   ├── SectorBarChart.tsx   # 섹터별 점수 바 차트
+    │   ├── Skeleton.tsx         # 로딩 스켈레톤 UI
+    │   └── ErrorState.tsx       # 에러 상태 표시 컴포넌트
     └── services/
         ├── apiService.ts        # Python 백엔드 API 연동 (분석 결과 조회)
         └── geminiService.ts     # Gemini API 연동 (채팅 기능)
