@@ -364,6 +364,7 @@ CacheManager
 - FastAPI 기반 REST API (src/web/)
 - 분석 실행/결과 조회 API
 - 섹터/종목 분석 API
+- 정적 파일 서빙 (프론트엔드 통합 배포)
 
 ### 향후 계획
 - 웹 대시보드 (poc-web에서 PoC 진행 중)
@@ -407,8 +408,9 @@ src/
 │
 ├── web/                         # Web API (FastAPI)
 │   ├── __init__.py
-│   ├── app.py                   # FastAPI 앱 생성 및 CORS 설정
+│   ├── app.py                   # FastAPI 앱 생성, CORS 설정, 정적 파일 서빙
 │   ├── schemas.py               # Pydantic 스키마 정의
+│   ├── static/                  # 프론트엔드 빌드 결과물 (build_frontend.sh로 생성)
 │   └── routes/                  # API 라우터
 │       ├── __init__.py
 │       ├── analysis.py          # 분석 실행/결과 조회 API
@@ -430,6 +432,11 @@ tests/                           # 테스트 (279개)
 ├── agents/
 │   ├── data/                    # 데이터 에이전트 테스트 (64개)
 │   └── analysis/                # 분석 에이전트 테스트 (49개)
+
+scripts/                         # 유틸리티 스크립트
+├── performance_test.py          # 성능 테스트
+├── test_report_generation.py    # 리포트 생성 테스트
+└── build_frontend.sh            # 프론트엔드 빌드 및 배포 스크립트
 
 poc-web/                         # 프론트엔드 PoC (Gemini AI Studio)
 ├── index.tsx                    # 앱 엔트리 포인트

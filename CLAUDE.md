@@ -79,6 +79,27 @@ uv run python main.py --web --host 127.0.0.1 --port 3000
 uv run python main.py --help
 ```
 
+### 통합 실행 (백엔드 + 프론트엔드)
+```bash
+# 프론트엔드 빌드 및 배포
+./scripts/build_frontend.sh
+
+# 웹 서버 실행 (백엔드 API + 프론트엔드)
+uv run python main.py --web
+# 브라우저: http://localhost:8000
+```
+
+### 개발 모드 (Hot Reload)
+개발 시에는 백엔드와 프론트엔드를 별도 터미널에서 실행합니다:
+```bash
+# 터미널 1: 백엔드 API 서버
+uv run python main.py --web
+
+# 터미널 2: 프론트엔드 개발 서버 (Hot Reload)
+cd poc-web && npm run dev
+# 브라우저: http://localhost:3000
+```
+
 ### 테스트 스크립트
 ```bash
 # 리포트 생성 테스트 (날짜별 폴더 구조 검증)
@@ -92,10 +113,12 @@ trading/
 ├── CLAUDE.md                    # 이 파일
 ├── README.md                    # 프로젝트 소개
 ├── pyproject.toml               # 의존성 정의
+├── .env.example                 # 환경 변수 예시 (API_HOST, API_PORT, OPENDART_API_KEY)
 │
 ├── scripts/                     # 유틸리티 스크립트
 │   ├── performance_test.py      # 성능 테스트
-│   └── test_report_generation.py # 리포트 생성 테스트
+│   ├── test_report_generation.py # 리포트 생성 테스트
+│   └── build_frontend.sh        # 프론트엔드 빌드 및 배포 스크립트
 │
 ├── src/
 │   ├── __init__.py
@@ -138,8 +161,9 @@ trading/
 │   │
 │   ├── web/                     # Web API (FastAPI)
 │   │   ├── __init__.py
-│   │   ├── app.py               # FastAPI 앱 생성 및 CORS 설정
+│   │   ├── app.py               # FastAPI 앱 생성, CORS 설정, 정적 파일 서빙
 │   │   ├── schemas.py           # Pydantic 스키마 정의
+│   │   ├── static/              # 프론트엔드 빌드 결과물 (build_frontend.sh로 생성)
 │   │   └── routes/              # API 라우터
 │   │       ├── __init__.py
 │   │       ├── analysis.py      # 분석 실행/결과 조회 API
