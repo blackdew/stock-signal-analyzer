@@ -555,6 +555,8 @@ uv run python main.py --web --host 127.0.0.1 --port 3000
 #### 종목 API (`/api/stocks`)
 - `GET /api/stocks` - 분석된 종목 리스트 (페이지네이션, 그룹 필터)
 - `GET /api/stocks/{symbol}` - 특정 종목 상세 정보
+- `GET /api/stocks/{symbol}/history` - 일별 주가 히스토리 (OHLCV, 최대 365일)
+- `GET /api/stocks/{symbol}/supply` - 외국인/기관 순매수 추이 (최대 60일)
 - `GET /api/stocks/top/{n}` - 상위 N개 종목
 - `GET /api/stocks/group/{group}` - 그룹별 종목 리스트
 

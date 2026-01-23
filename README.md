@@ -140,6 +140,8 @@ cd poc-web && npm run dev
   - `GET /api/ranking` - Top 18, Top 5 순위
   - `GET /api/sectors` - 섹터 분석 결과
   - `GET /api/stocks` - 종목 분석 결과
+  - `GET /api/stocks/{symbol}/history` - 일별 주가 히스토리
+  - `GET /api/stocks/{symbol}/supply` - 외국인/기관 순매수 추이
   - `POST /api/analysis/run` - 분석 비동기 실행
 
 ## 프로젝트 구조
