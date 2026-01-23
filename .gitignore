@@ -56,3 +56,6 @@ src/screener/cache/
 # Frontend static files (built from poc-web)
 src/web/static/
 
+# Frontend package-lock (use npm ci with package.json only)
+poc-web/package-lock.json
+
