@@ -158,7 +158,11 @@ trading/
 ├── poc-web/                # 프론트엔드 PoC (Gemini AI Studio)
 │   ├── index.tsx           # 메인 앱 엔트리
 │   ├── types.ts            # TypeScript 타입 정의
-│   └── components/         # React 컴포넌트
+│   ├── .env.example        # 환경 변수 예시
+│   ├── components/         # React 컴포넌트
+│   └── services/           # API 서비스
+│       ├── apiService.ts   # 백엔드 API 연동
+│       └── geminiService.ts# Gemini API 연동
 ├── CLAUDE.md               # Claude Code 가이드
 └── pyproject.toml
 ```
