@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
-import { StockAnalysis } from '../types';
+import { StockAnalysis, INVESTMENT_GRADES } from '../types';
 import RubricChart from './RubricChart';
-import { X, TrendingUp, AlertTriangle, Newspaper, BarChart3, FileText, Download, Activity, PieChart } from 'lucide-react';
+import { X, TrendingUp, AlertTriangle, Newspaper, BarChart3, FileText, Download, Activity, PieChart, Award } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -52,9 +52,15 @@ const StockModal: React.FC<Props> = ({ stock, onClose }) => {
                 {stock.name} 
                 <span className="text-sm font-normal text-slate-500 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">{stock.ticker || 'KRX'}</span>
             </h2>
-            <div className="flex gap-3 text-sm text-slate-400">
+            <div className="flex gap-3 text-sm text-slate-400 items-center">
               <span className="text-emerald-400 font-mono font-bold">{stock.sector}</span>
               {stock.currentPrice && <span>Current: <span className="text-white">{stock.currentPrice}</span></span>}
+              {stock.rubric.grade && (
+                <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${INVESTMENT_GRADES[stock.rubric.grade].color} ${INVESTMENT_GRADES[stock.rubric.grade].bgColor}`}>
+                  <Award size={12} />
+                  {stock.rubric.grade}
+                </span>
+              )}
             </div>
           </div>
           <div className="flex gap-2">
@@ -82,16 +88,18 @@ const StockModal: React.FC<Props> = ({ stock, onClose }) => {
             <div className="lg:col-span-1 space-y-6">
                 <div className="bg-slate-800/50 rounded-xl p-5 border border-slate-700">
                 <h3 className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
-                    <BarChart3 size={16} /> 8대 핵심 루브릭 (Score: {stock.rubric.total})
+                    <BarChart3 size={16} /> 6대 핵심 루브릭 (Score: {stock.rubric.total})
                 </h3>
                 <RubricChart score={stock.rubric} />
                 <div className="mt-4 space-y-2 text-xs">
-                     {/* Mini Score Table */}
+                     {/* Mini Score Table - 6개 카테고리 */}
                      <div className="grid grid-cols-2 gap-2">
-                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>밸류에이션</span><span className="text-emerald-400 font-bold">{stock.rubric.valuation}</span></div>
-                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>펀더멘털</span><span className="text-white font-bold">{stock.rubric.fundamentals}</span></div>
-                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>수급</span><span className="text-white font-bold">{stock.rubric.supplyDemand}</span></div>
-                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>기술적</span><span className="text-white font-bold">{stock.rubric.technical}</span></div>
+                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>기술적(25%)</span><span className="text-emerald-400 font-bold">{stock.rubric.technical}</span></div>
+                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>수급(20%)</span><span className="text-white font-bold">{stock.rubric.supply}</span></div>
+                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>펀더멘털(20%)</span><span className="text-white font-bold">{stock.rubric.fundamental}</span></div>
+                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>시장환경(15%)</span><span className="text-white font-bold">{stock.rubric.market}</span></div>
+                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>리스크(10%)</span><span className="text-white font-bold">{stock.rubric.risk}</span></div>
+                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>상대강도(10%)</span><span className="text-white font-bold">{stock.rubric.relative_strength}</span></div>
                      </div>
                 </div>
                 </div>

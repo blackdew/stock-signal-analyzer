@@ -1,6 +1,7 @@
 import React from 'react';
-import { StockAnalysis } from '../types';
+import { StockAnalysis, INVESTMENT_GRADES } from '../types';
 import RubricChart from './RubricChart';
+import { Award } from 'lucide-react';
 
 interface Props {
   stock: StockAnalysis;
@@ -32,7 +33,12 @@ const StockCard: React.FC<Props> = ({ stock, rank, onClick }) => {
         </div>
         <div className="text-right">
             <div className="text-2xl font-bold text-emerald-400">{stock.rubric.total}<span className="text-sm text-slate-500">/100</span></div>
-            <div className="text-xs text-slate-500">종합 점수</div>
+            {stock.rubric.grade && (
+              <div className={`flex items-center justify-end gap-1 text-xs font-semibold mt-1 ${INVESTMENT_GRADES[stock.rubric.grade].color}`}>
+                <Award size={12} />
+                {stock.rubric.grade}
+              </div>
+            )}
         </div>
       </div>
 
