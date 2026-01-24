@@ -113,7 +113,7 @@ trading/
 ├── CLAUDE.md                    # 이 파일
 ├── README.md                    # 프로젝트 소개
 ├── pyproject.toml               # 의존성 정의
-├── .env.example                 # 환경 변수 예시 (API_HOST, API_PORT, OPENDART_API_KEY)
+├── .env.example                 # 환경 변수 예시 (API_HOST, API_PORT, OPENDART_API_KEY, OPENAI_API_KEY)
 │
 ├── scripts/                     # 유틸리티 스크립트
 │   ├── performance_test.py      # 성능 테스트
@@ -127,6 +127,7 @@ trading/
 │   │   ├── __init__.py
 │   │   ├── config.py            # SECTORS(13개), RUBRIC_WEIGHTS(V2), INVESTMENT_GRADES
 │   │   ├── rubric.py            # RubricEngine V2 (6개 카테고리)
+│   │   ├── llm.py               # LLMAnalyzer - OpenAI 기반 상세 분석 생성
 │   │   ├── orchestrator.py      # Orchestrator - 전체 파이프라인 조율
 │   │   └── logging_config.py    # 로깅 설정
 │   │
@@ -374,6 +375,54 @@ print(f"총점: {result.total_score}, 등급: {result.grade}")
 - 수급 분석 (25점): 외국인(10) + 기관(10) + 거래대금(5)
 - 펀더멘털 분석 (25점): PER(10) + 성장률(10) + 부채비율(5)
 - 시장 환경 (20점): 뉴스(10) + 섹터모멘텀(5) + 애널리스트(5)
+
+### src/core/llm.py
+LLM 기반 상세 분석 생성 모듈 (OpenAI GPT-4o-mini).
+
+```python
+from src.core.llm import LLMAnalyzer, LLMAnalysisResult
+
+# LLM 분석기 초기화 (OPENAI_API_KEY 환경변수 필요)
+analyzer = LLMAnalyzer()
+
+# LLM 사용 가능 여부 확인
+if analyzer.is_available():
+    result = await analyzer.analyze(
+        symbol="005930",
+        name="삼성전자",
+        sector="반도체",
+        market_cap=3000000,
+        total_score=72.5,
+        grade="Buy",
+        technical_score=20.1,
+        supply_score=17.4,
+        fundamental_score=17.5,
+        market_score=10.5,
+        risk_score=7.0,
+        relative_strength_score=0.0,
+        technical_details={...},
+        fundamental_details={...},
+        strengths=["기술적 지표 상승 추세", "수급 양호"],
+        weaknesses=["리스크 높음"],
+    )
+
+    print(result.summary)  # "AI 메모리 반도체(HBM) 시장의 절대적 지배력..."
+    print(result.financial_analysis)  # 재무 & 밸류에이션 분석 (마크다운)
+    print(result.technical_analysis)  # 기술적 & 차트 분석 (마크다운)
+    print(result.comprehensive_analysis)  # 종합 투자 의견 (마크다운)
+```
+
+**LLMAnalysisResult 필드:**
+- `summary`: 핵심 요약 (1-2문장)
+- `financial_analysis`: 재무 & 밸류에이션 분석 (마크다운)
+- `technical_analysis`: 기술적 & 차트 분석 (마크다운)
+- `market_sentiment`: 뉴스 & 시장 센티먼트 (마크다운)
+- `comprehensive_analysis`: 종합 투자 의견 (마크다운)
+- `investment_thesis`: 투자 포인트 리스트 (3-5개)
+- `risks`: 리스크 요인 리스트 (2-4개)
+
+**섹터별 컨텍스트 지원:**
+13개 섹터(반도체, 조선, 방산/우주, 전력인프라, 바이오, 로봇, 자동차, 신재생에너지, 지주, 뷰티, 금융, 푸드, 엔터)에 대한 전문적인 컨텍스트 프롬프트 제공.
 
 ### src/agents/base_agent.py
 모든 에이전트의 추상 기반 클래스.
