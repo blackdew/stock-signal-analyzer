@@ -57,6 +57,11 @@ def _load_analysis_data(file_path: Path) -> Dict[str, Any]:
 
 def _stock_dict_to_schema(stock_dict: Dict[str, Any]) -> StockAnalysisSchema:
     """딕셔너리를 StockAnalysisSchema로 변환"""
+    # 기술적 분석 세부 정보에서 52주 고저가 추출
+    tech_details = stock_dict.get("technical_details", {})
+    high_52w = stock_dict.get("high_52w") or tech_details.get("high_52w")
+    low_52w = stock_dict.get("low_52w") or tech_details.get("low_52w")
+
     return StockAnalysisSchema(
         symbol=stock_dict.get("symbol", ""),
         name=stock_dict.get("name", ""),
@@ -71,10 +76,17 @@ def _stock_dict_to_schema(stock_dict: Dict[str, Any]) -> StockAnalysisSchema:
         relative_strength_score=stock_dict.get("relative_strength_score", 0),
         total_score=stock_dict.get("total_score", 0),
         investment_grade=stock_dict.get("investment_grade", "Hold"),
-        high_52w=stock_dict.get("high_52w"),
-        low_52w=stock_dict.get("low_52w"),
+        high_52w=high_52w,
+        low_52w=low_52w,
         rank_in_group=stock_dict.get("rank_in_group", 0),
         final_rank=stock_dict.get("final_rank"),
+        # 세부 분석 정보
+        technical_details=stock_dict.get("technical_details"),
+        supply_details=stock_dict.get("supply_details"),
+        fundamental_details=stock_dict.get("fundamental_details"),
+        market_details=stock_dict.get("market_details"),
+        risk_details=stock_dict.get("risk_details"),
+        relative_strength_details=stock_dict.get("relative_strength_details"),
     )
 
 

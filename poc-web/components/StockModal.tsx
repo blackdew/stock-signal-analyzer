@@ -117,29 +117,40 @@ const StockModal: React.FC<Props> = ({ stock, onClose, high52w, low52w, currentP
                     <h3 className="text-lg font-semibold text-amber-400 mb-3 flex items-center gap-2">
                         <AlertTriangle size={18} /> 주요 리스크 (Risks)
                     </h3>
-                    <ul className="space-y-2">
-                        {stock.risks.map((point, i) => (
-                        <li key={i} className="flex gap-2 text-sm text-slate-300">
-                            <span className="text-amber-500 font-bold mt-0.5">•</span>
-                            {point}
-                        </li>
-                        ))}
-                    </ul>
+                    {stock.risks && stock.risks.length > 0 ? (
+                      <ul className="space-y-2">
+                          {stock.risks.map((point, i) => (
+                          <li key={i} className="flex gap-2 text-sm text-slate-300">
+                              <span className="text-amber-500 font-bold mt-0.5">•</span>
+                              {point}
+                          </li>
+                          ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-slate-400">특별한 리스크 요인이 감지되지 않았습니다.</p>
+                    )}
                 </div>
 
                 {/* 52주 고저 표시기 */}
-                {high52w && low52w && currentPrice && (
-                  <div className="bg-slate-800/50 rounded-xl p-5 border border-slate-700">
-                    <h3 className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
-                      <TrendingUp size={16} /> 52주 가격 범위
-                    </h3>
-                    <PriceRangeIndicator
-                      currentPrice={currentPrice}
-                      low52w={low52w}
-                      high52w={high52w}
-                    />
-                  </div>
-                )}
+                {(() => {
+                  // props 또는 stock 객체에서 52주 고저가 추출
+                  const h52w = high52w || stock.high52w || stock.technicalDetails?.high_52w;
+                  const l52w = low52w || stock.low52w || stock.technicalDetails?.low_52w;
+                  const curPrice = currentPrice || (stock.technicalDetails?.current_price);
+
+                  return h52w && l52w && curPrice ? (
+                    <div className="bg-slate-800/50 rounded-xl p-5 border border-slate-700">
+                      <h3 className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+                        <TrendingUp size={16} /> 52주 가격 범위
+                      </h3>
+                      <PriceRangeIndicator
+                        currentPrice={curPrice}
+                        low52w={l52w}
+                        high52w={h52w}
+                      />
+                    </div>
+                  ) : null;
+                })()}
             </div>
 
             {/* Right Column: Detailed Markdown Analysis */}

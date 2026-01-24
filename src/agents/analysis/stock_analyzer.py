@@ -85,7 +85,7 @@ class StockAnalysisResult:
 
     def to_dict(self) -> Dict[str, Any]:
         """딕셔너리로 변환"""
-        return {
+        result = {
             "symbol": self.symbol,
             "name": self.name,
             "sector": self.sector,
@@ -103,6 +103,36 @@ class StockAnalysisResult:
             "final_rank": self.final_rank,
             "data_quality": self.data_quality.to_dict() if self.data_quality else None,
         }
+
+        # rubric_result 세부 정보 추가
+        if self.rubric_result:
+            rubric = self.rubric_result
+
+            # 기술적 분석 세부
+            if rubric.technical and rubric.technical.details:
+                result["technical_details"] = rubric.technical.details
+
+            # 수급 분석 세부
+            if rubric.supply and rubric.supply.details:
+                result["supply_details"] = rubric.supply.details
+
+            # 펀더멘털 분석 세부
+            if rubric.fundamental and rubric.fundamental.details:
+                result["fundamental_details"] = rubric.fundamental.details
+
+            # 시장 환경 세부
+            if rubric.market and rubric.market.details:
+                result["market_details"] = rubric.market.details
+
+            # 리스크 평가 세부 (V2)
+            if rubric.risk and rubric.risk.details:
+                result["risk_details"] = rubric.risk.details
+
+            # 상대 강도 세부 (V2)
+            if rubric.relative_strength and rubric.relative_strength.details:
+                result["relative_strength_details"] = rubric.relative_strength.details
+
+        return result
 
 
 # =============================================================================
@@ -287,6 +317,9 @@ class StockAnalyzer(BaseAgent):
         """
         종목들의 시가총액을 조회합니다 (네이버 금융).
 
+        1. 먼저 시가총액 순위에서 조회 (KOSPI/KOSDAQ 상위 100개)
+        2. 순위에 없는 종목은 개별 페이지에서 조회
+
         Returns:
             종목코드를 키로 하는 시가총액 딕셔너리 (억원 단위)
         """
@@ -302,13 +335,28 @@ class StockAnalyzer(BaseAgent):
             for stock in kospi_data + kosdaq_data:
                 market_cap_map[stock.symbol] = stock.market_cap or 0
 
+            # 각 심볼의 시가총액 조회
+            missing_symbols = []
             for symbol in symbols:
-                result[symbol] = market_cap_map.get(symbol, 0)
+                if symbol in market_cap_map and market_cap_map[symbol] > 0:
+                    result[symbol] = market_cap_map[symbol]
+                else:
+                    missing_symbols.append(symbol)
+
+            # 순위에 없는 종목은 개별 조회
+            if missing_symbols:
+                self._log_info(f"개별 시가총액 조회 필요: {len(missing_symbols)}개 종목")
+                for symbol in missing_symbols:
+                    market_cap = self.fetcher.get_market_cap(symbol)
+                    result[symbol] = market_cap if market_cap else 0
 
         except Exception as e:
             self._log_warning(f"Failed to get market caps from Naver: {e}")
+            # 폴백: 개별 조회
             for symbol in symbols:
-                result[symbol] = 0
+                if symbol not in result:
+                    market_cap = self.fetcher.get_market_cap(symbol)
+                    result[symbol] = market_cap if market_cap else 0
 
         return result
 

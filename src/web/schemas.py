@@ -56,6 +56,84 @@ class DataQualitySummarySchema(BaseModel):
 # =============================================================================
 
 
+class TechnicalDetailsSchema(BaseModel):
+    """기술적 분석 세부 정보"""
+    trend: Optional[float] = Field(default=None, description="추세 점수")
+    rsi: Optional[float] = Field(default=None, description="RSI 점수")
+    support_resistance: Optional[float] = Field(default=None, description="지지/저항 점수")
+    macd: Optional[float] = Field(default=None, description="MACD 점수")
+    adx: Optional[float] = Field(default=None, description="ADX 점수")
+    # 원본 값
+    ma20_value: Optional[float] = Field(default=None, description="20일 이동평균")
+    ma60_value: Optional[float] = Field(default=None, description="60일 이동평균")
+    rsi_value: Optional[float] = Field(default=None, description="RSI 값")
+    macd_value: Optional[float] = Field(default=None, description="MACD 값")
+    macd_signal_value: Optional[float] = Field(default=None, description="MACD 시그널 값")
+    adx_value: Optional[float] = Field(default=None, description="ADX 값")
+    current_price: Optional[float] = Field(default=None, description="현재가")
+    low_52w: Optional[float] = Field(default=None, description="52주 최저가")
+    high_52w: Optional[float] = Field(default=None, description="52주 최고가")
+    position_52w: Optional[float] = Field(default=None, description="52주 내 위치 (%)")
+
+
+class SupplyDetailsSchema(BaseModel):
+    """수급 분석 세부 정보"""
+    foreign: Optional[float] = Field(default=None, description="외국인 점수")
+    institution: Optional[float] = Field(default=None, description="기관 점수")
+    trading_value: Optional[float] = Field(default=None, description="거래대금 점수")
+    # 원본 값
+    foreign_consecutive_days: Optional[int] = Field(default=None, description="외국인 연속 순매수 일수")
+    institution_consecutive_days: Optional[int] = Field(default=None, description="기관 연속 순매수 일수")
+    trading_value_amount: Optional[float] = Field(default=None, description="거래대금 (억원)")
+
+
+class FundamentalDetailsSchema(BaseModel):
+    """펀더멘털 분석 세부 정보"""
+    per: Optional[float] = Field(default=None, description="PER 점수")
+    pbr: Optional[float] = Field(default=None, description="PBR 점수")
+    roe: Optional[float] = Field(default=None, description="ROE 점수")
+    growth: Optional[float] = Field(default=None, description="성장성 점수")
+    debt: Optional[float] = Field(default=None, description="부채 점수")
+    # 원본 값
+    per_value: Optional[float] = Field(default=None, description="PER 값")
+    pbr_value: Optional[float] = Field(default=None, description="PBR 값")
+    roe_value: Optional[float] = Field(default=None, description="ROE 값 (%)")
+    sector_avg_per: Optional[float] = Field(default=None, description="업종 평균 PER")
+    sector_avg_pbr: Optional[float] = Field(default=None, description="업종 평균 PBR")
+    op_growth_value: Optional[float] = Field(default=None, description="영업이익 성장률 (%)")
+    debt_ratio_value: Optional[float] = Field(default=None, description="부채비율 (%)")
+
+
+class MarketDetailsSchema(BaseModel):
+    """시장 환경 세부 정보"""
+    news: Optional[float] = Field(default=None, description="뉴스 점수")
+    sector_momentum: Optional[float] = Field(default=None, description="섹터 모멘텀 점수")
+    analyst: Optional[float] = Field(default=None, description="애널리스트 점수")
+
+
+class RiskDetailsSchema(BaseModel):
+    """리스크 평가 세부 정보"""
+    volatility: Optional[float] = Field(default=None, description="변동성 점수")
+    beta: Optional[float] = Field(default=None, description="베타 점수")
+    downside_risk: Optional[float] = Field(default=None, description="하방 리스크 점수")
+    # 원본 값
+    atr_pct_value: Optional[float] = Field(default=None, description="ATR 퍼센트")
+    beta_value: Optional[float] = Field(default=None, description="베타 값")
+    max_drawdown_value: Optional[float] = Field(default=None, description="최대 낙폭 (%)")
+
+
+class RelativeStrengthDetailsSchema(BaseModel):
+    """상대 강도 세부 정보"""
+    sector_rank: Optional[float] = Field(default=None, description="섹터 내 순위 점수")
+    alpha: Optional[float] = Field(default=None, description="알파 점수")
+    # 원본 값
+    sector_rank_value: Optional[int] = Field(default=None, description="섹터 내 순위")
+    sector_total_value: Optional[int] = Field(default=None, description="섹터 내 전체 종목 수")
+    stock_return_value: Optional[float] = Field(default=None, description="종목 20일 수익률 (%)")
+    market_return_value: Optional[float] = Field(default=None, description="시장 20일 수익률 (%)")
+    alpha_value: Optional[float] = Field(default=None, description="알파 값 (%)")
+
+
 class StockAnalysisSchema(BaseModel):
     """개별 종목 분석 결과"""
     symbol: str = Field(description="종목 코드", examples=["005930"])
@@ -82,6 +160,14 @@ class StockAnalysisSchema(BaseModel):
     final_rank: Optional[int] = Field(default=None, description="최종 순위")
 
     data_quality: Optional[DataQualitySchema] = Field(default=None, description="데이터 품질")
+
+    # 세부 분석 정보
+    technical_details: Optional[TechnicalDetailsSchema] = Field(default=None, description="기술적 분석 세부")
+    supply_details: Optional[SupplyDetailsSchema] = Field(default=None, description="수급 분석 세부")
+    fundamental_details: Optional[FundamentalDetailsSchema] = Field(default=None, description="펀더멘털 분석 세부")
+    market_details: Optional[MarketDetailsSchema] = Field(default=None, description="시장 환경 세부")
+    risk_details: Optional[RiskDetailsSchema] = Field(default=None, description="리스크 평가 세부")
+    relative_strength_details: Optional[RelativeStrengthDetailsSchema] = Field(default=None, description="상대 강도 세부")
 
 
 class StockListResponse(BaseModel):

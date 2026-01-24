@@ -587,6 +587,54 @@ class StockDataFetcher:
 
         return foreign_net, inst_net
 
+    def get_market_cap(self, symbol: str) -> Optional[float]:
+        """
+        개별 종목의 시가총액을 조회합니다.
+
+        Args:
+            symbol: 종목 코드 (예: '005930')
+
+        Returns:
+            시가총액 (억원), 조회 실패시 None
+        """
+        import re
+
+        # 캐시 확인
+        if symbol in self._market_cap_cache:
+            return self._market_cap_cache[symbol]
+
+        try:
+            # sise.naver 페이지에서 시가총액 조회 (더 안정적)
+            url = f"https://finance.naver.com/item/sise.naver?code={symbol}"
+            response = requests.get(url, headers=self._headers, timeout=10)
+            response.encoding = "euc-kr"
+            soup = BeautifulSoup(response.text, "html.parser")
+
+            # em#_market_sum 태그에서 시가총액 추출
+            market_sum_em = soup.select_one("em#_market_sum")
+            if market_sum_em:
+                text = market_sum_em.text.strip().replace("\n", "").replace("\t", "").replace(" ", "")
+                # "4조6,020" 형식 파싱
+                jo_match = re.search(r"(\d+)조", text)
+                jo = int(jo_match.group(1)) if jo_match else 0
+
+                # 조 뒤의 억 단위 추출
+                after_jo = text.split("조")[-1] if "조" in text else text
+                eok_match = re.search(r"([0-9,]+)", after_jo)
+                eok = int(eok_match.group(1).replace(",", "")) if eok_match else 0
+
+                market_cap = float(jo * 10000 + eok)
+                self._market_cap_cache[symbol] = market_cap
+                logger.debug(f"종목 {symbol}: 시가총액 조회 성공 - {market_cap}억원")
+                return market_cap
+
+            logger.debug(f"종목 {symbol}: 시가총액 정보 없음")
+            return None
+
+        except Exception as e:
+            logger.warning(f"종목 {symbol}: 시가총액 조회 실패 - {e}")
+            return None
+
     def get_kospi_index(self, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
         """
         KOSPI 지수 데이터를 가져옵니다.

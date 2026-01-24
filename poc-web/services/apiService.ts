@@ -14,6 +14,12 @@ import {
   InvestmentGrade,
   StockHistoryResponse,
   StockSupplyResponse,
+  TechnicalDetails,
+  SupplyDetails,
+  FundamentalDetails,
+  MarketDetails,
+  RiskDetails,
+  RelativeStrengthDetails,
 } from '../types';
 
 // API Base URL from environment variable
@@ -39,6 +45,15 @@ interface BackendStockAnalysis {
   investment_grade: string;
   rank_in_group: number;
   final_rank?: number;
+  high_52w?: number;
+  low_52w?: number;
+  // 세부 분석 정보
+  technical_details?: TechnicalDetails;
+  supply_details?: SupplyDetails;
+  fundamental_details?: FundamentalDetails;
+  market_details?: MarketDetails;
+  risk_details?: RiskDetails;
+  relative_strength_details?: RelativeStrengthDetails;
 }
 
 interface BackendSectorAnalysis {
@@ -120,28 +135,347 @@ const transformRubric = (backend: BackendStockAnalysis): RubricScore => {
 };
 
 /**
+ * 시가총액을 포맷팅합니다.
+ */
+const formatMarketCap = (marketCap: number): string => {
+  if (marketCap >= 10000) {
+    return `${(marketCap / 10000).toFixed(1)}조원`;
+  }
+  return `${marketCap.toLocaleString()}억원`;
+};
+
+/**
+ * 가격을 포맷팅합니다.
+ */
+const formatPrice = (price?: number): string => {
+  if (!price) return 'N/A';
+  return `${price.toLocaleString()}원`;
+};
+
+/**
+ * 퍼센트를 포맷팅합니다.
+ */
+const formatPct = (value?: number): string => {
+  if (value === undefined || value === null) return 'N/A';
+  return `${value.toFixed(1)}%`;
+};
+
+/**
+ * RSI 판정을 생성합니다.
+ */
+const getRsiVerdict = (rsi?: number): string => {
+  if (!rsi) return '데이터 없음';
+  if (rsi >= 70) return '과매수 구간 - 단기 조정 가능성';
+  if (rsi >= 60) return '강세 구간';
+  if (rsi >= 40) return '중립 구간';
+  if (rsi >= 30) return '약세 구간';
+  return '과매도 구간 - 반등 가능성';
+};
+
+/**
+ * 기술적 분석 마크다운을 생성합니다.
+ */
+const generateTechnicalAnalysis = (backend: BackendStockAnalysis): string => {
+  const details = backend.technical_details;
+  if (!details) {
+    return `기술적 분석 점수: ${backend.technical_score.toFixed(1)}점`;
+  }
+
+  const lines: string[] = [];
+  lines.push(`**기술적 분석 점수: ${backend.technical_score.toFixed(1)}/25점**\n`);
+
+  // 현재가 및 이동평균
+  if (details.current_price) {
+    lines.push(`- 현재가: ${formatPrice(details.current_price)}`);
+  }
+  if (details.ma20_value || details.ma60_value) {
+    const ma20 = details.ma20_value ? formatPrice(details.ma20_value) : 'N/A';
+    const ma60 = details.ma60_value ? formatPrice(details.ma60_value) : 'N/A';
+    lines.push(`- 이동평균: MA20 ${ma20} / MA60 ${ma60}`);
+  }
+
+  // 추세 판단
+  if (details.ma20_value && details.ma60_value) {
+    const trend = details.ma20_value > details.ma60_value ? '상승 추세 (정배열)' : '하락 추세 (역배열)';
+    lines.push(`- 추세: ${trend}`);
+  }
+
+  // RSI
+  if (details.rsi_value) {
+    lines.push(`- RSI(14): ${details.rsi_value.toFixed(1)} - ${getRsiVerdict(details.rsi_value)}`);
+  }
+
+  // 52주 가격 범위
+  if (details.low_52w && details.high_52w) {
+    lines.push(`- 52주 범위: ${formatPrice(details.low_52w)} ~ ${formatPrice(details.high_52w)}`);
+    if (details.position_52w !== undefined) {
+      lines.push(`- 52주 내 위치: ${details.position_52w.toFixed(1)}%`);
+    }
+  }
+
+  // MACD
+  if (details.macd_value !== undefined) {
+    const macdSignal = details.macd_signal_value !== undefined ? details.macd_signal_value.toFixed(2) : 'N/A';
+    const macdStatus = details.macd_value > (details.macd_signal_value || 0) ? '매수 신호' : '매도 신호';
+    lines.push(`- MACD: ${details.macd_value.toFixed(2)} (시그널: ${macdSignal}) - ${macdStatus}`);
+  }
+
+  // ADX
+  if (details.adx_value) {
+    const adxStrength = details.adx_value >= 30 ? '강한 추세' : details.adx_value >= 20 ? '보통 추세' : '약한 추세';
+    lines.push(`- ADX: ${details.adx_value.toFixed(1)} - ${adxStrength}`);
+  }
+
+  return lines.join('\n');
+};
+
+/**
+ * 재무 분석 마크다운을 생성합니다.
+ */
+const generateFinancialAnalysis = (backend: BackendStockAnalysis): string => {
+  const details = backend.fundamental_details;
+  const lines: string[] = [];
+
+  lines.push(`**펀더멘털 분석 점수: ${backend.fundamental_score.toFixed(1)}/20점**\n`);
+  lines.push(`- 시가총액: ${formatMarketCap(backend.market_cap)}`);
+
+  if (!details) {
+    return lines.join('\n');
+  }
+
+  // PER
+  if (details.per_value !== undefined) {
+    const perStatus = details.per_value < 0 ? '적자' :
+      details.per_value < 10 ? '저평가' :
+        details.per_value < 20 ? '적정' : '고평가';
+    lines.push(`- PER: ${details.per_value.toFixed(2)}배 (${perStatus})`);
+    if (details.sector_avg_per) {
+      lines.push(`  - 업종 평균: ${details.sector_avg_per.toFixed(2)}배`);
+    }
+  }
+
+  // PBR
+  if (details.pbr_value !== undefined) {
+    const pbrStatus = details.pbr_value < 1 ? '저평가' : details.pbr_value < 2 ? '적정' : '고평가';
+    lines.push(`- PBR: ${details.pbr_value.toFixed(2)}배 (${pbrStatus})`);
+  }
+
+  // ROE
+  if (details.roe_value !== undefined) {
+    const roeStatus = details.roe_value >= 15 ? '우수' : details.roe_value >= 10 ? '양호' : details.roe_value >= 5 ? '보통' : '미흡';
+    lines.push(`- ROE: ${formatPct(details.roe_value)} (${roeStatus})`);
+  }
+
+  // 영업이익 성장률
+  if (details.op_growth_value !== undefined) {
+    const growthStatus = details.op_growth_value >= 20 ? '고성장' :
+      details.op_growth_value >= 10 ? '성장' :
+        details.op_growth_value >= 0 ? '정체' : '역성장';
+    lines.push(`- 영업이익 성장률: ${formatPct(details.op_growth_value)} (${growthStatus})`);
+  }
+
+  // 부채비율
+  if (details.debt_ratio_value !== undefined) {
+    const debtStatus = details.debt_ratio_value <= 50 ? '매우 건전' :
+      details.debt_ratio_value <= 100 ? '건전' :
+        details.debt_ratio_value <= 200 ? '보통' : '주의';
+    lines.push(`- 부채비율: ${formatPct(details.debt_ratio_value)} (${debtStatus})`);
+  }
+
+  return lines.join('\n');
+};
+
+/**
+ * 시장 센티먼트 마크다운을 생성합니다.
+ */
+const generateMarketSentiment = (backend: BackendStockAnalysis): string => {
+  const supplyDetails = backend.supply_details;
+  const lines: string[] = [];
+
+  lines.push(`**시장 환경 점수: ${backend.market_score.toFixed(1)}/15점**\n`);
+  lines.push(`**수급 분석 점수: ${backend.supply_score.toFixed(1)}/20점**\n`);
+
+  if (supplyDetails) {
+    // 외국인 수급
+    if (supplyDetails.foreign_consecutive_days !== undefined) {
+      const foreignStatus = supplyDetails.foreign_consecutive_days >= 3 ? '강한 매수세' :
+        supplyDetails.foreign_consecutive_days >= 1 ? '매수세' : '매도세 또는 관망';
+      lines.push(`- 외국인: ${supplyDetails.foreign_consecutive_days}일 연속 순매수 (${foreignStatus})`);
+    }
+
+    // 기관 수급
+    if (supplyDetails.institution_consecutive_days !== undefined) {
+      const instStatus = supplyDetails.institution_consecutive_days >= 3 ? '강한 매수세' :
+        supplyDetails.institution_consecutive_days >= 1 ? '매수세' : '매도세 또는 관망';
+      lines.push(`- 기관: ${supplyDetails.institution_consecutive_days}일 연속 순매수 (${instStatus})`);
+    }
+
+    // 거래대금
+    if (supplyDetails.trading_value_amount) {
+      lines.push(`- 거래대금: ${supplyDetails.trading_value_amount.toLocaleString()}억원`);
+    }
+  }
+
+  return lines.join('\n');
+};
+
+/**
+ * 종합 투자 의견을 생성합니다.
+ */
+const generateComprehensiveAnalysis = (backend: BackendStockAnalysis): string => {
+  const lines: string[] = [];
+  const score = backend.total_score;
+
+  // 투자 등급 및 점수
+  lines.push(`## 투자 등급: **${backend.investment_grade}**`);
+  lines.push(`### 총점: ${score.toFixed(1)}/100점\n`);
+
+  // 강점/약점 분석
+  const strengths: string[] = [];
+  const weaknesses: string[] = [];
+
+  // 기술적 분석 (25점 만점)
+  if (backend.technical_score >= 17.5) {
+    strengths.push(`기술적 지표 우수 (${backend.technical_score.toFixed(1)}/25)`);
+  } else if (backend.technical_score < 10) {
+    weaknesses.push(`기술적 지표 약세 (${backend.technical_score.toFixed(1)}/25)`);
+  }
+
+  // 수급 (20점 만점)
+  if (backend.supply_score >= 14) {
+    strengths.push(`외국인/기관 수급 양호 (${backend.supply_score.toFixed(1)}/20)`);
+  } else if (backend.supply_score < 8) {
+    weaknesses.push(`수급 부진 (${backend.supply_score.toFixed(1)}/20)`);
+  }
+
+  // 펀더멘털 (20점 만점)
+  if (backend.fundamental_score >= 14) {
+    strengths.push(`펀더멘털 우수 (${backend.fundamental_score.toFixed(1)}/20)`);
+  } else if (backend.fundamental_score < 8) {
+    weaknesses.push(`펀더멘털 미흡 (${backend.fundamental_score.toFixed(1)}/20)`);
+  }
+
+  // 리스크 (10점 만점)
+  if (backend.risk_score >= 7) {
+    strengths.push(`리스크 낮음 (${backend.risk_score.toFixed(1)}/10)`);
+  } else if (backend.risk_score < 4) {
+    weaknesses.push(`리스크 높음 (${backend.risk_score.toFixed(1)}/10)`);
+  }
+
+  if (strengths.length > 0) {
+    lines.push(`**강점**`);
+    strengths.forEach(s => lines.push(`- ${s}`));
+    lines.push('');
+  }
+
+  if (weaknesses.length > 0) {
+    lines.push(`**약점**`);
+    weaknesses.forEach(w => lines.push(`- ${w}`));
+    lines.push('');
+  }
+
+  // 권고사항
+  if (score >= 70) {
+    lines.push(`**권고**: 분할 매수 전략으로 포지션 구축을 고려해 볼 수 있습니다.`);
+  } else if (score >= 50) {
+    lines.push(`**권고**: 추세 전환 신호를 확인한 후 진입을 검토하시기 바랍니다.`);
+  } else {
+    lines.push(`**권고**: 신규 진입은 자제하고, 기존 보유자는 비중 축소를 고려해야 합니다.`);
+  }
+
+  return lines.join('\n');
+};
+
+/**
+ * 리스크 요인을 생성합니다.
+ */
+const generateRisks = (backend: BackendStockAnalysis): string[] => {
+  const risks: string[] = [];
+  const riskDetails = backend.risk_details;
+
+  if (backend.risk_score < 5) {
+    risks.push('리스크 점수가 낮아 변동성 주의 필요');
+  }
+
+  if (riskDetails) {
+    // 변동성
+    if (riskDetails.atr_pct_value && riskDetails.atr_pct_value > 5) {
+      risks.push(`높은 변동성 (ATR ${riskDetails.atr_pct_value.toFixed(1)}%)`);
+    }
+
+    // 베타
+    if (riskDetails.beta_value && riskDetails.beta_value > 1.5) {
+      risks.push(`시장 대비 높은 민감도 (베타 ${riskDetails.beta_value.toFixed(2)})`);
+    }
+
+    // 최대 낙폭
+    if (riskDetails.max_drawdown_value && riskDetails.max_drawdown_value > 20) {
+      risks.push(`최근 큰 낙폭 발생 (${riskDetails.max_drawdown_value.toFixed(1)}%)`);
+    }
+  }
+
+  // 펀더멘털 리스크
+  const fundDetails = backend.fundamental_details;
+  if (fundDetails) {
+    if (fundDetails.per_value && fundDetails.per_value < 0) {
+      risks.push('적자 기업');
+    }
+    if (fundDetails.debt_ratio_value && fundDetails.debt_ratio_value > 200) {
+      risks.push(`높은 부채비율 (${fundDetails.debt_ratio_value.toFixed(0)}%)`);
+    }
+  }
+
+  // 기술적 리스크
+  const techDetails = backend.technical_details;
+  if (techDetails) {
+    if (techDetails.rsi_value && techDetails.rsi_value > 70) {
+      risks.push('과매수 구간 - 단기 조정 가능성');
+    }
+    if (techDetails.position_52w && techDetails.position_52w > 90) {
+      risks.push('52주 최고가 근접 - 상승 여력 제한');
+    }
+  }
+
+  return risks.length > 0 ? risks : ['특별한 리스크 요인 없음'];
+};
+
+/**
  * 백엔드 종목 분석 결과를 프론트엔드 타입으로 변환합니다.
  */
 const transformStock = (backend: BackendStockAnalysis): StockAnalysis => ({
   ticker: backend.symbol,
   name: backend.name,
-  currentPrice: '', // 백엔드에서 제공하지 않음
+  currentPrice: backend.technical_details?.current_price
+    ? formatPrice(backend.technical_details.current_price)
+    : '',
   sector: backend.sector,
-  summary: `${backend.investment_grade} 등급 (총점: ${backend.total_score}점)`,
+  summary: `${backend.investment_grade} 등급 (총점: ${backend.total_score.toFixed(1)}점)`,
   investmentThesis: [
-    `기술적 분석 점수: ${backend.technical_score.toFixed(1)}점`,
-    `수급 분석 점수: ${backend.supply_score.toFixed(1)}점`,
-    `펀더멘털 분석 점수: ${backend.fundamental_score.toFixed(1)}점`,
+    `기술적 분석: ${backend.technical_score.toFixed(1)}/25점`,
+    `수급 분석: ${backend.supply_score.toFixed(1)}/20점`,
+    `펀더멘털: ${backend.fundamental_score.toFixed(1)}/20점`,
+    `시장 환경: ${backend.market_score.toFixed(1)}/15점`,
+    `리스크: ${backend.risk_score.toFixed(1)}/10점`,
   ],
-  risks: backend.risk_score < 5
-    ? ['리스크 점수가 낮아 변동성 주의 필요']
-    : [],
+  risks: generateRisks(backend),
   newsSummary: '',
-  financialAnalysis: `시가총액: ${(backend.market_cap / 10000).toFixed(0)}조원`,
-  technicalAnalysis: `기술적 분석 점수: ${backend.technical_score.toFixed(1)}점 / 그룹 내 ${backend.rank_in_group}위`,
-  marketSentiment: `시장 환경 점수: ${backend.market_score.toFixed(1)}점`,
-  comprehensiveAnalysis: `투자 등급: **${backend.investment_grade}**\n\n총점 ${backend.total_score.toFixed(1)}점으로 ${backend.sector} 섹터 내 유망 종목입니다.`,
+  financialAnalysis: generateFinancialAnalysis(backend),
+  technicalAnalysis: generateTechnicalAnalysis(backend),
+  marketSentiment: generateMarketSentiment(backend),
+  comprehensiveAnalysis: generateComprehensiveAnalysis(backend),
   rubric: transformRubric(backend),
+  // 세부 분석 데이터
+  technicalDetails: backend.technical_details,
+  supplyDetails: backend.supply_details,
+  fundamentalDetails: backend.fundamental_details,
+  marketDetails: backend.market_details,
+  riskDetails: backend.risk_details,
+  relativeStrengthDetails: backend.relative_strength_details,
+  // 추가 정보
+  marketCap: backend.market_cap,
+  rankInGroup: backend.rank_in_group,
+  high52w: backend.high_52w || backend.technical_details?.high_52w,
+  low52w: backend.low_52w || backend.technical_details?.low_52w,
 });
 
 /**

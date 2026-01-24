@@ -30,6 +30,82 @@ export function getGradeFromScore(score: number): InvestmentGrade {
   return 'Strong Sell';
 }
 
+// =============================================================================
+// 세부 분석 데이터 타입
+// =============================================================================
+
+export interface TechnicalDetails {
+  trend?: number;
+  rsi?: number;
+  support_resistance?: number;
+  macd?: number;
+  adx?: number;
+  // 원본 값
+  ma20_value?: number;
+  ma60_value?: number;
+  rsi_value?: number;
+  macd_value?: number;
+  macd_signal_value?: number;
+  adx_value?: number;
+  current_price?: number;
+  low_52w?: number;
+  high_52w?: number;
+  position_52w?: number;
+}
+
+export interface SupplyDetails {
+  foreign?: number;
+  institution?: number;
+  trading_value?: number;
+  // 원본 값
+  foreign_consecutive_days?: number;
+  institution_consecutive_days?: number;
+  trading_value_amount?: number;
+}
+
+export interface FundamentalDetails {
+  per?: number;
+  pbr?: number;
+  roe?: number;
+  growth?: number;
+  debt?: number;
+  // 원본 값
+  per_value?: number;
+  pbr_value?: number;
+  roe_value?: number;
+  sector_avg_per?: number;
+  sector_avg_pbr?: number;
+  op_growth_value?: number;
+  debt_ratio_value?: number;
+}
+
+export interface MarketDetails {
+  news?: number;
+  sector_momentum?: number;
+  analyst?: number;
+}
+
+export interface RiskDetails {
+  volatility?: number;
+  beta?: number;
+  downside_risk?: number;
+  // 원본 값
+  atr_pct_value?: number;
+  beta_value?: number;
+  max_drawdown_value?: number;
+}
+
+export interface RelativeStrengthDetails {
+  sector_rank?: number;
+  alpha?: number;
+  // 원본 값
+  sector_rank_value?: number;
+  sector_total_value?: number;
+  stock_return_value?: number;
+  market_return_value?: number;
+  alpha_value?: number;
+}
+
 export interface StockAnalysis {
   ticker: string; // e.g., "005930" (if available) or name
   name: string;
@@ -40,12 +116,26 @@ export interface StockAnalysis {
   investmentThesis: string[];
   risks: string[];
   newsSummary: string; // Keep for backward compat, but use detailed below
-  
+
   // Detailed Report Fields (Markdown)
   financialAnalysis: string; // Detailed Financial Statements & Valuation
   technicalAnalysis: string; // Chart & Price Trend Analysis
   marketSentiment: string;   // News & Market Atmosphere
   comprehensiveAnalysis: string; // Final Verdict
+
+  // 세부 분석 데이터 (백엔드에서 제공)
+  technicalDetails?: TechnicalDetails;
+  supplyDetails?: SupplyDetails;
+  fundamentalDetails?: FundamentalDetails;
+  marketDetails?: MarketDetails;
+  riskDetails?: RiskDetails;
+  relativeStrengthDetails?: RelativeStrengthDetails;
+
+  // 추가 정보
+  marketCap?: number;
+  rankInGroup?: number;
+  high52w?: number;
+  low52w?: number;
 }
 
 export interface SectorAnalysis {

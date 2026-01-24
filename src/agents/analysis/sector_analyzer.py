@@ -198,6 +198,11 @@ class SectorAnalyzer(BaseAgent):
 
         # 상위 종목 (점수 내림차순, 최대 5개)
         sorted_stocks = sorted(stocks, key=lambda x: x.total_score, reverse=True)
+
+        # 섹터 내 순위 부여
+        for i, stock in enumerate(sorted_stocks, 1):
+            stock.rank_in_group = i
+
         top_stocks = sorted_stocks[:5]
 
         return SectorAnalysisResult(
