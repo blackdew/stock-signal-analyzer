@@ -119,6 +119,7 @@ class MarketDataAgent(BaseAgent):
         """
         self._log_info(f"Collecting market data for {len(symbols)} symbols")
         result: Dict[str, MarketData] = {}
+        cache_hits = 0
 
         # 날짜 범위 계산 (최근 거래일 기준)
         latest_trading_date = self.fetcher._get_latest_trading_date()
@@ -127,15 +128,23 @@ class MarketDataAgent(BaseAgent):
         start_str = start_date.strftime("%Y-%m-%d")
         end_str = end_date.strftime("%Y-%m-%d")
 
-        for symbol in symbols:
+        total = len(symbols)
+        for i, symbol in enumerate(symbols, 1):
             try:
+                # 캐시 히트 체크
+                cache_key = f"market_data_{symbol}"
+                if self.cache.get(cache_key, max_age_hours=CacheTTL.PRICE):
+                    cache_hits += 1
+
+                self._log_progress(i, total, f"Processing {symbol}")
                 market_data = await self._collect_single(symbol, start_str, end_str)
                 if market_data:
                     result[symbol] = market_data
             except Exception as e:
                 self._log_error(f"Failed to collect data for {symbol}: {e}")
 
-        self._log_info(f"Collected market data for {len(result)}/{len(symbols)} symbols")
+        fetched = total - cache_hits
+        self._log_info(f"Collected market data for {len(result)}/{total} symbols (cache: {cache_hits}, fetched: {fetched})")
         return result
 
     async def _collect_single(

@@ -199,8 +199,11 @@ class StockAnalyzer(BaseAgent):
         self._log_info(f"Analyzing {len(symbols)} stocks for group: {group}")
 
         # 데이터 수집
+        self._log_info("Phase 1/3: Collecting market data...")
         market_data = await self.market_data_agent.collect(symbols)
+        self._log_info("Phase 2/3: Collecting fundamental data...")
         fundamental_data = await self.fundamental_agent.collect(symbols)
+        self._log_info("Phase 3/3: Collecting news data...")
         news_data = await self.news_agent.collect(symbols)
 
         # 데이터 품질 검증
@@ -226,8 +229,14 @@ class StockAnalyzer(BaseAgent):
 
         results: Dict[str, StockAnalysisResult] = {}
 
-        for symbol in symbols:
+        self._log_info("Calculating rubric scores...")
+        total = len(symbols)
+        for i, symbol in enumerate(symbols, 1):
             try:
+                self._log_progress(i, total, f"Analyzing {symbol}")
+                self._log_debug(f"[{symbol}] Collecting market data...")
+                self._log_debug(f"[{symbol}] Collecting fundamental data...")
+                self._log_debug(f"[{symbol}] Calculating rubric score...")
                 result = self._analyze_single(
                     symbol=symbol,
                     group=group,

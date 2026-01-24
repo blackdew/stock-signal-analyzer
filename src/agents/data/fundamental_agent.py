@@ -88,20 +88,29 @@ class FundamentalAgent(BaseAgent):
         """
         self._log_info(f"Collecting fundamental data for {len(symbols)} symbols")
         result: Dict[str, FundamentalData] = {}
+        cache_hits = 0
 
         # 섹터 평균 사전 계산
         await self._calculate_sector_averages()
 
-        for symbol in symbols:
+        total = len(symbols)
+        for i, symbol in enumerate(symbols, 1):
             try:
+                # 캐시 히트 체크
+                cache_key = f"fundamental_{symbol}"
+                if self.cache.get(cache_key, max_age_hours=CacheTTL.FUNDAMENTAL):
+                    cache_hits += 1
+
+                self._log_progress(i, total, f"Processing {symbol}")
                 fundamental_data = await self._collect_single(symbol)
                 if fundamental_data:
                     result[symbol] = fundamental_data
             except Exception as e:
                 self._log_error(f"Failed to collect fundamental data for {symbol}: {e}")
 
+        fetched = total - cache_hits
         self._log_info(
-            f"Collected fundamental data for {len(result)}/{len(symbols)} symbols"
+            f"Collected fundamental data for {len(result)}/{total} symbols (cache: {cache_hits}, fetched: {fetched})"
         )
         return result
 

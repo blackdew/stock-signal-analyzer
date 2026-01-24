@@ -155,14 +155,22 @@ class NewsAgent(BaseAgent):
         """
         self._log_info(f"Collecting news data for {len(symbols)} symbols")
         result: Dict[str, NewsData] = {}
+        cache_hits = 0
 
-        for i, symbol in enumerate(symbols):
+        total = len(symbols)
+        for i, symbol in enumerate(symbols, 1):
             try:
+                # 캐시 히트 체크
+                cache_key = f"news_{symbol}"
+                if self.cache.get(cache_key, max_age_hours=NEWS_CACHE_TTL):
+                    cache_hits += 1
+
+                self._log_progress(i, total, f"Processing {symbol}")
                 news_data = await self._collect_single(symbol)
                 result[symbol] = news_data
 
                 # 요청 간격 딜레이 (마지막 종목 제외)
-                if i < len(symbols) - 1:
+                if i < total:
                     time.sleep(self.request_delay)
 
             except Exception as e:
@@ -170,7 +178,8 @@ class NewsAgent(BaseAgent):
                 # 실패 시 중립 데이터 반환
                 result[symbol] = self._create_neutral_data(symbol)
 
-        self._log_info(f"Collected news data for {len(result)}/{len(symbols)} symbols")
+        fetched = total - cache_hits
+        self._log_info(f"Collected news data for {len(result)}/{total} symbols (cache: {cache_hits}, fetched: {fetched})")
         return result
 
     async def _collect_single(self, symbol: str) -> NewsData:

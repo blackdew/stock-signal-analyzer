@@ -73,6 +73,21 @@ class BaseAgent(ABC):
         """디버그 로그"""
         self.logger.debug(message)
 
+    def _log_progress(self, current: int, total: int, item: str = "") -> None:
+        """
+        진행률 로깅
+
+        Args:
+            current: 현재 처리 중인 항목 번호 (1부터 시작)
+            total: 전체 항목 수
+            item: 현재 처리 중인 항목 이름 (선택)
+        """
+        percent = (current / total) * 100 if total > 0 else 0
+        msg = f"[{current}/{total}] ({percent:.0f}%)"
+        if item:
+            msg += f" {item}"
+        self.logger.info(msg)
+
     def _get_cached_or_fetch(
         self,
         cache_key: str,

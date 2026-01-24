@@ -117,14 +117,16 @@ class SectorAnalyzer(BaseAgent):
         Returns:
             SectorAnalysisResult 리스트 (점수 내림차순)
         """
-        self._log_info(f"Analyzing {len(SECTORS)} sectors")
+        total_sectors = len(SECTORS)
+        self._log_info(f"Analyzing {total_sectors} sectors")
 
         # 모든 섹터 종목 분석
         all_sector_stocks = await self.stock_analyzer.analyze_all_sectors()
 
         results: List[SectorAnalysisResult] = []
 
-        for sector_name, stock_results in all_sector_stocks.items():
+        for i, (sector_name, stock_results) in enumerate(all_sector_stocks.items(), 1):
+            self._log_progress(i, total_sectors, f"Calculating {sector_name}")
             if not stock_results:
                 self._log_warning(f"No stock results for sector: {sector_name}")
                 continue

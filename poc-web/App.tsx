@@ -19,7 +19,8 @@ import {
   Award,
   Menu,
   X,
-  Plus
+  Plus,
+  RefreshCw
 } from 'lucide-react';
 import { 
   AgentStatus, 
@@ -248,24 +249,33 @@ const App = () => {
       }
   };
 
-  const runAnalysis = async () => {
+  const runAnalysis = async (forceNew: boolean = false) => {
     setLogs([]);
     setReport({});
 
     try {
       // Step 1: 기존 분석 결과 확인 시도
       setStatus(AgentStatus.ANALYZING_SECTORS);
-      addLog("백엔드 API: 기존 분석 결과 확인 중...");
 
       let analysisReport: AnalysisReport | null = null;
 
-      try {
-        // 먼저 기존 분석 결과가 있는지 확인
-        analysisReport = await ApiService.getLatestAnalysis();
-        addLog("기존 분석 결과를 발견했습니다. 데이터 로드 중...");
-      } catch {
-        // 기존 결과가 없으면 새로 분석 실행
-        addLog("기존 분석 결과가 없습니다. 새로운 분석을 시작합니다...");
+      // forceNew가 true면 기존 결과 확인 건너뛰기
+      if (!forceNew) {
+        addLog("백엔드 API: 기존 분석 결과 확인 중...");
+        try {
+          // 먼저 기존 분석 결과가 있는지 확인
+          analysisReport = await ApiService.getLatestAnalysis();
+          addLog("기존 분석 결과를 발견했습니다. 데이터 로드 중...");
+        } catch {
+          // 기존 결과가 없으면 새로 분석 실행
+          addLog("기존 분석 결과가 없습니다. 새로운 분석을 시작합니다...");
+        }
+      } else {
+        addLog("새로운 분석을 시작합니다...");
+      }
+
+      // 기존 결과가 없거나 forceNew일 경우 새 분석 실행
+      if (!analysisReport) {
 
         // Step 2: 분석 실행
         setStatus(AgentStatus.ANALYZING_KOSPI_10);
@@ -608,13 +618,30 @@ const App = () => {
             {/* Action Area */}
             {status === AgentStatus.IDLE ? (
               <div className="flex justify-center">
-                <button 
-                  onClick={runAnalysis}
+                <button
+                  onClick={() => runAnalysis()}
                   className="group relative flex items-center gap-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-12 rounded-full shadow-lg shadow-emerald-600/30 transition-all transform hover:scale-105"
                 >
                   <PlayCircle size={24} />
                   전체 시장 분석 시작
                   <div className="absolute inset-0 rounded-full ring-4 ring-white/10 group-hover:ring-white/20 transition-all"></div>
+                </button>
+              </div>
+            ) : status === AgentStatus.COMPLETE ? (
+              <div className="flex flex-col items-center gap-4">
+                <div className="flex items-center gap-2 text-emerald-400 mb-2">
+                  <CheckCircle2 size={24} />
+                  <span className="text-lg font-semibold">분석 완료</span>
+                </div>
+                <p className="text-slate-400 text-sm text-center max-w-md mb-4">
+                  최신 분석 결과가 로드되었습니다. 새로운 분석을 실행하려면 아래 버튼을 클릭하세요.
+                </p>
+                <button
+                  onClick={() => runAnalysis(true)}
+                  className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white py-3 px-8 rounded-lg transition-all border border-slate-600"
+                >
+                  <RefreshCw size={18} />
+                  새로운 분석 시작
                 </button>
               </div>
             ) : (

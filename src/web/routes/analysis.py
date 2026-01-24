@@ -209,6 +209,10 @@ async def _run_analysis_task(
 ):
     """백그라운드에서 분석을 실행합니다."""
     from src.core.orchestrator import Orchestrator, RunOptions
+    import time
+
+    start_time = time.time()
+    logger.info(f"Analysis task {task_id} started (mode: {options.mode}, use_cache: {options.use_cache})")
 
     try:
         app_state.analysis_tasks[task_id] = {"status": "running", "started_at": datetime.now()}
@@ -232,6 +236,9 @@ async def _run_analysis_task(
         else:
             result = await orchestrator.run_daily(run_options)
 
+        duration = time.time() - start_time
+        logger.info(f"Analysis task {task_id} completed in {duration:.1f}s")
+
         app_state.analysis_tasks[task_id] = {
             "status": "completed",
             "started_at": app_state.analysis_tasks[task_id]["started_at"],
@@ -240,7 +247,8 @@ async def _run_analysis_task(
         }
 
     except Exception as e:
-        logger.error(f"Analysis task {task_id} failed: {e}")
+        duration = time.time() - start_time
+        logger.error(f"Analysis task {task_id} failed after {duration:.1f}s: {e}")
         app_state.analysis_tasks[task_id] = {
             "status": "failed",
             "started_at": app_state.analysis_tasks[task_id].get("started_at"),
