@@ -2,6 +2,7 @@
 Stock Report Agent
 
 개별 종목의 마크다운 리포트를 생성하는 에이전트.
+LLM 기반 상세 분석 기능 포함.
 """
 
 import asyncio
@@ -15,6 +16,7 @@ from typing import Any, Dict, List, Optional
 from src.agents.base_agent import BaseAgent
 from src.agents.analysis.stock_analyzer import StockAnalysisResult
 from src.core.config import INVESTMENT_GRADES
+from src.core.llm import LLMAnalyzer, LLMAnalysisResult
 
 
 # =============================================================================
@@ -46,15 +48,21 @@ class StockReportAgent(BaseAgent):
 
     주요 기능:
     - StockAnalysisResult를 마크다운 리포트로 변환
+    - LLM 기반 상세 분석 생성 (옵션)
     - 병렬 리포트 생성 (asyncio.gather)
     - output/reports/stocks/ 디렉토리에 저장
 
     사용 예시:
         agent = StockReportAgent()
         reports = await agent.generate_reports(stock_results)
+
+        # LLM 분석 포함
+        reports = await agent.generate_reports(stock_results, use_llm=True)
     """
 
     output_dir: Path = field(default_factory=lambda: DEFAULT_OUTPUT_DIR)
+    llm_analyzer: LLMAnalyzer = field(default_factory=LLMAnalyzer)
+    use_llm: bool = field(default=True)  # LLM 분석 사용 여부
 
     def __post_init__(self):
         """출력 디렉토리 생성 및 로거 초기화"""
@@ -71,6 +79,7 @@ class StockReportAgent(BaseAgent):
         self,
         stocks: List[StockAnalysisResult],
         date_str: Optional[str] = None,
+        use_llm: Optional[bool] = None,
     ) -> Dict[str, str]:
         """
         여러 종목의 리포트를 병렬로 생성합니다.
@@ -78,15 +87,21 @@ class StockReportAgent(BaseAgent):
         Args:
             stocks: 종목 분석 결과 리스트
             date_str: 날짜 문자열 (미사용, 폴더명에서 날짜 사용)
+            use_llm: LLM 분석 사용 여부 (None이면 인스턴스 설정 사용)
 
         Returns:
             종목코드를 키로 하는 리포트 파일 경로 딕셔너리
         """
-        self._log_info(f"Generating {len(stocks)} stock reports")
+        use_llm_flag = use_llm if use_llm is not None else self.use_llm
+
+        if use_llm_flag and self.llm_analyzer.is_available():
+            self._log_info(f"Generating {len(stocks)} stock reports with LLM analysis")
+        else:
+            self._log_info(f"Generating {len(stocks)} stock reports (LLM disabled or unavailable)")
 
         # 병렬 생성
         tasks = [
-            self._generate_single_report(stock)
+            self._generate_single_report(stock, use_llm=use_llm_flag)
             for stock in stocks
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -105,18 +120,34 @@ class StockReportAgent(BaseAgent):
     async def _generate_single_report(
         self,
         stock: StockAnalysisResult,
+        use_llm: bool = True,
     ) -> str:
         """
         단일 종목 리포트를 생성합니다.
 
         Args:
             stock: 종목 분석 결과
+            use_llm: LLM 분석 사용 여부
 
         Returns:
             생성된 리포트 파일 경로
         """
+        # LLM 분석 수행 (사용 가능하고 요청된 경우)
+        llm_result = None
+        if use_llm and self.llm_analyzer.is_available():
+            llm_result = await self._generate_llm_analysis(stock)
+            if llm_result:
+                # StockAnalysisResult에 LLM 분석 결과 저장
+                stock.summary = llm_result.summary
+                stock.financial_analysis = llm_result.financial_analysis
+                stock.technical_analysis = llm_result.technical_analysis
+                stock.market_sentiment = llm_result.market_sentiment
+                stock.comprehensive_analysis = llm_result.comprehensive_analysis
+                stock.investment_thesis = llm_result.investment_thesis
+                stock.risks = llm_result.risks
+
         # 마크다운 생성
-        content = self._render_markdown(stock)
+        content = self._render_markdown(stock, llm_result)
 
         # 파일 저장 (날짜 없이, 폴더명에 날짜 포함됨)
         filename = f"{stock.symbol}_{stock.name}.md"
@@ -127,12 +158,120 @@ class StockReportAgent(BaseAgent):
 
         return str(filepath)
 
-    def _render_markdown(self, stock: StockAnalysisResult) -> str:
+    async def _generate_llm_analysis(
+        self,
+        stock: StockAnalysisResult,
+    ) -> Optional[LLMAnalysisResult]:
+        """
+        LLM 기반 분석을 생성합니다.
+
+        Args:
+            stock: 종목 분석 결과
+
+        Returns:
+            LLMAnalysisResult 또는 None
+        """
+        # 강점/약점 추출
+        strengths, weaknesses = self._extract_strengths_weaknesses(stock)
+
+        # 루브릭 세부 데이터 추출
+        rubric = stock.rubric_result
+        technical_details = rubric.technical.details if rubric and rubric.technical else {}
+        supply_details = rubric.supply.details if rubric and rubric.supply else {}
+        fundamental_details = rubric.fundamental.details if rubric and rubric.fundamental else {}
+
+        # 뉴스 데이터 (NewsData에서 추출 - 현재는 빈 딕셔너리)
+        news_data = {}
+
+        return await self.llm_analyzer.analyze(
+            symbol=stock.symbol,
+            name=stock.name,
+            sector=stock.sector or "Unknown",
+            market_cap=stock.market_cap,
+            total_score=stock.total_score,
+            grade=stock.investment_grade,
+            technical_score=stock.technical_score,
+            supply_score=stock.supply_score,
+            fundamental_score=stock.fundamental_score,
+            market_score=stock.market_score,
+            risk_score=stock.risk_score,
+            relative_strength_score=stock.relative_strength_score,
+            technical_details=technical_details,
+            supply_details=supply_details,
+            fundamental_details=fundamental_details,
+            news_data=news_data,
+            strengths=strengths,
+            weaknesses=weaknesses,
+        )
+
+    def _extract_strengths_weaknesses(
+        self,
+        stock: StockAnalysisResult,
+    ) -> tuple:
+        """
+        종목의 강점/약점을 추출합니다.
+
+        Returns:
+            (strengths, weaknesses) 튜플
+        """
+        strengths = []
+        weaknesses = []
+
+        # 기술적 분석 (25점 만점)
+        tech_ratio = stock.technical_score / 25 * 100
+        if tech_ratio >= 70:
+            strengths.append(f"기술적 지표 상승 추세 ({stock.technical_score:.1f}/25점)")
+        elif tech_ratio <= 40:
+            weaknesses.append(f"기술적 지표 약세 ({stock.technical_score:.1f}/25점)")
+
+        # 수급 분석 (20점 만점)
+        supply_ratio = stock.supply_score / 20 * 100
+        if supply_ratio >= 70:
+            strengths.append(f"외국인/기관 수급 양호 ({stock.supply_score:.1f}/20점)")
+        elif supply_ratio <= 40:
+            weaknesses.append(f"수급 부진 ({stock.supply_score:.1f}/20점)")
+
+        # 펀더멘털 분석 (20점 만점)
+        fund_ratio = stock.fundamental_score / 20 * 100
+        if fund_ratio >= 70:
+            strengths.append(f"펀더멘털 우수 ({stock.fundamental_score:.1f}/20점)")
+        elif fund_ratio <= 40:
+            weaknesses.append(f"펀더멘털 미흡 ({stock.fundamental_score:.1f}/20점)")
+
+        # 시장 환경 (15점 만점)
+        market_ratio = stock.market_score / 15 * 100
+        if market_ratio >= 70:
+            strengths.append(f"시장 환경 긍정적 ({stock.market_score:.1f}/15점)")
+        elif market_ratio <= 40:
+            weaknesses.append(f"시장 환경 부정적 ({stock.market_score:.1f}/15점)")
+
+        # 리스크 평가 (10점 만점)
+        risk_ratio = stock.risk_score / 10 * 100
+        if risk_ratio >= 70:
+            strengths.append(f"리스크 낮음 ({stock.risk_score:.1f}/10점)")
+        elif risk_ratio <= 40:
+            weaknesses.append(f"리스크 높음 ({stock.risk_score:.1f}/10점)")
+
+        # 상대 강도 (10점 만점)
+        rs_ratio = stock.relative_strength_score / 10 * 100
+        if rs_ratio >= 70:
+            strengths.append(f"상대 강도 우수 ({stock.relative_strength_score:.1f}/10점)")
+        elif rs_ratio <= 40:
+            weaknesses.append(f"상대 강도 미흡 ({stock.relative_strength_score:.1f}/10점)")
+
+        return strengths, weaknesses
+
+    def _render_markdown(
+        self,
+        stock: StockAnalysisResult,
+        llm_result: Optional[LLMAnalysisResult] = None,
+    ) -> str:
         """
         마크다운 리포트를 렌더링합니다.
 
         Args:
             stock: 종목 분석 결과
+            llm_result: LLM 분석 결과 (있으면 상세 분석 포함)
 
         Returns:
             마크다운 문자열
@@ -149,8 +288,16 @@ class StockReportAgent(BaseAgent):
         rubric = stock.rubric_result
         details = self._extract_rubric_details(rubric)
 
-        # 투자 의견 생성
-        opinion = self._generate_opinion(stock)
+        # 투자 의견 생성 (LLM 결과가 있으면 우선 사용)
+        if llm_result and llm_result.comprehensive_analysis:
+            opinion = llm_result.comprehensive_analysis
+        else:
+            opinion = self._generate_opinion(stock)
+
+        # 핵심 요약 (LLM 결과가 있으면 사용)
+        summary_text = ""
+        if llm_result and llm_result.summary:
+            summary_text = f"> **핵심 요약**: {llm_result.summary}\n\n"
 
         # 값 포맷팅 헬퍼 함수들
         def fmt_price(val):
@@ -174,7 +321,7 @@ class StockReportAgent(BaseAgent):
 > 생성일시: {now}
 > 분석 그룹: {group_name}
 
----
+{summary_text}---
 
 ## 📊 종합 평가
 
@@ -341,7 +488,53 @@ class StockReportAgent(BaseAgent):
 
 {opinion}
 
----
+"""
+        # LLM 상세 분석 추가 (있는 경우)
+        if llm_result:
+            if llm_result.financial_analysis:
+                md += f"""---
+
+## 📑 재무 & 밸류에이션 분석
+
+{llm_result.financial_analysis}
+
+"""
+            if llm_result.technical_analysis:
+                md += f"""---
+
+## 📈 기술적 & 차트 분석
+
+{llm_result.technical_analysis}
+
+"""
+            if llm_result.market_sentiment:
+                md += f"""---
+
+## 📰 뉴스 & 시장 센티먼트
+
+{llm_result.market_sentiment}
+
+"""
+            if llm_result.investment_thesis:
+                thesis_list = "\n".join(f"- {t}" for t in llm_result.investment_thesis)
+                md += f"""---
+
+## 🎯 투자 포인트
+
+{thesis_list}
+
+"""
+            if llm_result.risks:
+                risks_list = "\n".join(f"- {r}" for r in llm_result.risks)
+                md += f"""---
+
+## ⚠️ 주요 리스크 요인
+
+{risks_list}
+
+"""
+
+        md += """---
 
 *이 리포트는 자동 생성되었으며, 투자 판단의 참고 자료로만 활용하시기 바랍니다.*
 """

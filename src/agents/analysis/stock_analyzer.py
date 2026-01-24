@@ -83,6 +83,15 @@ class StockAnalysisResult:
     # 데이터 품질
     data_quality: Optional[DataQualityResult] = None
 
+    # LLM 분석 결과 (리포트 생성 시 채워짐)
+    summary: Optional[str] = None                      # 핵심 요약 (1-2문장)
+    financial_analysis: Optional[str] = None          # 재무 & 밸류에이션 분석
+    technical_analysis: Optional[str] = None          # 기술적 & 차트 분석
+    market_sentiment: Optional[str] = None            # 뉴스 & 시장 센티먼트
+    comprehensive_analysis: Optional[str] = None      # 종합 투자 의견
+    investment_thesis: Optional[List[str]] = None     # 투자 포인트 (3-5개)
+    risks: Optional[List[str]] = None                 # 리스크 요인 (2-4개)
+
     def to_dict(self) -> Dict[str, Any]:
         """딕셔너리로 변환"""
         result = {
@@ -131,6 +140,22 @@ class StockAnalysisResult:
             # 상대 강도 세부 (V2)
             if rubric.relative_strength and rubric.relative_strength.details:
                 result["relative_strength_details"] = rubric.relative_strength.details
+
+        # LLM 분석 결과 추가
+        if self.summary:
+            result["summary"] = self.summary
+        if self.financial_analysis:
+            result["financial_analysis"] = self.financial_analysis
+        if self.technical_analysis:
+            result["technical_analysis"] = self.technical_analysis
+        if self.market_sentiment:
+            result["market_sentiment"] = self.market_sentiment
+        if self.comprehensive_analysis:
+            result["comprehensive_analysis"] = self.comprehensive_analysis
+        if self.investment_thesis:
+            result["investment_thesis"] = self.investment_thesis
+        if self.risks:
+            result["risks"] = self.risks
 
         return result
 

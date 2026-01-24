@@ -169,6 +169,15 @@ class StockAnalysisSchema(BaseModel):
     risk_details: Optional[RiskDetailsSchema] = Field(default=None, description="리스크 평가 세부")
     relative_strength_details: Optional[RelativeStrengthDetailsSchema] = Field(default=None, description="상대 강도 세부")
 
+    # LLM 상세 분석 (Phase 1: 리포트 품질 개선)
+    summary: Optional[str] = Field(default=None, description="핵심 요약 (1-2문장)", examples=["AI 메모리 반도체(HBM) 시장의 절대적 지배력을 바탕으로 사상 최대 실적 경신이 기대되는 대장주"])
+    financial_analysis: Optional[str] = Field(default=None, description="재무 & 밸류에이션 분석 (마크다운)")
+    technical_analysis: Optional[str] = Field(default=None, description="기술적 & 차트 분석 (마크다운)")
+    market_sentiment: Optional[str] = Field(default=None, description="뉴스 & 시장 센티먼트 분석 (마크다운)")
+    comprehensive_analysis: Optional[str] = Field(default=None, description="종합 투자 의견 (마크다운)")
+    investment_thesis: Optional[List[str]] = Field(default=None, description="투자 포인트 (3-5개)", examples=[["HBM 시장 지배력", "AI 수혜 기대"]])
+    risks: Optional[List[str]] = Field(default=None, description="주요 리스크 요인 (2-4개)", examples=[["글로벌 경기 침체", "반도체 수요 둔화"]])
+
 
 class StockListResponse(BaseModel):
     """종목 리스트 응답"""

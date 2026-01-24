@@ -87,6 +87,14 @@ def _stock_dict_to_schema(stock_dict: Dict[str, Any]) -> StockAnalysisSchema:
         market_details=stock_dict.get("market_details"),
         risk_details=stock_dict.get("risk_details"),
         relative_strength_details=stock_dict.get("relative_strength_details"),
+        # LLM 상세 분석 정보
+        summary=stock_dict.get("summary"),
+        financial_analysis=stock_dict.get("financial_analysis"),
+        technical_analysis=stock_dict.get("technical_analysis"),
+        market_sentiment=stock_dict.get("market_sentiment"),
+        comprehensive_analysis=stock_dict.get("comprehensive_analysis"),
+        investment_thesis=stock_dict.get("investment_thesis"),
+        risks=stock_dict.get("risks"),
     )
 
 
