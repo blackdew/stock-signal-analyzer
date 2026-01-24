@@ -1,5 +1,6 @@
 # claude 설정
 .claude/
+.playwright-mcp/
 
 # Python-generated files
 __pycache__/
