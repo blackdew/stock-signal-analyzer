@@ -84,6 +84,12 @@ interface AnalysisTaskResponse {
   message?: string;
 }
 
+export interface AnalysisHistoryItem {
+  date: string;
+  generated_at: string;
+  preview: string;
+}
+
 interface ErrorResponse {
   error: string;
   message: string;
@@ -235,6 +241,33 @@ const handleApiError = async (response: Response): Promise<never> => {
  */
 export const getLatestAnalysis = async (): Promise<AnalysisReport> => {
   const response = await fetch(`${API_BASE}/api/analysis/latest`);
+
+  if (!response.ok) {
+    await handleApiError(response);
+  }
+
+  const data: BackendAnalysisResult = await response.json();
+  return transformToReport(data);
+};
+
+/**
+ * 분석 히스토리 목록을 조회합니다.
+ */
+export const getAnalysisHistory = async (): Promise<AnalysisHistoryItem[]> => {
+  const response = await fetch(`${API_BASE}/api/analysis/history`);
+
+  if (!response.ok) {
+    await handleApiError(response);
+  }
+
+  return response.json();
+};
+
+/**
+ * 특정 날짜의 분석 결과를 조회합니다.
+ */
+export const getAnalysisByDate = async (date: string): Promise<AnalysisReport> => {
+  const response = await fetch(`${API_BASE}/api/analysis/${date}`);
 
   if (!response.ok) {
     await handleApiError(response);

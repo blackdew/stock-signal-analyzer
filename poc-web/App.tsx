@@ -27,6 +27,7 @@ import {
   SavedReport
 } from './types';
 import * as ApiService from './services/apiService';
+import { AnalysisHistoryItem } from './services/apiService';
 import StockCard from './components/StockCard';
 import StockModal from './components/StockModal';
 import ChatSidebar from './components/ChatSidebar';
@@ -47,6 +48,11 @@ const App = () => {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [savedReports, setSavedReports] = useState<SavedReport[]>([]);
+
+  // Server Analysis History
+  const [serverHistory, setServerHistory] = useState<AnalysisHistoryItem[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   
   // References
   const logEndRef = useRef<HTMLDivElement>(null);
@@ -97,6 +103,38 @@ const App = () => {
     checkBackendHealth();
   }, []);
 
+  // 페이지 로드 시 서버 히스토리 및 최신 분석 결과 자동 로드
+  useEffect(() => {
+    const loadInitialData = async () => {
+      if (!apiKeySet) return;
+
+      setIsLoadingHistory(true);
+      try {
+        // 서버 히스토리 로드
+        const history = await ApiService.getAnalysisHistory();
+        setServerHistory(history);
+
+        // 최신 분석 결과 로드 (히스토리가 있는 경우)
+        if (history.length > 0) {
+          addLog("기존 분석 결과를 불러오는 중...");
+          const latestReport = await ApiService.getLatestAnalysis();
+          setReport(latestReport);
+          setSelectedDate(history[0].date);
+          setStatus(AgentStatus.COMPLETE);
+          setActiveTab('final');
+          addLog("최신 분석 결과를 불러왔습니다.");
+        }
+      } catch (error: any) {
+        console.error("초기 데이터 로드 실패:", error);
+        // 분석 결과가 없으면 조용히 실패 (새로운 분석 시작 가능)
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    };
+
+    loadInitialData();
+  }, [apiKeySet]);
+
   const handleSelectKey = async () => {
     // 먼저 백엔드 헬스 체크 재시도
     const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -134,6 +172,25 @@ const App = () => {
       setStatus(AgentStatus.COMPLETE);
       setActiveTab('final');
       addLog(`저장된 리포트(${saved.date})를 불러왔습니다.`);
+  };
+
+  // 서버에서 특정 날짜의 분석 결과 로드
+  const loadServerReport = async (date: string) => {
+    setIsLoadingHistory(true);
+    try {
+      addLog(`${date} 날짜의 분석 결과를 불러오는 중...`);
+      const analysisReport = await ApiService.getAnalysisByDate(date);
+      setReport(analysisReport);
+      setSelectedDate(date);
+      setStatus(AgentStatus.COMPLETE);
+      setActiveTab('final');
+      addLog(`${date} 날짜의 분석 결과를 불러왔습니다.`);
+    } catch (error: any) {
+      console.error("분석 결과 로드 실패:", error);
+      addLog(`오류: ${error.message}`);
+    } finally {
+      setIsLoadingHistory(false);
+    }
   };
 
   const deleteReport = (id: string, e: React.MouseEvent) => {
@@ -263,6 +320,17 @@ const App = () => {
       setStatus(AgentStatus.COMPLETE);
       setActiveTab('final');
       saveCurrentReport(finalReport as AnalysisReport);
+
+      // 서버 히스토리 갱신
+      try {
+        const history = await ApiService.getAnalysisHistory();
+        setServerHistory(history);
+        if (history.length > 0) {
+          setSelectedDate(history[0].date);
+        }
+      } catch {
+        // 히스토리 갱신 실패는 무시
+      }
 
     } catch (error: any) {
       console.error(error);
@@ -417,13 +485,45 @@ const App = () => {
           ))}
         </nav>
 
-        {/* History Section */}
+        {/* Server History Section */}
         <div className="mt-auto pt-6 border-t border-slate-800">
            <h3 className="text-xs font-semibold text-slate-500 uppercase mb-4 flex items-center gap-2">
-               <History size={12}/> 저장된 리포트
+               <FileText size={12}/> 분석 히스토리
+           </h3>
+           <div className="space-y-2 max-h-48 overflow-y-auto">
+               {isLoadingHistory && (
+                   <div className="flex items-center gap-2 text-xs text-slate-500">
+                       <Loader2 className="animate-spin" size={12}/> 로딩 중...
+                   </div>
+               )}
+               {!isLoadingHistory && serverHistory.length === 0 && (
+                   <p className="text-xs text-slate-600 italic">분석 결과 없음</p>
+               )}
+               {serverHistory.map((item) => (
+                   <div key={item.date}
+                        onClick={() => {
+                          loadServerReport(item.date);
+                          setIsMobileMenuOpen(false);
+                        }}
+                        className={`group flex flex-col text-xs p-2 rounded cursor-pointer transition-colors ${
+                          selectedDate === item.date
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            : 'text-slate-400 hover:text-emerald-400 hover:bg-slate-900'
+                        }`}>
+                       <span className="font-medium">{item.date}</span>
+                       <span className="text-slate-500 truncate text-[10px]">{item.preview}</span>
+                   </div>
+               ))}
+           </div>
+        </div>
+
+        {/* Local Saved Reports Section */}
+        {savedReports.length > 0 && (
+        <div className="pt-4 border-t border-slate-800/50">
+           <h3 className="text-xs font-semibold text-slate-500 uppercase mb-4 flex items-center gap-2">
+               <History size={12}/> 로컬 저장
            </h3>
            <div className="space-y-2">
-               {savedReports.length === 0 && <p className="text-xs text-slate-600 italic">저장된 내역 없음</p>}
                {savedReports.map(saved => (
                    <div key={saved.id}
                         onClick={() => {
@@ -439,6 +539,7 @@ const App = () => {
                ))}
            </div>
         </div>
+        )}
       </aside>
 
       {/* Main Content */}
