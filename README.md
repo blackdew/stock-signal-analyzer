@@ -125,7 +125,7 @@ cd poc-web && npm run dev
 ### 분석 에이전트
 - **StockAnalyzer**: 개별 종목 루브릭 점수 산출
 - **SectorAnalyzer**: 섹터별 시가총액 가중 평균 점수
-- **RankingAgent**: 4개 그룹 순위, 최종 18개 종목, Top 3 선정
+- **RankingAgent**: 4개 그룹 순위, 최종 18개 종목, Top 5 선정
 
 ### 리포트 에이전트
 - **StockReportAgent**: 개별 종목 마크다운 리포트 생성

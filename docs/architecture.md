@@ -44,7 +44,7 @@
                                                     ▼
                                         ┌───────────────────┐
                                         │   Report Output   │
-                                        │  (최종 18개/Top3) │
+                                        │  (최종 18개/Top5) │
                                         └───────────────────┘
 ```
 
@@ -176,7 +176,7 @@ NewsData ───────┘         ▼
 │  │   - 상위 3개 섹터 → 각 3개 (9개)                       │  │
 │  │                                                        │  │
 │  │ 중복 제거 후 최종 18개 종목 집계                        │  │
-│  │ Top 3 선정 (총점 70% + 수급 15% + 성장성 15%)          │  │
+│  │ Top 5 선정 (총점 70% + 수급 15% + 성장성 15%)          │  │
 │  └───────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -185,7 +185,7 @@ NewsData ───────┘         ▼
 │                    최종 결과                                 │
 │  ┌───────────────────────────────────────────────────────┐  │
 │  │ final_18: 최종 선정된 18개 종목                        │  │
-│  │ final_top3: 최상위 3개 종목                            │  │
+│  │ final_top5: 최상위 5개 종목                            │  │
 │  │ top_sectors: 상위 3개 섹터                             │  │
 │  └───────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
@@ -209,7 +209,7 @@ RankingResult
 │ └─────────────────────┘ └─────────────────────┘            │
 │              ┌─────────────────────┐                        │
 │              │ SummaryAgent        │                        │
-│              │ ├─ Top 3 선정 이유   │                        │
+│              │ ├─ Top 5 선정 이유   │                        │
 │              │ ├─ 그룹별 종목 요약  │                        │
 │              │ ├─ 최종 18개 테이블  │                        │
 │              │ └─ JSON 데이터 저장  │                        │
@@ -363,7 +363,19 @@ CacheManager
 ### Phase 6 (완료)
 - FastAPI 기반 REST API (src/web/)
 - 분석 실행/결과 조회 API
+  - `/api/analysis/latest` - 최신 분석 결과 조회
+  - `/api/analysis/run` - 분석 비동기 실행
+  - `/api/analysis/task/{task_id}` - 태스크 상태 조회
+  - `/api/analysis/history` - 분석 히스토리 조회
+  - `/api/analysis/{date}` - 특정 날짜 분석 결과 조회
+  - `/api/ranking` - Top 18, Top 5 순위 조회
 - 섹터/종목 분석 API
+  - `/api/sectors` - 전체 섹터 분석 결과
+  - `/api/sectors/{sector_name}` - 특정 섹터 상세 정보
+  - `/api/stocks` - 분석된 종목 리스트
+  - `/api/stocks/{symbol}` - 특정 종목 상세 정보
+  - `/api/stocks/{symbol}/history` - 일별 주가 히스토리 (OHLCV)
+  - `/api/stocks/{symbol}/supply` - 외국인/기관 순매수 추이
 - 정적 파일 서빙 (프론트엔드 통합 배포)
 
 ### 향후 계획
@@ -397,7 +409,7 @@ src/
 │   ├── analysis/                # 분석 에이전트
 │   │   ├── stock_analyzer.py      # 개별 종목 루브릭 점수
 │   │   ├── sector_analyzer.py     # 섹터 시가총액 가중 평균
-│   │   └── ranking_agent.py       # 4개 그룹 순위, 최종 18개, Top 3
+│   │   └── ranking_agent.py       # 4개 그룹 순위, 최종 18개, Top 5
 │   │
 │   └── report/                  # 리포트 에이전트
 │       ├── __init__.py
@@ -420,12 +432,14 @@ src/
 └── output/                      # 출력
     ├── data/cache/              # 캐시 저장소
     └── reports/                 # 리포트 저장소
-        ├── YYYY-MM-DD/          # 일간 리포트
-        │   ├── 01_sector_report.md
-        │   ├── 02_stocks/
-        │   └── 03_final_report.md
+        ├── daily/               # 일간 리포트
+        │   └── YYYY-MM-DD/
+        │       ├── 01_sector_report.md
+        │       ├── 02_stocks/
+        │       └── 03_final_report.md
         └── weekly/              # 주간 리포트
-            └── YYYY-WXX_sector_report.md
+            └── YYYY-WXX/
+                └── sector_report.md
 
 tests/                           # 테스트 (279개)
 ├── core/                        # rubric V1, V2 테스트 (166개)
@@ -441,16 +455,19 @@ scripts/                         # 유틸리티 스크립트
 poc-web/                         # 프론트엔드 PoC (Gemini AI Studio)
 ├── index.tsx                    # 앱 엔트리 포인트
 ├── App.tsx                      # 메인 앱 컴포넌트 (라우팅, 상태 관리, 모바일 메뉴)
-├── types.ts                     # TypeScript 타입 정의 (6개 루브릭 카테고리, finalTop5, final18, allSectors)
+├── types.ts                     # TypeScript 타입 정의 (6개 루브릭 카테고리, finalTop5, final18, allSectors, 차트 데이터)
 ├── components/                  # React 컴포넌트
 │   ├── StockCard.tsx            # 종목 카드
-│   ├── StockModal.tsx           # 종목 상세 모달
+│   ├── StockModal.tsx           # 종목 상세 모달 (차트 탭 포함)
 │   ├── RubricChart.tsx          # 루브릭 점수 차트
 │   ├── ChatSidebar.tsx          # 채팅 사이드바
 │   ├── SectorBarChart.tsx       # 섹터별 점수 바 차트
 │   ├── Skeleton.tsx             # 로딩 스켈레톤 UI
-│   └── ErrorState.tsx           # 에러 상태 표시 컴포넌트
+│   ├── ErrorState.tsx           # 에러 상태 표시 컴포넌트
+│   ├── PriceChart.tsx           # 주가 캔들스틱 차트 (OHLCV)
+│   ├── SupplyChart.tsx          # 외국인/기관 순매수 차트
+│   └── PriceRangeIndicator.tsx  # 52주 고저 대비 현재가 위치 표시
 └── services/
-    ├── apiService.ts            # Python 백엔드 API 연동
-    └── geminiService.ts         # Gemini API 연동
+    ├── apiService.ts            # Python 백엔드 API 연동 (분석 결과, 차트 데이터 조회)
+    └── geminiService.ts         # Gemini API 연동 (채팅 기능)
 ```
