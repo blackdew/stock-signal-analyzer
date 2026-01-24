@@ -285,13 +285,31 @@ const App = () => {
 
         // Step 3: 폴링으로 완료 대기
         setStatus(AgentStatus.ANALYZING_KOSPI_MID);
-        addLog("백엔드 API: 분석 진행 중 (폴링)...");
+        addLog("백엔드 API: 분석 진행 중...");
 
+        let pollCount = 0;
+        const progressMessages = [
+          '데이터 수집 중...',
+          'KOSPI Top 10 분석 중...',
+          'KOSPI 11-20 분석 중...',
+          'KOSDAQ Top 10 분석 중...',
+          '섹터별 종목 분석 중...',
+          '섹터별 종목 분석 중...',
+          '루브릭 점수 계산 중...',
+          '루브릭 점수 계산 중...',
+          '최종 순위 산정 중...',
+        ];
         analysisReport = await ApiService.pollAnalysisTask(
           taskResponse.task_id,
-          (status, message) => {
+          (status, _message) => {
             if (status === 'running') {
-              addLog(`진행 중: ${message || '분석 실행 중...'}`);
+              pollCount++;
+              const msgIndex = Math.min(Math.floor(pollCount / 2), progressMessages.length - 1);
+              const elapsed = pollCount * 3;
+              const minutes = Math.floor(elapsed / 60);
+              const seconds = elapsed % 60;
+              const timeStr = minutes > 0 ? `${minutes}분 ${seconds}초` : `${seconds}초`;
+              addLog(`[${timeStr}] ${progressMessages[msgIndex]}`);
             }
           },
           3000, // 3초 간격
