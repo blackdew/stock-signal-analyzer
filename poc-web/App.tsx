@@ -18,7 +18,8 @@ import {
   List,
   Award,
   Menu,
-  X
+  X,
+  Plus
 } from 'lucide-react';
 import { 
   AgentStatus, 
@@ -458,9 +459,35 @@ const App = () => {
         transform transition-transform duration-300 ease-in-out
         ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
       `}>
-        <h1 className="text-2xl font-bold text-emerald-500 mb-8 flex items-center gap-2 mt-8 md:mt-0">
+        <h1 className="text-2xl font-bold text-emerald-500 mb-6 flex items-center gap-2 mt-8 md:mt-0">
           <TrendingUp /> AlphaInvest
         </h1>
+
+        {/* New Report Button */}
+        <button
+          onClick={() => {
+            runAnalysis();
+            setIsMobileMenuOpen(false);
+          }}
+          disabled={status !== AgentStatus.IDLE && status !== AgentStatus.COMPLETE && status !== AgentStatus.ERROR}
+          className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg mb-6 font-semibold transition-all ${
+            status !== AgentStatus.IDLE && status !== AgentStatus.COMPLETE && status !== AgentStatus.ERROR
+              ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+              : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20'
+          }`}
+        >
+          {status !== AgentStatus.IDLE && status !== AgentStatus.COMPLETE && status !== AgentStatus.ERROR ? (
+            <>
+              <Loader2 className="animate-spin" size={18} />
+              분석 중...
+            </>
+          ) : (
+            <>
+              <Plus size={18} />
+              신규 리포트 생성
+            </>
+          )}
+        </button>
 
         <nav className="space-y-2 mb-8">
           {navItems.map((item) => (
