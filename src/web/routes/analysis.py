@@ -171,10 +171,11 @@ async def get_latest_analysis() -> AnalysisResultSchema:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"분석 결과 로드 실패: {e}")
 
-    # RankingSchema 변환
+    # RankingSchema 변환 - 실제 JSON 구조에 맞게 수정
+    # JSON 파일은 ranking 키 대신 개별 키로 저장됨
     ranking_data = data.get("ranking")
-    ranking = None
     if ranking_data:
+        # 기존 구조 (ranking 키가 있는 경우)
         ranking = RankingSchema(
             kospi_top10=[_stock_dict_to_schema(s) for s in ranking_data.get("kospi_top10", [])],
             kospi_11_20=[_stock_dict_to_schema(s) for s in ranking_data.get("kospi_11_20", [])],
@@ -184,18 +185,61 @@ async def get_latest_analysis() -> AnalysisResultSchema:
             final_top5=[_stock_dict_to_schema(s) for s in ranking_data.get("final_top5", [])],
             top_sectors=[_sector_dict_to_schema(s) for s in ranking_data.get("top_sectors", [])],
         )
+    else:
+        # 새 구조 (개별 키로 저장된 경우)
+        kospi_top10 = data.get("kospi_top10", [])
+        kospi_11_20 = data.get("kospi_11_20", [])
+        kosdaq_top10 = data.get("kosdaq_top10", [])
+
+        # sector_stocks는 {섹터명: [종목리스트]} 형태의 딕셔너리
+        sector_stocks_dict = data.get("sector_stocks", {})
+        sector_stocks = []
+        if isinstance(sector_stocks_dict, dict):
+            for sector_name, stocks in sector_stocks_dict.items():
+                sector_stocks.extend(stocks if isinstance(stocks, list) else [])
+        elif isinstance(sector_stocks_dict, list):
+            sector_stocks = sector_stocks_dict
+
+        final_top5 = data.get("final_top5", [])
+        all_selected = data.get("all_selected", [])
+
+        # top_sectors가 문자열 리스트인 경우, sector_rankings에서 상세 정보 매핑
+        top_sector_names = data.get("top_sectors", [])
+        sector_rankings = data.get("sector_rankings", [])
+        if top_sector_names and len(top_sector_names) > 0 and isinstance(top_sector_names[0], str):
+            sector_map = {s.get("sector_name"): s for s in sector_rankings if isinstance(s, dict)}
+            top_sectors = [sector_map.get(name) for name in top_sector_names if sector_map.get(name)]
+        else:
+            top_sectors = top_sector_names if isinstance(top_sector_names, list) else []
+
+        # 데이터가 있는지 확인
+        has_data = any([kospi_top10, kospi_11_20, kosdaq_top10, final_top5, all_selected])
+
+        if has_data:
+            ranking = RankingSchema(
+                kospi_top10=[_stock_dict_to_schema(s) for s in kospi_top10],
+                kospi_11_20=[_stock_dict_to_schema(s) for s in kospi_11_20],
+                kosdaq_top10=[_stock_dict_to_schema(s) for s in kosdaq_top10],
+                sector_top=[_stock_dict_to_schema(s) for s in sector_stocks],
+                final_18=[_stock_dict_to_schema(s) for s in all_selected],
+                final_top5=[_stock_dict_to_schema(s) for s in final_top5],
+                top_sectors=[_sector_dict_to_schema(s) for s in top_sectors if s],
+            )
+        else:
+            ranking = None
 
     # SectorAnalysisSchema 리스트 변환
-    sectors_data = data.get("sectors", [])
+    sectors_data = data.get("sectors") or data.get("sector_rankings", [])
     sectors = [_sector_dict_to_schema(s) for s in sectors_data] if sectors_data else None
 
     # Stats
-    stats_data = data.get("stats", {})
+    stats_data = data.get("stats") or data.get("summary", {})
+    final_top5_list = stats_data.get("final_top5") or data.get("final_top5", [])
     stats = AnalysisStatsSchema(
         total_time=stats_data.get("total_time", 0),
         phases=stats_data.get("phases", {}),
-        final_stocks=stats_data.get("final_stocks"),
-        final_top5=stats_data.get("final_top5"),
+        final_stocks=stats_data.get("final_stocks") or len(data.get("all_selected", [])),
+        final_top5=final_top5_list if isinstance(final_top5_list, list) else None,
     )
 
     # DataQuality
@@ -319,16 +363,56 @@ async def get_ranking() -> RankingSchema:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"분석 결과 로드 실패: {e}")
 
+    # 기존 구조 (ranking 키가 있는 경우)
     ranking_data = data.get("ranking")
-    if not ranking_data:
+    if ranking_data:
+        return RankingSchema(
+            kospi_top10=[_stock_dict_to_schema(s) for s in ranking_data.get("kospi_top10", [])],
+            kospi_11_20=[_stock_dict_to_schema(s) for s in ranking_data.get("kospi_11_20", [])],
+            kosdaq_top10=[_stock_dict_to_schema(s) for s in ranking_data.get("kosdaq_top10", [])],
+            sector_top=[_stock_dict_to_schema(s) for s in ranking_data.get("sector_top", [])],
+            final_18=[_stock_dict_to_schema(s) for s in ranking_data.get("final_18", [])],
+            final_top5=[_stock_dict_to_schema(s) for s in ranking_data.get("final_top5", [])],
+            top_sectors=[_sector_dict_to_schema(s) for s in ranking_data.get("top_sectors", [])],
+        )
+
+    # 새 구조 (개별 키로 저장된 경우)
+    kospi_top10 = data.get("kospi_top10", [])
+    kospi_11_20 = data.get("kospi_11_20", [])
+    kosdaq_top10 = data.get("kosdaq_top10", [])
+
+    # sector_stocks는 {섹터명: [종목리스트]} 형태의 딕셔너리
+    sector_stocks_dict = data.get("sector_stocks", {})
+    sector_stocks = []
+    if isinstance(sector_stocks_dict, dict):
+        for sector_name, stocks in sector_stocks_dict.items():
+            sector_stocks.extend(stocks if isinstance(stocks, list) else [])
+    elif isinstance(sector_stocks_dict, list):
+        sector_stocks = sector_stocks_dict
+
+    final_top5 = data.get("final_top5", [])
+    all_selected = data.get("all_selected", [])
+
+    # top_sectors가 문자열 리스트인 경우, sector_rankings에서 상세 정보 매핑
+    top_sector_names = data.get("top_sectors", [])
+    sector_rankings = data.get("sector_rankings", [])
+    if top_sector_names and len(top_sector_names) > 0 and isinstance(top_sector_names[0], str):
+        sector_map = {s.get("sector_name"): s for s in sector_rankings if isinstance(s, dict)}
+        top_sectors = [sector_map.get(name) for name in top_sector_names if sector_map.get(name)]
+    else:
+        top_sectors = top_sector_names if isinstance(top_sector_names, list) else []
+
+    # 데이터가 있는지 확인
+    has_data = any([kospi_top10, kospi_11_20, kosdaq_top10, final_top5, all_selected])
+    if not has_data:
         raise HTTPException(status_code=404, detail="순위 데이터가 없습니다.")
 
     return RankingSchema(
-        kospi_top10=[_stock_dict_to_schema(s) for s in ranking_data.get("kospi_top10", [])],
-        kospi_11_20=[_stock_dict_to_schema(s) for s in ranking_data.get("kospi_11_20", [])],
-        kosdaq_top10=[_stock_dict_to_schema(s) for s in ranking_data.get("kosdaq_top10", [])],
-        sector_top=[_stock_dict_to_schema(s) for s in ranking_data.get("sector_top", [])],
-        final_18=[_stock_dict_to_schema(s) for s in ranking_data.get("final_18", [])],
-        final_top5=[_stock_dict_to_schema(s) for s in ranking_data.get("final_top5", [])],
-        top_sectors=[_sector_dict_to_schema(s) for s in ranking_data.get("top_sectors", [])],
+        kospi_top10=[_stock_dict_to_schema(s) for s in kospi_top10],
+        kospi_11_20=[_stock_dict_to_schema(s) for s in kospi_11_20],
+        kosdaq_top10=[_stock_dict_to_schema(s) for s in kosdaq_top10],
+        sector_top=[_stock_dict_to_schema(s) for s in sector_stocks],
+        final_18=[_stock_dict_to_schema(s) for s in all_selected],
+        final_top5=[_stock_dict_to_schema(s) for s in final_top5],
+        top_sectors=[_sector_dict_to_schema(s) for s in top_sectors if s],
     )
