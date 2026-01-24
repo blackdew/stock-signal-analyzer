@@ -96,7 +96,7 @@ cd poc-web && npm run dev
 ## 핵심 기능
 
 ### 섹터 기반 분석
-- 11개 섹터 지원: 반도체, 조선, 방산, 원전, 전력기기, 바이오, 로봇, 자동차, 신재생에너지, 지주, 뷰티
+- 13개 섹터 지원: 반도체, 조선, 방산/우주, 전력인프라, 바이오, 로봇, 자동차, 신재생에너지, 지주, 뷰티, 금융, 푸드, 엔터
 - 각 섹터별 5개 대표 종목 분석
 - 섹터 확장 용이 (config.py에서 관리)
 
@@ -150,7 +150,7 @@ cd poc-web && npm run dev
 trading/
 ├── src/
 │   ├── core/               # 설정 및 평가 엔진
-│   │   ├── config.py       # SECTORS(11개), RUBRIC_WEIGHTS(V2)
+│   │   ├── config.py       # SECTORS(13개), RUBRIC_WEIGHTS(V2)
 │   │   ├── rubric.py       # RubricEngine V2 (6개 카테고리)
 │   │   └── orchestrator.py # 전체 파이프라인 조율
 │   ├── data/               # 데이터 수집 및 캐싱
