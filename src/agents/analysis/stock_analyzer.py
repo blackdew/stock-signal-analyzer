@@ -235,7 +235,8 @@ class StockAnalyzer(BaseAgent):
         Returns:
             종목코드를 키로 하는 StockAnalysisResult 딕셔너리
         """
-        self._log_debug(f"Analyzing {len(symbols)} stocks for group: {group}")
+        group_display = group.replace("_", " ").replace("sector ", "")
+        self._log_info(f"📊 {group_display} 분석 시작 ({len(symbols)}개 종목)")
 
         # 데이터 수집
         self._log_debug("Collecting market data...")
@@ -306,7 +307,12 @@ class StockAnalyzer(BaseAgent):
             except Exception as e:
                 self._log_error(f"Failed to analyze {symbol}: {e}")
 
-        self._log_debug(f"Analyzed {len(results)}/{len(symbols)} stocks using {analysis_method}")
+        # 분석 완료 요약
+        if results:
+            scores = [r.total_score for r in results.values()]
+            avg_score = sum(scores) / len(scores)
+            top_stock = max(results.values(), key=lambda x: x.total_score)
+            self._log_info(f"✅ {group_display} 완료: {len(results)}개 (평균 {avg_score:.0f}점, 최고: {top_stock.name})")
         return results
 
     def get_quality_summary(self) -> Optional[DataQualitySummary]:

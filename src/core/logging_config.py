@@ -112,6 +112,8 @@ class TaskLogHandler(logging.Handler):
         # 웹 UI에 표시할 로거 키워드 (포함 여부로 체크)
         self.target_keywords = [
             "Orchestrator",
+            "StockAnalyzer",
+            "RankingAgent",
         ]
 
     def emit(self, record: logging.LogRecord) -> None:

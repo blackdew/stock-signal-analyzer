@@ -508,8 +508,12 @@ class Orchestrator:
         target_info["sectors"] = {}
         sector_count = 0
         total_sector_stocks = 0
+        sector_list = list(SECTOR_TO_NAVER_CODES.keys())
+        total_sectors = len(sector_list)
 
-        for sector_name in SECTOR_TO_NAVER_CODES.keys():
+        self.logger.info(f"📡 {total_sectors}개 섹터 데이터 수집 시작")
+
+        for i, sector_name in enumerate(sector_list, 1):
             try:
                 # 시총 상위 10개 종목 조회 (시총 조회 포함)
                 stocks = sector_fetcher.get_sector_stocks(
@@ -525,6 +529,10 @@ class Orchestrator:
                 }
                 sector_count += 1
                 total_sector_stocks += len(stocks)
+
+                # 섹터 수집 진행 로그 (3개마다)
+                if i % 3 == 0 or i == total_sectors:
+                    self.logger.info(f"📡 섹터 수집 [{i}/{total_sectors}] {sector_name} ({len(stocks)}개)")
 
             except Exception as e:
                 self.logger.debug(f"{sector_name}: 조회 실패 ({e})")

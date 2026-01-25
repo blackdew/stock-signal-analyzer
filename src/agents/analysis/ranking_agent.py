@@ -132,12 +132,11 @@ class RankingAgent(BaseAgent):
         Returns:
             RankingResult
         """
-        self._log_debug("Starting ranking process")
+        self._log_info("📈 순위 산정 시작")
 
         result = RankingResult()
 
         # 1. KOSPI Top 20 분석
-        self._log_debug("Analyzing KOSPI top 20")
         kospi_results = await self.stock_analyzer.analyze_kospi_top(20)
 
         # KOSPI Top 10에서 상위 선정
