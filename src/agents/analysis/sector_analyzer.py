@@ -238,9 +238,14 @@ class SectorAnalyzer(BaseAgent):
 
         top_stocks = sorted_stocks[:5]
 
-        # 섹터 수급 데이터 집계
-        foreign_buy_count = sum(1 for s in stocks if s.supply_details and s.supply_details.get("foreign_consecutive_days", 0) > 0)
-        inst_buy_count = sum(1 for s in stocks if s.supply_details and s.supply_details.get("institution_consecutive_days", 0) > 0)
+        # 섹터 수급 데이터 집계 (rubric_result.supply.details에서 가져옴)
+        def get_supply_details(s):
+            if s.rubric_result and s.rubric_result.supply and s.rubric_result.supply.details:
+                return s.rubric_result.supply.details
+            return {}
+
+        foreign_buy_count = sum(1 for s in stocks if get_supply_details(s).get("foreign_consecutive_days", 0) > 0)
+        inst_buy_count = sum(1 for s in stocks if get_supply_details(s).get("institution_consecutive_days", 0) > 0)
 
         sector_supply_data = {
             "foreign_net_buy_stocks": foreign_buy_count,
@@ -266,8 +271,8 @@ class SectorAnalyzer(BaseAgent):
                         "total_score": s.total_score,
                         "grade": s.investment_grade,
                         "supply_score": s.supply_score,
-                        "foreign_consecutive": s.supply_details.get("foreign_consecutive_days", 0) if s.supply_details else 0,
-                        "institution_consecutive": s.supply_details.get("institution_consecutive_days", 0) if s.supply_details else 0,
+                        "foreign_consecutive": get_supply_details(s).get("foreign_consecutive_days", 0),
+                        "institution_consecutive": get_supply_details(s).get("institution_consecutive_days", 0),
                     }
                     for s in top_stocks
                 ]
