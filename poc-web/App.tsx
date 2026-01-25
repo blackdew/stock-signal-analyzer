@@ -335,11 +335,11 @@ const App = () => {
             }
           );
 
-          // 10분 타임아웃 (SSE 연결이 유지되는 동안)
+          // 30분 타임아웃 (GPT-5.2 모델 사용 시 더 오래 걸림)
           fallbackTimeout = setTimeout(() => {
             if (unsubscribe) unsubscribe();
             reject(new Error("분석 시간이 초과되었습니다."));
-          }, 600000);
+          }, 1800000);
         });
       }
 
