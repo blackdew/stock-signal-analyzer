@@ -129,7 +129,7 @@ trading/
 │   │   ├── rubric.py            # RubricEngine V2 (6개 카테고리)
 │   │   ├── llm.py               # LLMAnalyzer - OpenAI 기반 상세 분석 생성
 │   │   ├── orchestrator.py      # Orchestrator - 전체 파이프라인 조율
-│   │   └── logging_config.py    # 로깅 설정
+│   │   └── logging_config.py    # 로깅 설정, TaskLogHandler (SSE 로그 스트리밍)
 │   │
 │   ├── data/                    # 데이터 수집 및 캐싱
 │   │   ├── __init__.py
@@ -162,12 +162,12 @@ trading/
 │   │
 │   ├── web/                     # Web API (FastAPI)
 │   │   ├── __init__.py
-│   │   ├── app.py               # FastAPI 앱 생성, CORS 설정, 정적 파일 서빙
+│   │   ├── app.py               # FastAPI 앱 생성, CORS 설정, 정적 파일 서빙, AppState (태스크 로그 버퍼)
 │   │   ├── schemas.py           # Pydantic 스키마 정의
 │   │   ├── static/              # 프론트엔드 빌드 결과물 (build_frontend.sh로 생성)
 │   │   └── routes/              # API 라우터
 │   │       ├── __init__.py
-│   │       ├── analysis.py      # 분석 실행/결과 조회 API
+│   │       ├── analysis.py      # 분석 실행/결과 조회 API, SSE 로그 스트리밍
 │   │       ├── sectors.py       # 섹터 분석 API
 │   │       └── stocks.py        # 종목 분석 API
 │   │
@@ -598,6 +598,7 @@ uv run python main.py --web --host 127.0.0.1 --port 3000
 - `GET /api/analysis/latest` - 최신 분석 결과 조회
 - `POST /api/analysis/run` - 분석 비동기 실행
 - `GET /api/analysis/task/{task_id}` - 분석 태스크 상태 조회
+- `GET /api/analysis/task/{task_id}/logs` - 분석 태스크 로그 SSE 스트리밍
 - `GET /api/ranking` - Top 18, Top 5 순위 조회
 
 #### 섹터 API (`/api/sectors`)
