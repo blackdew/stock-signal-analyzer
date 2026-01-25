@@ -235,14 +235,14 @@ class StockAnalyzer(BaseAgent):
         Returns:
             종목코드를 키로 하는 StockAnalysisResult 딕셔너리
         """
-        self._log_info(f"Analyzing {len(symbols)} stocks for group: {group}")
+        self._log_debug(f"Analyzing {len(symbols)} stocks for group: {group}")
 
         # 데이터 수집
-        self._log_info("Phase 1/3: Collecting market data...")
+        self._log_debug("Collecting market data...")
         market_data = await self.market_data_agent.collect(symbols)
-        self._log_info("Phase 2/3: Collecting fundamental data...")
+        self._log_debug("Collecting fundamental data...")
         fundamental_data = await self.fundamental_agent.collect(symbols)
-        self._log_info("Phase 3/3: Collecting news data...")
+        self._log_debug("Collecting news data...")
         news_data = await self.news_agent.collect(symbols)
 
         # 데이터 품질 검증
@@ -271,7 +271,7 @@ class StockAnalyzer(BaseAgent):
         # LLM 사용 가능 여부 확인
         use_llm = self.use_llm and self.llm_scorer.is_available()
         analysis_method = "LLM" if use_llm else "RubricEngine"
-        self._log_info(f"Calculating scores using {analysis_method}...")
+        self._log_debug(f"Calculating scores using {analysis_method}...")
 
         total = len(symbols)
         for i, symbol in enumerate(symbols, 1):
@@ -306,7 +306,7 @@ class StockAnalyzer(BaseAgent):
             except Exception as e:
                 self._log_error(f"Failed to analyze {symbol}: {e}")
 
-        self._log_info(f"Analyzed {len(results)}/{len(symbols)} stocks using {analysis_method}")
+        self._log_debug(f"Analyzed {len(results)}/{len(symbols)} stocks using {analysis_method}")
         return results
 
     def get_quality_summary(self) -> Optional[DataQualitySummary]:

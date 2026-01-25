@@ -213,9 +213,7 @@ class Orchestrator:
         date_report_dir = Path(self.output_dir) / "reports" / "daily" / date_str
         date_report_dir.mkdir(parents=True, exist_ok=True)
 
-        self.logger.info("=" * 60)
-        self.logger.info("투자 기회 분석 시작")
-        self.logger.info("=" * 60)
+        self.logger.info("🚀 투자 기회 분석 시작")
 
         try:
             # Phase 0: 분석 대상 확정
@@ -250,7 +248,7 @@ class Orchestrator:
             stats["phases"]["ranking"] = {"time": round(phase_time, 2)}
             self.logger.info(f"Phase 1 완료 ({phase_time:.1f}초)")
 
-            # 데이터 품질 요약 출력
+            # 데이터 품질 요약
             quality_summary = self.ranking_agent.get_quality_summary()
             quality_summary_dict = None
 
@@ -263,26 +261,23 @@ class Orchestrator:
                     "invalid_symbols": quality_summary.invalid_symbols,
                 }
 
-                self.logger.info("-" * 40)
-                self.logger.info("📊 데이터 품질 요약")
-                self.logger.info(f"  전체 종목: {quality_summary.total_count}개")
-                self.logger.info(f"  유효 종목: {quality_summary.valid_count}개")
-                self.logger.info(f"  무효 종목: {quality_summary.invalid_count}개")
-                self.logger.info(f"  평균 품질 점수: {quality_summary.avg_quality_score:.1f}/100")
+                # 품질 요약은 간단히 1줄로
+                self.logger.info(
+                    f"📊 데이터 품질: {quality_summary.valid_count}/{quality_summary.total_count} 유효 "
+                    f"(평균 {quality_summary.avg_quality_score:.0f}점)"
+                )
 
                 if quality_summary.invalid_symbols:
                     self.logger.warning(
-                        f"  ⚠️ 품질 기준 미달 종목: {', '.join(quality_summary.invalid_symbols[:5])}"
-                        + (" 외" if len(quality_summary.invalid_symbols) > 5 else "")
+                        f"⚠️ 품질 미달: {', '.join(quality_summary.invalid_symbols[:3])}"
+                        + (" 외" if len(quality_summary.invalid_symbols) > 3 else "")
                     )
-                self.logger.info("-" * 40)
 
                 # --strict 모드: 품질 기준 미달 시 실행 중단
                 if options.strict and quality_summary.invalid_count > 0:
                     error_msg = (
                         f"데이터 품질 기준 미달: {quality_summary.invalid_count}개 종목이 "
-                        f"필수 데이터 항목을 충족하지 못했습니다. "
-                        f"(무효 종목: {', '.join(quality_summary.invalid_symbols)})"
+                        f"필수 데이터 항목을 충족하지 못했습니다."
                     )
                     self.logger.error(f"🚫 [STRICT MODE] {error_msg}")
                     raise DataQualityError(error_msg, quality_summary)
@@ -353,13 +348,10 @@ class Orchestrator:
                 for s in ranking_result.final_top5
             ]
 
-            self.logger.info("=" * 60)
-            self.logger.info(f"분석 완료 (총 {total_time:.1f}초)")
-            self.logger.info(f"최종 {len(ranking_result.final_18)}개 종목 선정")
-            self.logger.info("Top 5:")
-            for i, stock in enumerate(ranking_result.final_top5, 1):
-                self.logger.info(f"  {i}. {stock.name} ({stock.symbol}): {stock.total_score:.1f}점")
-            self.logger.info("=" * 60)
+            # 완료 요약
+            top5_str = ", ".join([f"{s.name}({s.total_score:.0f})" for s in ranking_result.final_top5])
+            self.logger.info(f"✅ 분석 완료 ({total_time:.1f}초) - {len(ranking_result.final_18)}개 종목")
+            self.logger.info(f"🏆 Top 5: {top5_str}")
 
             return AnalysisOutput(
                 generated_at=datetime.now(),
@@ -423,9 +415,7 @@ class Orchestrator:
         weekly_report_dir = Path(self.output_dir) / "reports" / "weekly" / week_str
         weekly_report_dir.mkdir(parents=True, exist_ok=True)
 
-        self.logger.info("=" * 60)
-        self.logger.info(f"주간 섹터 분석 시작 ({week_str})")
-        self.logger.info("=" * 60)
+        self.logger.info(f"🚀 주간 섹터 분석 시작 ({week_str})")
 
         try:
             # Phase 1: 섹터 분석
@@ -458,14 +448,9 @@ class Orchestrator:
             stats["total_time"] = round(total_time, 2)
             stats["sectors_analyzed"] = len(sector_results)
 
-            self.logger.info("=" * 60)
-            self.logger.info(f"주간 섹터 분석 완료 (총 {total_time:.1f}초)")
-            self.logger.info(f"분석 섹터: {len(sector_results)}개")
-            self.logger.info("상위 3개 섹터:")
-            for i, sector in enumerate(sector_results[:3], 1):
-                self.logger.info(f"  {i}. {sector.sector_name}: {sector.weighted_score:.1f}점")
-            self.logger.info(f"리포트: {report_path}")
-            self.logger.info("=" * 60)
+            top3_str = ", ".join([f"{s.sector_name}({s.weighted_score:.0f})" for s in sector_results[:3]])
+            self.logger.info(f"✅ 주간 섹터 분석 완료 ({total_time:.1f}초) - {len(sector_results)}개 섹터")
+            self.logger.info(f"🏆 상위 3: {top3_str}")
 
             return AnalysisOutput(
                 generated_at=datetime.now(),
@@ -492,10 +477,6 @@ class Orchestrator:
         sector_fetcher = SectorFetcher()
         target_info: Dict[str, Any] = {}
 
-        self.logger.info("-" * 40)
-        self.logger.info("📋 분석 대상 종목 확정")
-        self.logger.info("-" * 40)
-
         # 1. KOSPI Top 20 확정
         try:
             kospi_stocks = fetcher.get_market_cap_rank("KOSPI", top_n=20)
@@ -508,13 +489,8 @@ class Orchestrator:
             target_info["kospi_11_20"] = [
                 {"symbol": s.symbol, "name": s.name} for s in kospi_11_20
             ]
-
-            names_top10 = ", ".join([s.name for s in kospi_top10[:5]]) + " 외"
-            names_11_20 = ", ".join([s.name for s in kospi_11_20[:5]]) + " 외"
-            self.logger.info(f"  KOSPI Top 10: {names_top10}")
-            self.logger.info(f"  KOSPI 11-20: {names_11_20}")
         except Exception as e:
-            self.logger.error(f"  KOSPI 종목 조회 실패: {e}")
+            self.logger.error(f"KOSPI 종목 조회 실패: {e}")
             target_info["kospi_top10"] = []
             target_info["kospi_11_20"] = []
 
@@ -524,16 +500,14 @@ class Orchestrator:
             target_info["kosdaq_top10"] = [
                 {"symbol": s.symbol, "name": s.name} for s in kosdaq_stocks
             ]
-
-            names = ", ".join([s.name for s in kosdaq_stocks[:5]]) + " 외"
-            self.logger.info(f"  KOSDAQ Top 10: {names}")
         except Exception as e:
-            self.logger.error(f"  KOSDAQ 종목 조회 실패: {e}")
+            self.logger.error(f"KOSDAQ 종목 조회 실패: {e}")
             target_info["kosdaq_top10"] = []
 
         # 3. 섹터별 종목 확정 (동적 조회)
         target_info["sectors"] = {}
-        self.logger.info("  섹터별 분석 대상:")
+        sector_count = 0
+        total_sector_stocks = 0
 
         for sector_name in SECTOR_TO_NAVER_CODES.keys():
             try:
@@ -549,14 +523,11 @@ class Orchestrator:
                     "names": names,
                     "count": len(stocks)
                 }
-
-                names_str = ", ".join(names[:3])
-                if len(names) > 3:
-                    names_str += f" 외 {len(names) - 3}개"
-                self.logger.info(f"    {sector_name}: {names_str}")
+                sector_count += 1
+                total_sector_stocks += len(stocks)
 
             except Exception as e:
-                self.logger.warning(f"    {sector_name}: 조회 실패 ({e})")
+                self.logger.debug(f"{sector_name}: 조회 실패 ({e})")
                 target_info["sectors"][sector_name] = {
                     "symbols": [],
                     "names": [],
@@ -564,17 +535,16 @@ class Orchestrator:
                 }
 
         # 총 분석 대상 수
-        total_count = (
-            len(target_info.get("kospi_top10", [])) +
-            len(target_info.get("kospi_11_20", [])) +
-            len(target_info.get("kosdaq_top10", [])) +
-            sum(s.get("count", 0) for s in target_info.get("sectors", {}).values())
-        )
+        kospi_count = len(target_info.get("kospi_top10", [])) + len(target_info.get("kospi_11_20", []))
+        kosdaq_count = len(target_info.get("kosdaq_top10", []))
+        total_count = kospi_count + kosdaq_count + total_sector_stocks
         target_info["total_count"] = total_count
 
-        self.logger.info("-" * 40)
-        self.logger.info(f"📊 총 분석 대상: {total_count}개 종목")
-        self.logger.info("-" * 40)
+        # 요약 로그 (1줄)
+        self.logger.info(
+            f"📋 분석 대상: KOSPI {kospi_count}개, KOSDAQ {kosdaq_count}개, "
+            f"섹터 {sector_count}개({total_sector_stocks}종목) → 총 {total_count}개"
+        )
 
         return target_info
 

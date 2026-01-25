@@ -85,7 +85,7 @@ class StockDataFetcher:
                         # 2026.01.19 -> 20260119
                         date_str = date_text.replace(".", "")
                         self._latest_trading_date_cache = date_str
-                        logger.info(f"최근 거래일: {date_str}")
+                        logger.debug(f"최근 거래일: {date_str}")
                         return date_str
 
         except Exception as e:
@@ -189,7 +189,7 @@ class StockDataFetcher:
                 df.set_index("Date", inplace=True)
                 df.sort_index(inplace=True)
 
-                logger.info(
+                logger.debug(
                     f"종목 {symbol}: 데이터 가져오기 성공 "
                     f"({len(df)} 행, {start_date} ~ {end_date})"
                 )
@@ -203,7 +203,7 @@ class StockDataFetcher:
 
                 if attempt < max_retries - 1:
                     wait_time = 2 ** attempt
-                    logger.info(f"종목 {symbol}: {wait_time}초 대기 후 재시도...")
+                    logger.debug(f"종목 {symbol}: {wait_time}초 대기 후 재시도...")
                     time.sleep(wait_time)
                 else:
                     logger.error(
@@ -288,7 +288,7 @@ class StockDataFetcher:
         Raises:
             RuntimeError: 조회 실패 시
         """
-        logger.info(f"{market} 시가총액 상위 {top_n}개 종목 조회 중...")
+        logger.debug(f"{market} 시가총액 상위 {top_n}개 종목 조회 중...")
 
         result = self._get_market_cap_rank_naver(market, top_n)
 
@@ -362,7 +362,7 @@ class StockDataFetcher:
                 if len(result) >= top_n:
                     break
 
-            logger.info(f"{market} 시가총액 상위 {len(result)}개 종목 조회 완료 (네이버)")
+            logger.debug(f"{market} 시가총액 상위 {len(result)}개 종목 조회 완료 (네이버)")
             return result
 
         except Exception as e:
@@ -380,12 +380,12 @@ class StockDataFetcher:
             해당 섹터의 종목 리스트 (StockInfo)
         """
         try:
-            logger.info(f"섹터 '{sector_name}' 종목 조회 중...")
+            logger.debug(f"섹터 '{sector_name}' 종목 조회 중...")
 
             # config.py의 SECTORS에서 종목 코드 가져오기
             if sector_name not in SECTORS:
                 logger.warning(f"섹터 '{sector_name}'이(가) 정의되지 않았습니다.")
-                logger.info(f"사용 가능한 섹터: {list(SECTORS.keys())}")
+                logger.debug(f"사용 가능한 섹터: {list(SECTORS.keys())}")
                 return []
 
             symbols = SECTORS[sector_name]
@@ -401,7 +401,7 @@ class StockDataFetcher:
                 )
                 result.append(stock_info)
 
-            logger.info(f"섹터 '{sector_name}' 종목 {len(result)}개 조회 완료")
+            logger.debug(f"섹터 '{sector_name}' 종목 {len(result)}개 조회 완료")
             return result
 
         except Exception as e:
@@ -699,7 +699,7 @@ class StockDataFetcher:
             df.set_index("Date", inplace=True)
             df.sort_index(inplace=True)
 
-            logger.info(f"KOSPI 지수 데이터 조회 완료 ({len(df)} 행)")
+            logger.debug(f"KOSPI 지수 데이터 조회 완료 ({len(df)} 행)")
             return df
 
         except Exception as e:

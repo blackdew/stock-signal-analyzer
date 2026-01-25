@@ -116,7 +116,7 @@ class SectorFetcher:
 
         # 시총 조회 및 정렬
         if fetch_market_cap and unique_stocks:
-            logger.info(f"Fetching market cap for {len(unique_stocks)} stocks in {sector_name}")
+            logger.debug(f"Fetching market cap for {len(unique_stocks)} stocks in {sector_name}")
             fetcher = self._get_fetcher()
             for stock in unique_stocks:
                 try:
@@ -230,7 +230,7 @@ class SectorFetcher:
         result: Dict[str, List[str]] = {}
 
         for sector_name in SECTOR_TO_NAVER_CODES.keys():
-            logger.info(f"Fetching stocks for sector: {sector_name}")
+            logger.debug(f"Fetching stocks for sector: {sector_name}")
             symbols = self.get_sector_symbols(sector_name, top_n=top_n_per_sector)
             result[sector_name] = symbols
 

@@ -86,7 +86,7 @@ class FundamentalAgent(BaseAgent):
         Returns:
             종목코드를 키로 하는 FundamentalData 딕셔너리
         """
-        self._log_info(f"Collecting fundamental data for {len(symbols)} symbols")
+        self._log_debug(f"Collecting fundamental data for {len(symbols)} symbols")
         result: Dict[str, FundamentalData] = {}
         cache_hits = 0
 
@@ -109,7 +109,7 @@ class FundamentalAgent(BaseAgent):
                 self._log_error(f"Failed to collect fundamental data for {symbol}: {e}")
 
         fetched = total - cache_hits
-        self._log_info(
+        self._log_debug(
             f"Collected fundamental data for {len(result)}/{total} symbols (cache: {cache_hits}, fetched: {fetched})"
         )
         return result
@@ -346,7 +346,7 @@ class FundamentalAgent(BaseAgent):
         if self._sector_averages_cache:
             return  # 이미 계산됨
 
-        self._log_info("Calculating sector averages...")
+        self._log_debug("Calculating sector averages...")
 
         for sector_name, symbols in SECTORS.items():
             per_values = []
@@ -364,7 +364,7 @@ class FundamentalAgent(BaseAgent):
                 "pbr": round(sum(pbr_values) / len(pbr_values), 2) if pbr_values else None,
             }
 
-        self._log_info(f"Calculated averages for {len(self._sector_averages_cache)} sectors")
+        self._log_debug(f"Calculated averages for {len(self._sector_averages_cache)} sectors")
 
     def get_sector_average(self, sector: str) -> Dict[str, Optional[float]]:
         """

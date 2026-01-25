@@ -75,7 +75,7 @@ class BaseAgent(ABC):
 
     def _log_progress(self, current: int, total: int, item: str = "") -> None:
         """
-        진행률 로깅
+        진행률 로깅 (DEBUG 레벨 - 상세 로그용)
 
         Args:
             current: 현재 처리 중인 항목 번호 (1부터 시작)
@@ -86,7 +86,16 @@ class BaseAgent(ABC):
         msg = f"[{current}/{total}] ({percent:.0f}%)"
         if item:
             msg += f" {item}"
-        self.logger.info(msg)
+        self.logger.debug(msg)
+
+    def _log_summary(self, message: str) -> None:
+        """
+        요약 로그 (INFO 레벨 - 주요 진행 상황)
+
+        Args:
+            message: 요약 메시지
+        """
+        self.logger.info(message)
 
     def _get_cached_or_fetch(
         self,

@@ -96,6 +96,7 @@ class TaskLogHandler(logging.Handler):
     태스크별 로그를 AppState에 전달하는 핸들러.
 
     특정 태스크 실행 중에만 활성화되며, 로그 메시지를 AppState.task_logs에 저장합니다.
+    웹 UI에는 주요 마일스톤 로그만 표시합니다.
     """
 
     def __init__(self, task_id: str, app_state: "AppState"):
@@ -108,47 +109,25 @@ class TaskLogHandler(logging.Handler):
         self.task_id = task_id
         self.app_state = app_state
 
-        # 분석 관련 로거만 캡처
-        self.target_loggers = {
-            # 기존 에이전트 로거
+        # 웹 UI에 표시할 로거 키워드 (포함 여부로 체크)
+        self.target_keywords = [
             "Orchestrator",
-            "RankingAgent",
-            "StockAnalyzer",
-            "SectorAnalyzer",
-            "MarketDataAgent",
-            "FundamentalAgent",
-            "NewsAgent",
-            "StockReportAgent",
-            "SectorReportAgent",
-            "SummaryAgent",
-            # 추가 모듈 로거
-            "src.data.fetcher",
-            "src.core.llm",
-            "src.core.rubric",
-            "src.data.cache",
-        }
-
-        # src. 접두사로 시작하는 모든 로거 허용
-        self.src_prefix = "src."
+        ]
 
     def emit(self, record: logging.LogRecord) -> None:
         """로그 레코드를 AppState에 전달합니다."""
-        # 분석 관련 로거의 메시지만 캡처
-        # 1. src. 접두사로 시작하는 모든 로거 허용
-        # 2. target_loggers에 명시된 로거 허용
-        # 3. target_loggers의 이름으로 시작하는 로거 허용
-        if (
-            record.name.startswith(self.src_prefix)
-            or record.name in self.target_loggers
-            or any(record.name.startswith(name) for name in self.target_loggers)
-        ):
-            try:
-                level = record.levelname.lower()
-                message = self.format(record)
-                self.app_state.add_task_log(self.task_id, message, level)
-            except Exception:
-                # 로그 핸들러에서 예외가 발생하면 무시
-                pass
+        # Orchestrator 로거만 캡처 (키워드 매칭)
+        is_target = any(kw in record.name for kw in self.target_keywords)
+        if not is_target:
+            return
+
+        try:
+            level = record.levelname.lower()
+            message = self.format(record)
+            self.app_state.add_task_log(self.task_id, message, level)
+        except Exception:
+            # 로그 핸들러에서 예외가 발생하면 무시
+            pass
 
 
 _active_task_handlers: dict[str, TaskLogHandler] = {}

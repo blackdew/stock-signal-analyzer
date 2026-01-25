@@ -117,7 +117,7 @@ class MarketDataAgent(BaseAgent):
         Returns:
             종목코드를 키로 하는 MarketData 딕셔너리
         """
-        self._log_info(f"Collecting market data for {len(symbols)} symbols")
+        self._log_debug(f"Collecting market data for {len(symbols)} symbols")
         result: Dict[str, MarketData] = {}
         cache_hits = 0
 
@@ -144,7 +144,7 @@ class MarketDataAgent(BaseAgent):
                 self._log_error(f"Failed to collect data for {symbol}: {e}")
 
         fetched = total - cache_hits
-        self._log_info(f"Collected market data for {len(result)}/{total} symbols (cache: {cache_hits}, fetched: {fetched})")
+        self._log_debug(f"Collected market data for {len(result)}/{total} symbols (cache: {cache_hits}, fetched: {fetched})")
         return result
 
     async def _collect_single(

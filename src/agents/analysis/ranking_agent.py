@@ -132,12 +132,12 @@ class RankingAgent(BaseAgent):
         Returns:
             RankingResult
         """
-        self._log_info("Starting ranking process")
+        self._log_debug("Starting ranking process")
 
         result = RankingResult()
 
         # 1. KOSPI Top 20 분석
-        self._log_info("Analyzing KOSPI top 20")
+        self._log_debug("Analyzing KOSPI top 20")
         kospi_results = await self.stock_analyzer.analyze_kospi_top(20)
 
         # KOSPI Top 10에서 상위 선정
@@ -145,29 +145,23 @@ class RankingAgent(BaseAgent):
         result.kospi_top10 = self.select_top_from_group(
             kospi_top10_stocks, self.stocks_per_market_group
         )
-        selected_names = [s.name for s in result.kospi_top10]
-        self._log_info(f"KOSPI Top 10: {len(result.kospi_top10)} stocks selected ({', '.join(selected_names)})")
 
         # KOSPI 11~20에서 상위 선정
         kospi_11_20_stocks = [s for s in kospi_results.values() if s.group == "kospi_11_20"]
         result.kospi_11_20 = self.select_top_from_group(
             kospi_11_20_stocks, self.stocks_per_market_group
         )
-        selected_names = [s.name for s in result.kospi_11_20]
-        self._log_info(f"KOSPI 11-20: {len(result.kospi_11_20)} stocks selected ({', '.join(selected_names)})")
 
         # 2. KOSDAQ Top 10 분석
-        self._log_info("Analyzing KOSDAQ top 10")
+        self._log_debug("Analyzing KOSDAQ top 10")
         kosdaq_results = await self.stock_analyzer.analyze_kosdaq_top(10)
         kosdaq_stocks = list(kosdaq_results.values())
         result.kosdaq_top10 = self.select_top_from_group(
             kosdaq_stocks, self.stocks_per_market_group
         )
-        selected_names = [s.name for s in result.kosdaq_top10]
-        self._log_info(f"KOSDAQ Top 10: {len(result.kosdaq_top10)} stocks selected ({', '.join(selected_names)})")
 
         # 3. 섹터 분석 및 상위 3개 섹터 선정
-        self._log_info("Analyzing sectors")
+        self._log_debug("Analyzing sectors")
         sector_results = await self.sector_analyzer.analyze(dynamic_sectors)
         result.top_sectors = self.sector_analyzer.get_top_sectors(
             sector_results, self.top_sector_count
@@ -175,19 +169,15 @@ class RankingAgent(BaseAgent):
 
         # 상위 섹터별 상위 종목 선정
         sector_top_stocks: List[StockAnalysisResult] = []
-        top_sector_names = [s.sector_name for s in result.top_sectors]
-        self._log_info(f"Top 3 sectors: {', '.join(top_sector_names)}")
         for sector_result in result.top_sectors:
             top_stocks = self.sector_analyzer.get_sector_stocks_sorted(
                 sector_result, self.stocks_per_sector
             )
-            stock_names = [s.name for s in top_stocks]
-            self._log_info(f"  {sector_result.sector_name}: {', '.join(stock_names)}")
             sector_top_stocks.extend(top_stocks)
         result.sector_top = sector_top_stocks
 
         # 4. 최종 18개 종목 집계
-        self._log_info("Compiling final 18 stocks")
+        self._log_debug("Compiling final 18 stocks")
         all_selected = (
             result.kospi_top10 +
             result.kospi_11_20 +
@@ -211,10 +201,9 @@ class RankingAgent(BaseAgent):
         result.final_18 = unique_stocks[:18]
 
         # 5. 최종 Top 5 선정
-        self._log_info("Selecting final top 5")
         result.final_top5 = self.select_final_top5(result.final_18)
 
-        self._log_info(f"Ranking complete: {len(result.final_18)} stocks, top 5 selected")
+        self._log_debug(f"Ranking complete: {len(result.final_18)} stocks")
         return result
 
     def select_top_from_group(

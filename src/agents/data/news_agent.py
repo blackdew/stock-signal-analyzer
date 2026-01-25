@@ -153,7 +153,7 @@ class NewsAgent(BaseAgent):
         Returns:
             종목코드를 키로 하는 NewsData 딕셔너리
         """
-        self._log_info(f"Collecting news data for {len(symbols)} symbols")
+        self._log_debug(f"Collecting news data for {len(symbols)} symbols")
         result: Dict[str, NewsData] = {}
         cache_hits = 0
 
@@ -179,7 +179,7 @@ class NewsAgent(BaseAgent):
                 result[symbol] = self._create_neutral_data(symbol)
 
         fetched = total - cache_hits
-        self._log_info(f"Collected news data for {len(result)}/{total} symbols (cache: {cache_hits}, fetched: {fetched})")
+        self._log_debug(f"Collected news data for {len(result)}/{total} symbols (cache: {cache_hits}, fetched: {fetched})")
         return result
 
     async def _collect_single(self, symbol: str) -> NewsData:

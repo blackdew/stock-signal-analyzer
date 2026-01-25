@@ -149,7 +149,7 @@ class SectorAnalyzer(BaseAgent):
         """
         sector_map = dynamic_sectors if dynamic_sectors else SECTORS
         total_sectors = len(sector_map)
-        self._log_info(f"Analyzing {total_sectors} sectors")
+        self._log_debug(f"Analyzing {total_sectors} sectors")
 
         # 모든 섹터 종목 분석
         all_sector_stocks = await self.stock_analyzer.analyze_all_sectors(dynamic_sectors)
@@ -159,7 +159,7 @@ class SectorAnalyzer(BaseAgent):
         for i, (sector_name, stock_results) in enumerate(all_sector_stocks.items(), 1):
             self._log_progress(i, total_sectors, f"Calculating {sector_name}")
             if not stock_results:
-                self._log_warning(f"No stock results for sector: {sector_name}")
+                self._log_debug(f"No stock results for sector: {sector_name}")
                 continue
 
             sector_result = await self._calculate_sector_score(sector_name, stock_results)
@@ -173,7 +173,7 @@ class SectorAnalyzer(BaseAgent):
         for i, result in enumerate(results, 1):
             result.rank = i
 
-        self._log_info(f"Analyzed {len(results)} sectors")
+        self._log_debug(f"Analyzed {len(results)} sectors")
         return results
 
     async def _calculate_sector_score(
