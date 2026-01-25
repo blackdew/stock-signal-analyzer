@@ -523,7 +523,7 @@ class LLMAnalyzer:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=MAX_TOKENS,
+                max_completion_tokens=MAX_TOKENS,
                 temperature=TEMPERATURE,
             )
             return response.choices[0].message.content.strip()

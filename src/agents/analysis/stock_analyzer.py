@@ -95,7 +95,8 @@ class StockAnalysisResult:
     comprehensive_analysis: Optional[str] = None      # 종합 투자 의견
     investment_thesis: Optional[List[str]] = None     # 투자 포인트 (3-5개)
     risks: Optional[List[str]] = None                 # 리스크 요인 (2-4개)
-    
+    category_reasoning: Optional[Dict[str, str]] = None  # 카테고리별 판단 근거 (LLM)
+
     # Raw News Data for Context
     news_items: Optional[List[Dict[str, Any]]] = None
 
@@ -147,6 +148,16 @@ class StockAnalysisResult:
             # 상대 강도 세부 (V2)
             if rubric.relative_strength and rubric.relative_strength.details:
                 result["relative_strength_details"] = rubric.relative_strength.details
+
+        # LLM category_reasoning을 세부 데이터로 변환 (rubric_result가 없는 경우)
+        elif self.category_reasoning:
+            result["technical_details"] = {"reasoning": self.category_reasoning.get("technical", "")}
+            result["supply_details"] = {"reasoning": self.category_reasoning.get("supply", "")}
+            result["fundamental_details"] = {"reasoning": self.category_reasoning.get("fundamental", "")}
+            result["market_details"] = {"reasoning": self.category_reasoning.get("market", "")}
+            result["risk_details"] = {"reasoning": self.category_reasoning.get("risk", "")}
+            result["relative_strength_details"] = {"reasoning": self.category_reasoning.get("relative_strength", "")}
+            result["category_reasoning"] = self.category_reasoning
 
         # LLM 분석 결과 추가
         if self.summary:
@@ -492,6 +503,7 @@ class StockAnalyzer(BaseAgent):
             comprehensive_analysis=llm_result.comprehensive_analysis,
             investment_thesis=llm_result.investment_thesis,
             risks=llm_result.risks,
+            category_reasoning=llm_result.category_reasoning,
             news_items=[
                 {"title": item.title, "sentiment": item.sentiment}
                 for item in news_data.news_items[:5]

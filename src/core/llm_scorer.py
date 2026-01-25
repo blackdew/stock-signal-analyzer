@@ -352,7 +352,7 @@ class LLMScorer:
                     },
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=MAX_TOKENS,
+                max_completion_tokens=MAX_TOKENS,
                 temperature=TEMPERATURE,
                 response_format={"type": "json_object"},
             )

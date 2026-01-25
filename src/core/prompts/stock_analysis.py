@@ -317,35 +317,35 @@ ATR% (현재가 대비 ATR 비율)로 평가합니다.
 아래 JSON 스키마에 맞춰 응답하세요. **모든 필드를 빠짐없이 채워주세요.**
 
 ```json
-{
+{{
   "total_score": <0-100 사이 총점, 소수점 1자리>,
   "grade": "<Strong Buy|Buy|Hold|Sell|Strong Sell>",
-  "categories": {
-    "technical": {
+  "categories": {{
+    "technical": {{
       "score": <0-25, 소수점 1자리>,
       "reasoning": "<추세, RSI, MACD 등 기술적 지표를 종합한 판단 근거 1-2문장>"
-    },
-    "supply": {
+    }},
+    "supply": {{
       "score": <0-20, 소수점 1자리>,
       "reasoning": "<외국인/기관 수급 현황과 거래대금을 종합한 판단 근거 1-2문장>"
-    },
-    "fundamental": {
+    }},
+    "fundamental": {{
       "score": <0-20, 소수점 1자리>,
       "reasoning": "<PER, ROE, 성장률 등을 종합한 펀더멘털 판단 근거 1-2문장>"
-    },
-    "market": {
+    }},
+    "market": {{
       "score": <0-15, 소수점 1자리>,
       "reasoning": "<뉴스 센티먼트, 섹터 분위기를 종합한 시장 환경 판단 1-2문장>"
-    },
-    "risk": {
+    }},
+    "risk": {{
       "score": <0-10, 소수점 1자리>,
       "reasoning": "<변동성, 베타, 낙폭을 종합한 리스크 수준 판단 1-2문장>"
-    },
-    "relative_strength": {
+    }},
+    "relative_strength": {{
       "score": <0-10, 소수점 1자리>,
       "reasoning": "<섹터 내 순위, 시장 대비 초과수익을 종합한 판단 1-2문장>"
-    }
-  },
+    }}
+  }},
   "summary": "<종목의 핵심 투자 테마를 1-2문장으로 강렬하게 요약. 예: 'AI 반도체 슈퍼사이클의 최대 수혜주'>",
   "financial_analysis": "<재무 & 밸류에이션 분석을 2-3문장으로. 마크다운 사용 가능>",
   "technical_analysis": "<기술적 & 차트 분석을 2-3문장으로. 마크다운 사용 가능>",
@@ -353,7 +353,7 @@ ATR% (현재가 대비 ATR 비율)로 평가합니다.
   "comprehensive_analysis": "<종합 투자 의견을 3-5문장으로. 마크다운 사용 가능>",
   "investment_thesis": ["<투자 포인트 1>", "<투자 포인트 2>", "<투자 포인트 3>"],
   "risks": ["<리스크 요인 1>", "<리스크 요인 2>"]
-}
+}}
 ```
 
 ---
