@@ -211,12 +211,12 @@ def _build_analysis_result(data: Dict[str, Any]) -> AnalysisResultSchema:
     )
 
 
-async def _run_analysis_task(
+def _run_analysis_task_sync(
     task_id: str,
     app_state: Any,
     options: AnalysisRunRequest,
 ):
-    """백그라운드에서 분석을 실행합니다."""
+    """동기적으로 분석을 실행합니다 (별도 스레드에서 실행됨)."""
     from src.core.orchestrator import Orchestrator, RunOptions
     from src.core.logging_config import register_task_log_handler, unregister_task_log_handler
     import time
@@ -231,8 +231,6 @@ async def _run_analysis_task(
     app_state.add_task_log(task_id, "분석을 시작합니다...", "info")
 
     try:
-        app_state.analysis_tasks[task_id] = {"status": "running", "started_at": datetime.now()}
-
         run_options = RunOptions(
             mode=options.mode,
             sector_only=options.sector_only,
@@ -245,12 +243,19 @@ async def _run_analysis_task(
             skip_news=options.skip_news,
         )
 
-        if options.sector_only:
-            result = await orchestrator.run_sector_only()
-        elif options.mode == "weekly":
-            result = await orchestrator.run_weekly()
-        else:
-            result = await orchestrator.run_daily(run_options)
+        # 새 이벤트 루프에서 비동기 작업 실행
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            if options.sector_only:
+                result = loop.run_until_complete(orchestrator.run_sector_only())
+            elif options.mode == "weekly":
+                result = loop.run_until_complete(orchestrator.run_weekly())
+            else:
+                result = loop.run_until_complete(orchestrator.run_daily(run_options))
+        finally:
+            loop.close()
 
         duration = time.time() - start_time
         logger.info(f"Analysis task {task_id} completed in {duration:.1f}s")
@@ -394,13 +399,13 @@ async def run_analysis(
     task_id = str(uuid.uuid4())
     app_state = request.app.state.app_state
 
-    # 백그라운드 태스크로 분석 실행
-    background_tasks.add_task(
-        _run_analysis_task,
-        task_id,
-        app_state,
-        options,
-    )
+    # 태스크 상태 초기화 (응답 전에 설정)
+    app_state.analysis_tasks[task_id] = {"status": "running", "started_at": datetime.now()}
+
+    # 별도 스레드에서 분석 실행 (이벤트 루프 블로킹 방지)
+    import concurrent.futures
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    executor.submit(_run_analysis_task_sync, task_id, app_state, options)
 
     return AnalysisTaskResponse(
         task_id=task_id,
