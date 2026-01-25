@@ -10,6 +10,10 @@ import asyncio
 import sys
 from pathlib import Path
 
+# .env 파일에서 환경변수 로드
+from dotenv import load_dotenv
+load_dotenv()
+
 from src.core.logging_config import setup_logging
 from src.core.orchestrator import Orchestrator, RunOptions, print_summary
 from src.agents.analysis.data_quality import DataQualityError

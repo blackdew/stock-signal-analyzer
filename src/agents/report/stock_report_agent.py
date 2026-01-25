@@ -180,8 +180,10 @@ class StockReportAgent(BaseAgent):
         supply_details = rubric.supply.details if rubric and rubric.supply else {}
         fundamental_details = rubric.fundamental.details if rubric and rubric.fundamental else {}
 
-        # 뉴스 데이터 (NewsData에서 추출 - 현재는 빈 딕셔너리)
-        news_data = {}
+        # 뉴스 데이터 (StockAnalysisResult에서 추출)
+        news_data = {
+            "news_items": stock.news_items or [],
+        }
 
         return await self.llm_analyzer.analyze(
             symbol=stock.symbol,

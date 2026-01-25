@@ -118,9 +118,16 @@ class RankingAgent(BaseAgent):
         result = await self.rank()
         return result.to_dict()
 
-    async def rank(self) -> RankingResult:
+    async def rank(
+        self,
+        dynamic_sectors: Optional[Dict[str, List[str]]] = None
+    ) -> RankingResult:
         """
         전체 순위를 산정합니다.
+
+        Args:
+            dynamic_sectors: 동적으로 가져온 섹터별 종목 코드 딕셔너리
+                            (None이면 config.SECTORS 사용)
 
         Returns:
             RankingResult
@@ -161,7 +168,7 @@ class RankingAgent(BaseAgent):
 
         # 3. 섹터 분석 및 상위 3개 섹터 선정
         self._log_info("Analyzing sectors")
-        sector_results = await self.sector_analyzer.analyze()
+        sector_results = await self.sector_analyzer.analyze(dynamic_sectors)
         result.top_sectors = self.sector_analyzer.get_top_sectors(
             sector_results, self.top_sector_count
         )

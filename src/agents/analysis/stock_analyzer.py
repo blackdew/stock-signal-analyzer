@@ -592,38 +592,52 @@ class StockAnalyzer(BaseAgent):
 
         return await self.analyze_symbols(symbols, group="kosdaq_top10")
 
-    async def analyze_sector(self, sector_name: str) -> Dict[str, StockAnalysisResult]:
+    async def analyze_sector(
+        self,
+        sector_name: str,
+        symbols: Optional[List[str]] = None
+    ) -> Dict[str, StockAnalysisResult]:
         """
         특정 섹터의 종목들을 분석합니다.
 
         Args:
             sector_name: 섹터명
+            symbols: 분석할 종목 코드 리스트 (None이면 config.SECTORS에서 가져옴)
 
         Returns:
             종목코드를 키로 하는 StockAnalysisResult 딕셔너리
         """
-        if sector_name not in SECTORS:
-            self._log_error(f"Unknown sector: {sector_name}")
-            return {}
+        if symbols is None:
+            if sector_name not in SECTORS:
+                self._log_error(f"Unknown sector: {sector_name}")
+                return {}
+            symbols = SECTORS[sector_name]
 
-        symbols = SECTORS[sector_name]
         self._log_info(f"Analyzing sector '{sector_name}' with {len(symbols)} stocks")
 
         return await self.analyze_symbols(symbols, group=f"sector_{sector_name}")
 
-    async def analyze_all_sectors(self) -> Dict[str, Dict[str, StockAnalysisResult]]:
+    async def analyze_all_sectors(
+        self,
+        dynamic_sectors: Optional[Dict[str, List[str]]] = None
+    ) -> Dict[str, Dict[str, StockAnalysisResult]]:
         """
         모든 섹터의 종목들을 분석합니다.
+
+        Args:
+            dynamic_sectors: 동적으로 가져온 섹터별 종목 코드 딕셔너리
+                            (None이면 config.SECTORS 사용)
 
         Returns:
             섹터명을 키로 하는 딕셔너리 (값은 종목별 분석 결과)
         """
-        self._log_info(f"Analyzing all {len(SECTORS)} sectors")
+        sector_map = dynamic_sectors if dynamic_sectors else SECTORS
+        self._log_info(f"Analyzing all {len(sector_map)} sectors")
 
         results: Dict[str, Dict[str, StockAnalysisResult]] = {}
 
-        for sector_name in SECTORS:
-            sector_results = await self.analyze_sector(sector_name)
+        for sector_name, symbols in sector_map.items():
+            sector_results = await self.analyze_sector(sector_name, symbols)
             results[sector_name] = sector_results
 
         return results
