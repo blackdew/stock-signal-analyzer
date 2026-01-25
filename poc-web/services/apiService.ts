@@ -54,6 +54,14 @@ interface BackendStockAnalysis {
   market_details?: MarketDetails;
   risk_details?: RiskDetails;
   relative_strength_details?: RelativeStrengthDetails;
+  // LLM 분석 결과
+  summary?: string;
+  financial_analysis?: string;
+  technical_analysis?: string;
+  market_sentiment?: string;
+  comprehensive_analysis?: string;
+  investment_thesis?: string[];
+  risks?: string[];
 }
 
 interface BackendSectorAnalysis {
@@ -441,6 +449,7 @@ const generateRisks = (backend: BackendStockAnalysis): string[] => {
 
 /**
  * 백엔드 종목 분석 결과를 프론트엔드 타입으로 변환합니다.
+ * LLM 분석 결과가 있으면 우선 사용하고, 없으면 템플릿으로 생성합니다.
  */
 const transformStock = (backend: BackendStockAnalysis): StockAnalysis => ({
   ticker: backend.symbol,
@@ -449,20 +458,26 @@ const transformStock = (backend: BackendStockAnalysis): StockAnalysis => ({
     ? formatPrice(backend.technical_details.current_price)
     : '',
   sector: backend.sector,
-  summary: `${backend.investment_grade} 등급 (총점: ${backend.total_score.toFixed(1)}점)`,
-  investmentThesis: [
-    `기술적 분석: ${backend.technical_score.toFixed(1)}/25점`,
-    `수급 분석: ${backend.supply_score.toFixed(1)}/20점`,
-    `펀더멘털: ${backend.fundamental_score.toFixed(1)}/20점`,
-    `시장 환경: ${backend.market_score.toFixed(1)}/15점`,
-    `리스크: ${backend.risk_score.toFixed(1)}/10점`,
-  ],
-  risks: generateRisks(backend),
+  // LLM 요약이 있으면 사용, 없으면 기본 템플릿
+  summary: backend.summary || `${backend.investment_grade} 등급 (총점: ${backend.total_score.toFixed(1)}점)`,
+  // LLM 투자 포인트가 있으면 사용, 없으면 기본 템플릿
+  investmentThesis: backend.investment_thesis && backend.investment_thesis.length > 0
+    ? backend.investment_thesis
+    : [
+        `기술적 분석: ${backend.technical_score.toFixed(1)}/25점`,
+        `수급 분석: ${backend.supply_score.toFixed(1)}/20점`,
+        `펀더멘털: ${backend.fundamental_score.toFixed(1)}/20점`,
+        `시장 환경: ${backend.market_score.toFixed(1)}/15점`,
+        `리스크: ${backend.risk_score.toFixed(1)}/10점`,
+      ],
+  // LLM 리스크가 있으면 사용, 없으면 템플릿으로 생성
+  risks: backend.risks && backend.risks.length > 0 ? backend.risks : generateRisks(backend),
   newsSummary: '',
-  financialAnalysis: generateFinancialAnalysis(backend),
-  technicalAnalysis: generateTechnicalAnalysis(backend),
-  marketSentiment: generateMarketSentiment(backend),
-  comprehensiveAnalysis: generateComprehensiveAnalysis(backend),
+  // LLM 분석이 있으면 사용, 없으면 템플릿으로 생성
+  financialAnalysis: backend.financial_analysis || generateFinancialAnalysis(backend),
+  technicalAnalysis: backend.technical_analysis || generateTechnicalAnalysis(backend),
+  marketSentiment: backend.market_sentiment || generateMarketSentiment(backend),
+  comprehensiveAnalysis: backend.comprehensive_analysis || generateComprehensiveAnalysis(backend),
   rubric: transformRubric(backend),
   // 세부 분석 데이터
   technicalDetails: backend.technical_details,
@@ -791,4 +806,70 @@ export const getStockSupply = async (
   }
 
   return response.json();
+};
+
+// =============================================================================
+// SSE 로그 스트리밍
+// =============================================================================
+
+export interface TaskLogEntry {
+  timestamp: string;
+  level: string;
+  message: string;
+}
+
+export interface TaskStatusEvent {
+  type: 'status';
+  status: 'completed' | 'failed';
+  message: string;
+}
+
+/**
+ * 분석 태스크 로그를 SSE로 구독합니다.
+ *
+ * @param taskId 태스크 ID
+ * @param onLog 로그 메시지 콜백
+ * @param onStatus 상태 변경 콜백 (완료/실패)
+ * @param onError 에러 콜백
+ * @returns 구독 취소 함수
+ */
+export const subscribeToTaskLogs = (
+  taskId: string,
+  onLog: (log: TaskLogEntry) => void,
+  onStatus?: (event: TaskStatusEvent) => void,
+  onError?: (error: Error) => void,
+): (() => void) => {
+  const url = `${API_BASE}/api/analysis/task/${taskId}/logs`;
+  const eventSource = new EventSource(url);
+
+  eventSource.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data) as TaskLogEntry;
+      onLog(data);
+    } catch (e) {
+      console.error('Failed to parse log entry:', e);
+    }
+  };
+
+  eventSource.addEventListener('status', (event) => {
+    try {
+      const data = JSON.parse((event as MessageEvent).data) as TaskStatusEvent;
+      onStatus?.(data);
+      // 상태 이벤트 수신 후 연결 종료
+      eventSource.close();
+    } catch (e) {
+      console.error('Failed to parse status event:', e);
+    }
+  });
+
+  eventSource.onerror = (error) => {
+    console.error('SSE connection error:', error);
+    onError?.(new Error('SSE 연결 오류가 발생했습니다.'));
+    eventSource.close();
+  };
+
+  // 구독 취소 함수 반환
+  return () => {
+    eventSource.close();
+  };
 };

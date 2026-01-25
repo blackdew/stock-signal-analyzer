@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 
 from src.web.schemas import (
     AnalysisResultSchema,
@@ -78,6 +79,14 @@ def _stock_dict_to_schema(stock_dict: Dict[str, Any]) -> StockAnalysisSchema:
         investment_grade=stock_dict.get("investment_grade", "Hold"),
         rank_in_group=stock_dict.get("rank_in_group", 0),
         final_rank=stock_dict.get("final_rank"),
+        # LLM 분석 결과
+        summary=stock_dict.get("summary"),
+        financial_analysis=stock_dict.get("financial_analysis"),
+        technical_analysis=stock_dict.get("technical_analysis"),
+        market_sentiment=stock_dict.get("market_sentiment"),
+        comprehensive_analysis=stock_dict.get("comprehensive_analysis"),
+        investment_thesis=stock_dict.get("investment_thesis"),
+        risks=stock_dict.get("risks"),
     )
 
 
@@ -209,10 +218,17 @@ async def _run_analysis_task(
 ):
     """백그라운드에서 분석을 실행합니다."""
     from src.core.orchestrator import Orchestrator, RunOptions
+    from src.core.logging_config import register_task_log_handler, unregister_task_log_handler
     import time
 
     start_time = time.time()
     logger.info(f"Analysis task {task_id} started (mode: {options.mode}, use_cache: {options.use_cache})")
+
+    # 태스크 로그 핸들러 등록
+    register_task_log_handler(task_id, app_state)
+
+    # 시작 로그 추가
+    app_state.add_task_log(task_id, "분석을 시작합니다...", "info")
 
     try:
         app_state.analysis_tasks[task_id] = {"status": "running", "started_at": datetime.now()}
@@ -239,6 +255,9 @@ async def _run_analysis_task(
         duration = time.time() - start_time
         logger.info(f"Analysis task {task_id} completed in {duration:.1f}s")
 
+        # 완료 로그 추가
+        app_state.add_task_log(task_id, f"분석 완료! (소요 시간: {duration:.1f}초)", "info")
+
         app_state.analysis_tasks[task_id] = {
             "status": "completed",
             "started_at": app_state.analysis_tasks[task_id]["started_at"],
@@ -249,11 +268,18 @@ async def _run_analysis_task(
     except Exception as e:
         duration = time.time() - start_time
         logger.error(f"Analysis task {task_id} failed after {duration:.1f}s: {e}")
+
+        # 에러 로그 추가
+        app_state.add_task_log(task_id, f"분석 실패: {str(e)}", "error")
+
         app_state.analysis_tasks[task_id] = {
             "status": "failed",
             "started_at": app_state.analysis_tasks[task_id].get("started_at"),
             "error": str(e),
         }
+    finally:
+        # 태스크 로그 핸들러 제거
+        unregister_task_log_handler(task_id)
 
 
 # =============================================================================
@@ -498,4 +524,84 @@ async def get_ranking() -> RankingSchema:
         final_18=[_stock_dict_to_schema(s) for s in all_selected],
         final_top5=[_stock_dict_to_schema(s) for s in final_top5],
         top_sectors=[_sector_dict_to_schema(s) for s in top_sectors if s],
+    )
+
+
+# =============================================================================
+# SSE 로그 스트리밍
+# =============================================================================
+
+
+@router.get(
+    "/analysis/task/{task_id}/logs",
+    responses={404: {"model": ErrorResponse}},
+)
+async def stream_task_logs(
+    request: Request,
+    task_id: str,
+) -> StreamingResponse:
+    """
+    분석 태스크 로그를 SSE로 스트리밍합니다.
+
+    Args:
+        task_id: 태스크 ID
+
+    Returns:
+        StreamingResponse (text/event-stream)
+    """
+    app_state = request.app.state.app_state
+
+    if task_id not in app_state.analysis_tasks:
+        raise HTTPException(status_code=404, detail=f"태스크를 찾을 수 없습니다: {task_id}")
+
+    async def generate_events():
+        """SSE 이벤트를 생성합니다."""
+        last_index = 0
+        heartbeat_interval = 15  # 15초마다 하트비트
+        poll_interval = 0.5  # 0.5초마다 로그 확인
+        last_heartbeat = asyncio.get_event_loop().time()
+
+        while True:
+            # 클라이언트 연결 확인
+            if await request.is_disconnected():
+                break
+
+            # 새 로그 확인
+            logs = app_state.get_task_logs(task_id, since_index=last_index)
+            if logs:
+                for log_entry in logs:
+                    data = json.dumps(log_entry, ensure_ascii=False)
+                    yield f"data: {data}\n\n"
+                    last_index += 1
+
+            # 태스크 상태 확인
+            task = app_state.analysis_tasks.get(task_id, {})
+            status = task.get("status", "unknown")
+
+            if status in ("completed", "failed"):
+                # 최종 상태 이벤트 전송
+                final_event = {
+                    "type": "status",
+                    "status": status,
+                    "message": "분석이 완료되었습니다." if status == "completed" else f"분석 실패: {task.get('error', 'Unknown error')}",
+                }
+                yield f"event: status\ndata: {json.dumps(final_event, ensure_ascii=False)}\n\n"
+                break
+
+            # 하트비트 전송 (연결 유지)
+            current_time = asyncio.get_event_loop().time()
+            if current_time - last_heartbeat >= heartbeat_interval:
+                yield f": heartbeat\n\n"
+                last_heartbeat = current_time
+
+            await asyncio.sleep(poll_interval)
+
+    return StreamingResponse(
+        generate_events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # nginx 버퍼링 비활성화
+        },
     )
