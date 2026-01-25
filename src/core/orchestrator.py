@@ -218,6 +218,15 @@ class Orchestrator:
         self.logger.info("=" * 60)
 
         try:
+            # Phase 0: 분석 대상 확정
+            phase_start = time.time()
+            self.logger.info("Phase 0: 분석 대상 확정")
+            target_info = await self._confirm_analysis_targets()
+            phase_time = time.time() - phase_start
+            stats["phases"]["target_confirmation"] = {"time": round(phase_time, 2)}
+            stats["targets"] = target_info
+            self.logger.info(f"Phase 0 완료 ({phase_time:.1f}초)")
+
             # Phase 1: 순위 산정 (데이터 수집 + 분석 통합)
             phase_start = time.time()
             self.logger.info("Phase 1: 데이터 수집 및 순위 산정 시작")
@@ -458,6 +467,106 @@ class Orchestrator:
         except Exception as e:
             self.logger.error(f"주간 섹터 분석 실패: {e}")
             raise
+
+    async def _confirm_analysis_targets(self) -> Dict[str, Any]:
+        """
+        분석 대상을 확정하고 로그에 출력합니다.
+
+        Returns:
+            대상 정보 딕셔너리
+        """
+        from src.data.fetcher import StockDataFetcher
+        from src.data.sector_fetcher import SectorFetcher, SECTOR_TO_NAVER_CODES
+
+        fetcher = StockDataFetcher()
+        sector_fetcher = SectorFetcher()
+        target_info: Dict[str, Any] = {}
+
+        self.logger.info("-" * 40)
+        self.logger.info("📋 분석 대상 종목 확정")
+        self.logger.info("-" * 40)
+
+        # 1. KOSPI Top 20 확정
+        try:
+            kospi_stocks = fetcher.get_market_cap_rank("KOSPI", top_n=20)
+            kospi_top10 = kospi_stocks[:10]
+            kospi_11_20 = kospi_stocks[10:20]
+
+            target_info["kospi_top10"] = [
+                {"symbol": s.symbol, "name": s.name} for s in kospi_top10
+            ]
+            target_info["kospi_11_20"] = [
+                {"symbol": s.symbol, "name": s.name} for s in kospi_11_20
+            ]
+
+            names_top10 = ", ".join([s.name for s in kospi_top10[:5]]) + " 외"
+            names_11_20 = ", ".join([s.name for s in kospi_11_20[:5]]) + " 외"
+            self.logger.info(f"  KOSPI Top 10: {names_top10}")
+            self.logger.info(f"  KOSPI 11-20: {names_11_20}")
+        except Exception as e:
+            self.logger.error(f"  KOSPI 종목 조회 실패: {e}")
+            target_info["kospi_top10"] = []
+            target_info["kospi_11_20"] = []
+
+        # 2. KOSDAQ Top 10 확정
+        try:
+            kosdaq_stocks = fetcher.get_market_cap_rank("KOSDAQ", top_n=10)
+            target_info["kosdaq_top10"] = [
+                {"symbol": s.symbol, "name": s.name} for s in kosdaq_stocks
+            ]
+
+            names = ", ".join([s.name for s in kosdaq_stocks[:5]]) + " 외"
+            self.logger.info(f"  KOSDAQ Top 10: {names}")
+        except Exception as e:
+            self.logger.error(f"  KOSDAQ 종목 조회 실패: {e}")
+            target_info["kosdaq_top10"] = []
+
+        # 3. 섹터별 종목 확정 (동적 조회)
+        target_info["sectors"] = {}
+        self.logger.info("  섹터별 분석 대상:")
+
+        for sector_name in SECTOR_TO_NAVER_CODES.keys():
+            try:
+                # 시총 상위 10개 종목 조회 (시총 조회 포함)
+                stocks = sector_fetcher.get_sector_stocks(
+                    sector_name, top_n=10, fetch_market_cap=True
+                )
+                symbols = [s.symbol for s in stocks]
+                names = [s.name for s in stocks]
+
+                target_info["sectors"][sector_name] = {
+                    "symbols": symbols,
+                    "names": names,
+                    "count": len(stocks)
+                }
+
+                names_str = ", ".join(names[:3])
+                if len(names) > 3:
+                    names_str += f" 외 {len(names) - 3}개"
+                self.logger.info(f"    {sector_name}: {names_str}")
+
+            except Exception as e:
+                self.logger.warning(f"    {sector_name}: 조회 실패 ({e})")
+                target_info["sectors"][sector_name] = {
+                    "symbols": [],
+                    "names": [],
+                    "count": 0
+                }
+
+        # 총 분석 대상 수
+        total_count = (
+            len(target_info.get("kospi_top10", [])) +
+            len(target_info.get("kospi_11_20", [])) +
+            len(target_info.get("kosdaq_top10", [])) +
+            sum(s.get("count", 0) for s in target_info.get("sectors", {}).values())
+        )
+        target_info["total_count"] = total_count
+
+        self.logger.info("-" * 40)
+        self.logger.info(f"📊 총 분석 대상: {total_count}개 종목")
+        self.logger.info("-" * 40)
+
+        return target_info
 
     async def _run_with_retry(
         self,
