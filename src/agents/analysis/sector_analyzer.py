@@ -238,6 +238,18 @@ class SectorAnalyzer(BaseAgent):
 
         top_stocks = sorted_stocks[:5]
 
+        # 섹터 수급 데이터 집계
+        foreign_buy_count = sum(1 for s in stocks if s.supply_details and s.supply_details.get("foreign_consecutive_days", 0) > 0)
+        inst_buy_count = sum(1 for s in stocks if s.supply_details and s.supply_details.get("institution_consecutive_days", 0) > 0)
+
+        sector_supply_data = {
+            "foreign_net_buy_stocks": foreign_buy_count,
+            "institution_net_buy_stocks": inst_buy_count,
+            "total_stocks": stock_count,
+            "foreign_buy_ratio": round(foreign_buy_count / stock_count * 100, 1) if stock_count > 0 else 0,
+            "institution_buy_ratio": round(inst_buy_count / stock_count * 100, 1) if stock_count > 0 else 0,
+        }
+
         # LLM 섹터 분석
         reasoning = ""
         outlook = ""
@@ -246,13 +258,16 @@ class SectorAnalyzer(BaseAgent):
 
         if self.use_llm and self.llm_scorer.is_available():
             try:
-                # 상위 종목 정보 준비
+                # 상위 종목 정보 준비 (수급 포함)
                 top_stocks_info = [
                     {
                         "name": s.name,
                         "symbol": s.symbol,
                         "total_score": s.total_score,
                         "grade": s.investment_grade,
+                        "supply_score": s.supply_score,
+                        "foreign_consecutive": s.supply_details.get("foreign_consecutive_days", 0) if s.supply_details else 0,
+                        "institution_consecutive": s.supply_details.get("institution_consecutive_days", 0) if s.supply_details else 0,
                     }
                     for s in top_stocks
                 ]
@@ -268,6 +283,7 @@ class SectorAnalyzer(BaseAgent):
                     stock_count=stock_count,
                     total_market_cap=total_market_cap,
                     top_stocks=top_stocks_info,
+                    supply_data=sector_supply_data,
                 )
 
                 reasoning = llm_result.reasoning

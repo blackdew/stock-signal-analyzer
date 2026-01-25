@@ -23,7 +23,7 @@ LLM_CACHE_TTL = 24  # LLM 응답 캐시: 24시간
 
 # 기본 모델 설정
 DEFAULT_MODEL = "gpt-5.2"
-MAX_TOKENS = 2000
+MAX_TOKENS = 8000
 TEMPERATURE = 0.7
 
 

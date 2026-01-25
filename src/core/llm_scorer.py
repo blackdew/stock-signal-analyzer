@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 LLM_SCORE_CACHE_TTL = 24  # LLM 점수 캐시: 24시간
 DEFAULT_MODEL = "gpt-5.2"
-MAX_TOKENS = 3000
+MAX_TOKENS = 8000
 TEMPERATURE = 0.3  # 점수 일관성을 위해 낮은 temperature
 
 
@@ -273,6 +273,7 @@ class LLMScorer:
         stock_count: int,
         total_market_cap: float,
         top_stocks: List[Dict[str, Any]],
+        supply_data: Optional[Dict[str, Any]] = None,
     ) -> SectorLLMResult:
         """
         섹터를 분석합니다.
@@ -288,6 +289,7 @@ class LLMScorer:
             stock_count: 분석 종목 수
             total_market_cap: 총 시가총액
             top_stocks: 상위 종목 리스트
+            supply_data: 섹터 수급 집계 데이터
 
         Returns:
             SectorLLMResult 인스턴스
@@ -320,6 +322,7 @@ class LLMScorer:
                 fundamental_score=fundamental_score,
                 market_score=market_score,
                 top_stocks=top_stocks,
+                supply_data=supply_data or {},
             )
 
             # LLM 호출
