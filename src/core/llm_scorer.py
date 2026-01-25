@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 LLM_SCORE_CACHE_TTL = 24  # LLM 점수 캐시: 24시간
-DEFAULT_MODEL = "gpt-4o-mini"
+DEFAULT_MODEL = "gpt-5.2"
 MAX_TOKENS = 3000
 TEMPERATURE = 0.3  # 점수 일관성을 위해 낮은 temperature
 
