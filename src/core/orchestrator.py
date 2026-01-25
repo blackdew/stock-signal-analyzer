@@ -231,8 +231,18 @@ class Orchestrator:
             phase_start = time.time()
             self.logger.info("Phase 1: 데이터 수집 및 순위 산정 시작")
 
+            # 동적으로 가져온 섹터별 종목 코드 추출
+            dynamic_sectors = None
+            if "sectors" in target_info:
+                dynamic_sectors = {
+                    sector_name: sector_data.get("symbols", [])
+                    for sector_name, sector_data in target_info["sectors"].items()
+                    if sector_data.get("symbols")
+                }
+                self.logger.info(f"동적 섹터 데이터 사용: {len(dynamic_sectors)}개 섹터")
+
             ranking_result = await self._run_with_retry(
-                self.ranking_agent.rank,
+                lambda: self.ranking_agent.rank(dynamic_sectors),
                 "순위 산정"
             )
 
