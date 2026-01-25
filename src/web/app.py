@@ -32,6 +32,38 @@ class AppState:
     def __init__(self):
         # 비동기 분석 태스크 저장
         self.analysis_tasks: dict = {}
+        # 태스크별 로그 버퍼 (task_id -> list of log entries)
+        self.task_logs: dict[str, list[dict]] = {}
+        # 로그 버퍼 최대 크기
+        self.max_log_entries: int = 500
+
+    def add_task_log(self, task_id: str, message: str, level: str = "info") -> None:
+        """태스크에 로그 메시지를 추가합니다."""
+        from datetime import datetime
+        if task_id not in self.task_logs:
+            self.task_logs[task_id] = []
+
+        log_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "level": level,
+            "message": message,
+        }
+        self.task_logs[task_id].append(log_entry)
+
+        # 최대 크기 초과 시 오래된 로그 제거
+        if len(self.task_logs[task_id]) > self.max_log_entries:
+            self.task_logs[task_id] = self.task_logs[task_id][-self.max_log_entries:]
+
+    def get_task_logs(self, task_id: str, since_index: int = 0) -> list[dict]:
+        """태스크의 로그 메시지를 조회합니다."""
+        if task_id not in self.task_logs:
+            return []
+        return self.task_logs[task_id][since_index:]
+
+    def clear_task_logs(self, task_id: str) -> None:
+        """태스크의 로그를 정리합니다."""
+        if task_id in self.task_logs:
+            del self.task_logs[task_id]
 
 
 @asynccontextmanager

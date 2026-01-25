@@ -283,38 +283,64 @@ const App = () => {
         const taskResponse = await ApiService.runAnalysis({ mode: 'daily', use_cache: true });
         addLog(`태스크 ID: ${taskResponse.task_id}`);
 
-        // Step 3: 폴링으로 완료 대기
+        // Step 3: SSE로 실시간 로그 수신
         setStatus(AgentStatus.ANALYZING_KOSPI_MID);
-        addLog("백엔드 API: 분석 진행 중...");
+        addLog("백엔드 API: 실시간 로그 수신 중...");
 
-        let pollCount = 0;
-        const progressMessages = [
-          '데이터 수집 중...',
-          'KOSPI Top 10 분석 중...',
-          'KOSPI 11-20 분석 중...',
-          'KOSDAQ Top 10 분석 중...',
-          '섹터별 종목 분석 중...',
-          '섹터별 종목 분석 중...',
-          '루브릭 점수 계산 중...',
-          '루브릭 점수 계산 중...',
-          '최종 순위 산정 중...',
-        ];
-        analysisReport = await ApiService.pollAnalysisTask(
-          taskResponse.task_id,
-          (status, _message) => {
-            if (status === 'running') {
-              pollCount++;
-              const msgIndex = Math.min(Math.floor(pollCount / 2), progressMessages.length - 1);
-              const elapsed = pollCount * 3;
-              const minutes = Math.floor(elapsed / 60);
-              const seconds = elapsed % 60;
-              const timeStr = minutes > 0 ? `${minutes}분 ${seconds}초` : `${seconds}초`;
-              addLog(`[${timeStr}] ${progressMessages[msgIndex]}`);
+        // SSE로 로그 스트리밍 구독 + 완료 대기
+        analysisReport = await new Promise<AnalysisReport>((resolve, reject) => {
+          let unsubscribe: (() => void) | null = null;
+          let fallbackTimeout: ReturnType<typeof setTimeout> | null = null;
+
+          // SSE 구독
+          unsubscribe = ApiService.subscribeToTaskLogs(
+            taskResponse.task_id,
+            // 로그 수신 콜백
+            (log) => {
+              const time = new Date(log.timestamp).toLocaleTimeString('ko-KR');
+              addLog(`[${time}] ${log.message}`);
+            },
+            // 상태 변경 콜백 (완료/실패)
+            async (statusEvent) => {
+              if (fallbackTimeout) clearTimeout(fallbackTimeout);
+              if (statusEvent.status === 'completed') {
+                try {
+                  const result = await ApiService.getLatestAnalysis();
+                  resolve(result);
+                } catch (e: any) {
+                  reject(new Error(`결과 조회 실패: ${e.message}`));
+                }
+              } else {
+                reject(new Error(statusEvent.message));
+              }
+            },
+            // 에러 콜백 - SSE 실패 시 폴링으로 폴백
+            async (_error) => {
+              addLog("SSE 연결 실패, 폴링 방식으로 전환합니다...");
+              try {
+                const result = await ApiService.pollAnalysisTask(
+                  taskResponse.task_id,
+                  (status, message) => {
+                    if (status === 'running') {
+                      addLog(message || "분석 진행 중...");
+                    }
+                  },
+                  3000,
+                  600000
+                );
+                resolve(result);
+              } catch (e: any) {
+                reject(e);
+              }
             }
-          },
-          3000, // 3초 간격
-          600000 // 10분 타임아웃
-        );
+          );
+
+          // 10분 타임아웃 (SSE 연결이 유지되는 동안)
+          fallbackTimeout = setTimeout(() => {
+            if (unsubscribe) unsubscribe();
+            reject(new Error("분석 시간이 초과되었습니다."));
+          }, 600000);
+        });
       }
 
       // Step 4: 결과 로드 및 표시
