@@ -95,9 +95,10 @@ def calc_trend_score(ma20: Optional[float], ma60: Optional[float]) -> float:
 
 def calc_rsi_score(rsi: Optional[float]) -> float:
     """
-    RSI 점수 계산 (10점 만점)
+    RSI 점수 계산 (10점 만점) - 모멘텀 기반
 
-    RSI 40~60 구간이 가장 좋음 (추세 전환 기대).
+    상승 추세(RSI 50-70)를 긍정적으로 평가합니다.
+    강한 모멘텀(RSI 70+)도 상승 추세의 일부로 인정합니다.
 
     Args:
         rsi: RSI 값 (0-100)
@@ -111,20 +112,20 @@ def calc_rsi_score(rsi: Optional[float]) -> float:
     # RSI 범위 클램핑
     rsi = max(0, min(100, rsi))
 
-    if 40 <= rsi <= 60:
-        return 10.0  # 최적 구간
-    elif 30 <= rsi < 40:
-        return 8.0   # 과매도 탈출 구간
-    elif 60 < rsi <= 70:
-        return 7.0   # 상승 모멘텀
-    elif 20 <= rsi < 30:
-        return 6.0   # 과매도 (반등 기대)
+    if 50 <= rsi <= 70:
+        return 10.0  # 최적 구간 (건강한 상승 추세)
     elif 70 < rsi <= 80:
-        return 4.0   # 과매수 주의
-    elif rsi < 20:
-        return 3.0   # 극단적 과매도
+        return 8.0   # 강한 모멘텀 (상승 추세 지속)
+    elif 40 <= rsi < 50:
+        return 7.0   # 중립~상승 전환 기대
+    elif rsi > 80:
+        return 6.0   # 과열이지만 강세 지속 가능
+    elif 30 <= rsi < 40:
+        return 4.0   # 약세 구간
+    elif 20 <= rsi < 30:
+        return 2.0   # 하락 추세
     else:
-        return 1.0   # 극단적 과매수 (80+)
+        return 1.0   # 극단적 약세 (20 미만)
 
 
 def calc_support_resistance_score(
@@ -133,10 +134,10 @@ def calc_support_resistance_score(
     high_52w: Optional[float]
 ) -> float:
     """
-    지지/저항 점수 계산 (10점 만점)
+    지지/저항 점수 계산 (10점 만점) - 모멘텀 기반
 
     현재가가 52주 범위에서 어디에 위치하는지 평가합니다.
-    바닥권에 있을수록 매수 기회로 판단합니다.
+    52주 신고가 근처는 강한 상승 추세로 긍정적으로 평가합니다.
 
     Args:
         current_price: 현재가
@@ -155,16 +156,16 @@ def calc_support_resistance_score(
     # 현재가가 52주 범위에서 어디에 위치하는지 (0: 최저, 1: 최고)
     position = (current_price - low_52w) / (high_52w - low_52w)
 
-    if position <= 0.2:
-        return 10.0  # 바닥권 (매수 기회)
-    elif position <= 0.4:
-        return 8.0   # 저점 근처
-    elif position <= 0.6:
-        return 6.0   # 중간
-    elif position <= 0.8:
-        return 4.0   # 고점 근처
+    if position >= 0.9:
+        return 10.0  # 52주 신고가 근처 (강한 상승 추세)
+    elif position >= 0.7:
+        return 8.0   # 고점 근처 (상승 추세)
+    elif position >= 0.5:
+        return 6.0   # 중간 (중립)
+    elif position >= 0.3:
+        return 4.0   # 저점 근처 (약세)
     else:
-        return 2.0   # 천장권 (주의)
+        return 2.0   # 바닥권 (하락 추세)
 
 
 # =============================================================================
@@ -176,7 +177,9 @@ def calc_foreign_score(foreign_net_buy: Optional[List[float]]) -> float:
     """
     외국인 순매수 점수 계산 (10점 만점)
 
-    최근 5일간 외국인 연속 순매수 일수를 기반으로 점수를 계산합니다.
+    최근 5일간 외국인 수급 데이터를 종합적으로 평가합니다.
+    - 순매수 일수 (가중치 60%)
+    - 누적 순매수 금액 부호 (가중치 40%)
 
     Args:
         foreign_net_buy: 최근 5일 외국인 순매수 데이터 (억원)
@@ -187,22 +190,43 @@ def calc_foreign_score(foreign_net_buy: Optional[List[float]]) -> float:
     if not foreign_net_buy:
         return 5.0  # 데이터 없으면 중간값
 
-    consecutive_buy = 0
-    for amount in foreign_net_buy:
-        if amount > 0:
-            consecutive_buy += 1
-        else:
-            break
+    # 순매수 일수 계산 (연속이 아닌 전체)
+    buy_days = sum(1 for amount in foreign_net_buy if amount > 0)
+    total_days = len(foreign_net_buy)
 
-    score_map = {5: 10.0, 4: 8.0, 3: 6.0, 2: 4.0, 1: 2.0, 0: 0.0}
-    return score_map.get(consecutive_buy, 0.0)
+    # 누적 순매수 금액
+    total_amount = sum(foreign_net_buy)
+
+    # 순매수 일수 점수 (0-6점): 3일 이상 순매수면 좋음
+    if buy_days >= 4:
+        days_score = 6.0
+    elif buy_days >= 3:
+        days_score = 5.0
+    elif buy_days >= 2:
+        days_score = 3.0
+    elif buy_days >= 1:
+        days_score = 2.0
+    else:
+        days_score = 0.0
+
+    # 누적 금액 점수 (0-4점): 전체적으로 순매수인지 순매도인지
+    if total_amount > 0:
+        amount_score = 4.0  # 누적 순매수
+    elif total_amount == 0:
+        amount_score = 2.0  # 중립
+    else:
+        amount_score = 0.0  # 누적 순매도
+
+    return days_score + amount_score
 
 
 def calc_institution_score(institution_net_buy: Optional[List[float]]) -> float:
     """
     기관 순매수 점수 계산 (10점 만점)
 
-    최근 5일간 기관 연속 순매수 일수를 기반으로 점수를 계산합니다.
+    최근 5일간 기관 수급 데이터를 종합적으로 평가합니다.
+    - 순매수 일수 (가중치 60%)
+    - 누적 순매수 금액 부호 (가중치 40%)
 
     Args:
         institution_net_buy: 최근 5일 기관 순매수 데이터 (억원)
@@ -213,15 +237,34 @@ def calc_institution_score(institution_net_buy: Optional[List[float]]) -> float:
     if not institution_net_buy:
         return 5.0  # 데이터 없으면 중간값
 
-    consecutive_buy = 0
-    for amount in institution_net_buy:
-        if amount > 0:
-            consecutive_buy += 1
-        else:
-            break
+    # 순매수 일수 계산 (연속이 아닌 전체)
+    buy_days = sum(1 for amount in institution_net_buy if amount > 0)
+    total_days = len(institution_net_buy)
 
-    score_map = {5: 10.0, 4: 8.0, 3: 6.0, 2: 4.0, 1: 2.0, 0: 0.0}
-    return score_map.get(consecutive_buy, 0.0)
+    # 누적 순매수 금액
+    total_amount = sum(institution_net_buy)
+
+    # 순매수 일수 점수 (0-6점): 3일 이상 순매수면 좋음
+    if buy_days >= 4:
+        days_score = 6.0
+    elif buy_days >= 3:
+        days_score = 5.0
+    elif buy_days >= 2:
+        days_score = 3.0
+    elif buy_days >= 1:
+        days_score = 2.0
+    else:
+        days_score = 0.0
+
+    # 누적 금액 점수 (0-4점): 전체적으로 순매수인지 순매도인지
+    if total_amount > 0:
+        amount_score = 4.0  # 누적 순매수
+    elif total_amount == 0:
+        amount_score = 2.0  # 중립
+    else:
+        amount_score = 0.0  # 누적 순매도
+
+    return days_score + amount_score
 
 
 def calc_trading_value_score(
@@ -302,6 +345,11 @@ def calc_growth_score(op_growth: Optional[float]) -> float:
     """
     영업이익 성장률 점수 계산 (10점 만점)
 
+    성장률에 따라 더 세분화된 점수를 부여합니다.
+    - 100% 이상: 폭발적 성장
+    - 50% 이상: 고성장
+    - 20% 이상: 양호한 성장
+
     Args:
         op_growth: 영업이익 성장률 (YoY, %)
 
@@ -311,16 +359,22 @@ def calc_growth_score(op_growth: Optional[float]) -> float:
     if op_growth is None:
         return 5.0  # 데이터 없으면 중간값
 
-    if op_growth >= 30:
-        return 10.0  # 고성장
+    if op_growth >= 100:
+        return 10.0  # 폭발적 성장 (100% 이상)
+    elif op_growth >= 50:
+        return 9.0   # 매우 높은 성장
+    elif op_growth >= 30:
+        return 8.0   # 고성장
     elif op_growth >= 20:
-        return 8.0   # 성장
+        return 7.0   # 양호한 성장
     elif op_growth >= 10:
         return 6.0   # 완만한 성장
     elif op_growth >= 0:
         return 4.0   # 정체
     elif op_growth >= -10:
         return 2.0   # 역성장
+    elif op_growth >= -30:
+        return 1.0   # 큰 역성장
     else:
         return 0.0   # 급격한 역성장
 
@@ -1233,6 +1287,9 @@ def calc_roe_score(roe: Optional[float]) -> float:
     ROE 점수 계산 (5점 만점)
 
     자기자본이익률(ROE)로 수익성을 평가합니다.
+    - 30% 이상: 최우수 (글로벌 경쟁력)
+    - 20% 이상: 우수
+    - 15% 이상: 양호
 
     Args:
         roe: ROE (%)
@@ -1243,8 +1300,10 @@ def calc_roe_score(roe: Optional[float]) -> float:
     if roe is None:
         return 2.5  # 데이터 없으면 중간값
 
-    if roe >= 20:
-        return 5.0  # 우수
+    if roe >= 30:
+        return 5.0  # 최우수 (글로벌 경쟁력)
+    elif roe >= 20:
+        return 4.5  # 우수
     elif roe >= 15:
         return 4.0  # 양호
     elif roe >= 10:
