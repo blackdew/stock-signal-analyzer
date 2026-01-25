@@ -180,9 +180,19 @@ class MarketDataAgent(BaseAgent):
         # 4. 수급 데이터 (최근 5일)
         foreign_net, inst_net = self._get_supply_data(symbol)
 
-        # 5. 최신 데이터 추출
-        latest = df.iloc[-1]
-        prev = df.iloc[-2] if len(df) > 1 else latest
+        # 5. 최신 데이터 추출 (거래량이 있는 마지막 거래일 찾기)
+        # 주말/휴일에는 Volume=0이므로, 실제 거래일 데이터 사용
+        trading_days = df[df["Volume"] > 0]
+        if trading_days.empty:
+            # 모든 날이 거래 없음 - 원본 데이터의 마지막 행 사용
+            latest = df.iloc[-1]
+            prev = df.iloc[-2] if len(df) > 1 else latest
+            self._log_warning(f"No trading days found for {symbol}, using latest available data")
+        else:
+            latest = trading_days.iloc[-1]
+            prev = trading_days.iloc[-2] if len(trading_days) > 1 else latest
+            if len(trading_days) < len(df):
+                self._log_debug(f"Using last trading day for {symbol}: {trading_days.index[-1].strftime('%Y-%m-%d')}")
 
         # 6. 거래대금 계산 (현재가 * 거래량 / 억원)
         current_price = float(latest["Close"])
