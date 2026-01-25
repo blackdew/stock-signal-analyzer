@@ -3,6 +3,7 @@ Sector Analyzer
 
 섹터별 점수를 산출하고 상위 섹터를 선정하는 분석기.
 StockAnalyzer의 결과를 기반으로 시가총액 가중 평균 점수를 계산합니다.
+LLMScorer를 통해 섹터별 분석 및 전망을 생성합니다.
 """
 
 import logging
@@ -12,6 +13,8 @@ from typing import Any, Dict, List, Optional
 from src.agents.base_agent import BaseAgent
 from src.agents.analysis.stock_analyzer import StockAnalyzer, StockAnalysisResult
 from src.core.config import SECTORS
+from src.core.llm_scorer import LLMScorer, SectorLLMResult
+from src.core.llm import SECTOR_CONTEXTS
 
 
 # =============================================================================
@@ -39,6 +42,12 @@ class SectorAnalysisResult:
 
         top_stocks: 상위 종목 리스트
         rank: 섹터 순위
+
+        # LLM 분석 결과
+        reasoning: 섹터 분석 요약
+        outlook: 향후 전망
+        key_drivers: 핵심 모멘텀 리스트
+        investment_strategy: 투자 전략
     """
     sector_name: str
     stock_count: int
@@ -59,6 +68,12 @@ class SectorAnalysisResult:
     # 순위
     rank: int = 0
 
+    # LLM 분석 결과
+    reasoning: str = ""
+    outlook: str = ""
+    key_drivers: List[str] = field(default_factory=list)
+    investment_strategy: str = ""
+
     def to_dict(self) -> Dict[str, Any]:
         """딕셔너리로 변환"""
         return {
@@ -73,6 +88,11 @@ class SectorAnalysisResult:
             "market_score": self.market_score,
             "top_stocks": [s.to_dict() for s in self.top_stocks],
             "rank": self.rank,
+            # LLM 분석 결과
+            "reasoning": self.reasoning,
+            "outlook": self.outlook,
+            "key_drivers": self.key_drivers,
+            "investment_strategy": self.investment_strategy,
         }
 
 
@@ -90,6 +110,7 @@ class SectorAnalyzer(BaseAgent):
     - 섹터별 시가총액 가중 평균 점수 계산
     - 상위 3개 섹터 선정
     - 섹터 내 상위 종목 추출
+    - LLM을 통한 섹터 분석 및 전망 생성
 
     사용 예시:
         analyzer = SectorAnalyzer()
@@ -100,7 +121,9 @@ class SectorAnalyzer(BaseAgent):
     """
 
     stock_analyzer: StockAnalyzer = field(default_factory=StockAnalyzer)
+    llm_scorer: LLMScorer = field(default_factory=LLMScorer)
     use_weighted_average: bool = True  # True: 시가총액 가중 평균, False: 단순 평균
+    use_llm: bool = True  # LLM 분석 사용 여부
 
     async def collect(self, symbols: List[str]) -> Dict[str, Any]:
         """
@@ -131,7 +154,7 @@ class SectorAnalyzer(BaseAgent):
                 self._log_warning(f"No stock results for sector: {sector_name}")
                 continue
 
-            sector_result = self._calculate_sector_score(sector_name, stock_results)
+            sector_result = await self._calculate_sector_score(sector_name, stock_results)
             results.append(sector_result)
 
         # 점수 기준 정렬
@@ -145,7 +168,7 @@ class SectorAnalyzer(BaseAgent):
         self._log_info(f"Analyzed {len(results)} sectors")
         return results
 
-    def _calculate_sector_score(
+    async def _calculate_sector_score(
         self,
         sector_name: str,
         stock_results: Dict[str, StockAnalysisResult]
@@ -207,6 +230,46 @@ class SectorAnalyzer(BaseAgent):
 
         top_stocks = sorted_stocks[:5]
 
+        # LLM 섹터 분석
+        reasoning = ""
+        outlook = ""
+        key_drivers: List[str] = []
+        investment_strategy = ""
+
+        if self.use_llm and self.llm_scorer.is_available():
+            try:
+                # 상위 종목 정보 준비
+                top_stocks_info = [
+                    {
+                        "name": s.name,
+                        "symbol": s.symbol,
+                        "total_score": s.total_score,
+                        "grade": s.investment_grade,
+                    }
+                    for s in top_stocks
+                ]
+
+                llm_result = await self.llm_scorer.analyze_sector(
+                    sector_name=sector_name,
+                    weighted_score=weighted_score,
+                    simple_score=simple_score,
+                    technical_score=technical_weighted,
+                    supply_score=supply_weighted,
+                    fundamental_score=fundamental_weighted,
+                    market_score=market_weighted,
+                    stock_count=stock_count,
+                    total_market_cap=total_market_cap,
+                    top_stocks=top_stocks_info,
+                )
+
+                reasoning = llm_result.reasoning
+                outlook = llm_result.outlook
+                key_drivers = llm_result.key_drivers
+                investment_strategy = llm_result.investment_strategy
+
+            except Exception as e:
+                self._log_warning(f"LLM sector analysis failed for {sector_name}: {e}")
+
         return SectorAnalysisResult(
             sector_name=sector_name,
             stock_count=stock_count,
@@ -218,6 +281,11 @@ class SectorAnalyzer(BaseAgent):
             fundamental_score=round(fundamental_weighted, 2),
             market_score=round(market_weighted, 2),
             top_stocks=top_stocks,
+            # LLM 분석 결과
+            reasoning=reasoning,
+            outlook=outlook,
+            key_drivers=key_drivers,
+            investment_strategy=investment_strategy,
         )
 
     def get_top_sectors(
@@ -259,7 +327,7 @@ class SectorAnalyzer(BaseAgent):
             self._log_warning(f"No stock results for sector: {sector_name}")
             return None
 
-        return self._calculate_sector_score(sector_name, stock_results)
+        return await self._calculate_sector_score(sector_name, stock_results)
 
     def get_sector_stocks_sorted(
         self,

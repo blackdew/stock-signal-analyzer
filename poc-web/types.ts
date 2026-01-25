@@ -144,6 +144,11 @@ export interface SectorAnalysis {
   topStocks: string[]; // Names of the top 3 stocks in this sector
   weightedScore?: number; // 시가총액 가중 평균 점수
   rank?: number; // 섹터 순위
+
+  // LLM 분석 결과
+  outlook?: string;           // 향후 전망
+  keyDrivers?: string[];      // 핵심 모멘텀 리스트
+  investmentStrategy?: string; // 투자 전략
 }
 
 export interface AnalysisReport {

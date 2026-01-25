@@ -243,6 +243,12 @@ class SectorAnalysisSchema(BaseModel):
     top_stocks: List[StockAnalysisSchema] = Field(default=[], description="상위 종목")
     rank: int = Field(description="섹터 순위")
 
+    # LLM 분석 결과
+    reasoning: Optional[str] = Field(default=None, description="섹터 분석 요약", examples=["AI 반도체 수요 급증으로 섹터 전반의 모멘텀이 강화되고 있습니다."])
+    outlook: Optional[str] = Field(default=None, description="향후 전망", examples=["단기적으로 강세 지속 예상, 다만 밸류에이션 부담 경계 필요"])
+    key_drivers: Optional[List[str]] = Field(default=None, description="핵심 모멘텀", examples=[["HBM 수요 급증", "AI 서버 확대", "신규 팹 투자"]])
+    investment_strategy: Optional[str] = Field(default=None, description="투자 전략", examples=["대형주 중심 비중 확대 권고, 조정 시 매수 기회"])
+
 
 class SectorListResponse(BaseModel):
     """섹터 리스트 응답"""

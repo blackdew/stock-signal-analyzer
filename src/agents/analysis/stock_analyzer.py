@@ -1,9 +1,11 @@
 """
 Stock Analyzer
 
-개별 종목의 루브릭 점수를 산출하는 분석기.
+개별 종목의 점수를 산출하는 분석기.
 MarketDataAgent, FundamentalAgent, NewsAgent의 데이터를 기반으로
-RubricEngine을 통해 점수를 계산합니다.
+LLMScorer를 통해 점수와 분석을 생성합니다.
+
+LLM이 사용 불가능한 경우 RubricEngine으로 폴백합니다.
 """
 
 import logging
@@ -14,12 +16,14 @@ from src.agents.base_agent import BaseAgent
 from src.agents.data.market_data_agent import MarketDataAgent, MarketData
 from src.agents.data.fundamental_agent import FundamentalAgent, FundamentalData
 from src.agents.data.news_agent import NewsAgent, NewsData
+from src.agents.data.data_bundle import StockDataBundle
 from src.agents.analysis.data_quality import (
     DataQualityValidator,
     DataQualityResult,
     DataQualitySummary,
 )
 from src.core.rubric import RubricEngine, RubricResult
+from src.core.llm_scorer import LLMScorer, LLMScoreResult
 from src.core.config import SECTORS, get_sector_by_symbol
 from src.data.fetcher import StockDataFetcher
 
@@ -91,6 +95,9 @@ class StockAnalysisResult:
     comprehensive_analysis: Optional[str] = None      # 종합 투자 의견
     investment_thesis: Optional[List[str]] = None     # 투자 포인트 (3-5개)
     risks: Optional[List[str]] = None                 # 리스크 요인 (2-4개)
+    
+    # Raw News Data for Context
+    news_items: Optional[List[Dict[str, Any]]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """딕셔너리로 변환"""
@@ -157,6 +164,9 @@ class StockAnalysisResult:
         if self.risks:
             result["risks"] = self.risks
 
+        if self.news_items:
+            result["news_items"] = self.news_items
+
         return result
 
 
@@ -176,7 +186,7 @@ class StockAnalyzer(BaseAgent):
       - KOSPI 11~20 (시총 11~20위)
       - KOSDAQ Top 10 (시총 1~10위)
       - 섹터별 종목
-    - RubricEngine으로 점수 산출
+    - LLMScorer로 점수 및 분석 생성 (RubricEngine 폴백)
     - 시가총액 조회
 
     사용 예시:
@@ -193,8 +203,12 @@ class StockAnalyzer(BaseAgent):
     fundamental_agent: FundamentalAgent = field(default_factory=FundamentalAgent)
     news_agent: NewsAgent = field(default_factory=NewsAgent)
     rubric_engine: RubricEngine = field(default_factory=RubricEngine)
+    llm_scorer: LLMScorer = field(default_factory=LLMScorer)
     fetcher: StockDataFetcher = field(default_factory=StockDataFetcher)
     quality_validator: DataQualityValidator = field(default_factory=DataQualityValidator)
+
+    # LLM 사용 여부 (True: LLM 우선, False: RubricEngine만)
+    use_llm: bool = True
 
     # 마지막 분석의 품질 요약 (Orchestrator에서 참조)
     _last_quality_summary: Optional[DataQualitySummary] = field(default=None, init=False)
@@ -254,34 +268,96 @@ class StockAnalyzer(BaseAgent):
 
         results: Dict[str, StockAnalysisResult] = {}
 
-        self._log_info("Calculating rubric scores...")
+        # LLM 사용 가능 여부 확인
+        use_llm = self.use_llm and self.llm_scorer.is_available()
+        analysis_method = "LLM" if use_llm else "RubricEngine"
+        self._log_info(f"Calculating scores using {analysis_method}...")
+
         total = len(symbols)
         for i, symbol in enumerate(symbols, 1):
             try:
                 self._log_progress(i, total, f"Analyzing {symbol}")
-                self._log_debug(f"[{symbol}] Collecting market data...")
-                self._log_debug(f"[{symbol}] Collecting fundamental data...")
-                self._log_debug(f"[{symbol}] Calculating rubric score...")
-                result = self._analyze_single(
-                    symbol=symbol,
-                    group=group,
-                    market_data=market_data.get(symbol),
-                    fundamental_data=fundamental_data.get(symbol),
-                    news_data=news_data.get(symbol),
-                    market_cap=market_caps.get(symbol, 0),
-                    data_quality=quality_results.get(symbol),
-                )
+
+                if use_llm:
+                    # LLM 분석 (비동기)
+                    result = await self._analyze_single_async(
+                        symbol=symbol,
+                        group=group,
+                        market_data=market_data.get(symbol),
+                        fundamental_data=fundamental_data.get(symbol),
+                        news_data=news_data.get(symbol),
+                        market_cap=market_caps.get(symbol, 0),
+                        data_quality=quality_results.get(symbol),
+                    )
+                else:
+                    # RubricEngine 분석 (동기)
+                    result = self._analyze_single(
+                        symbol=symbol,
+                        group=group,
+                        market_data=market_data.get(symbol),
+                        fundamental_data=fundamental_data.get(symbol),
+                        news_data=news_data.get(symbol),
+                        market_cap=market_caps.get(symbol, 0),
+                        data_quality=quality_results.get(symbol),
+                    )
+
                 if result:
                     results[symbol] = result
             except Exception as e:
                 self._log_error(f"Failed to analyze {symbol}: {e}")
 
-        self._log_info(f"Analyzed {len(results)}/{len(symbols)} stocks")
+        self._log_info(f"Analyzed {len(results)}/{len(symbols)} stocks using {analysis_method}")
         return results
 
     def get_quality_summary(self) -> Optional[DataQualitySummary]:
         """마지막 분석의 데이터 품질 요약을 반환합니다."""
         return self._last_quality_summary
+
+    async def _analyze_single_async(
+        self,
+        symbol: str,
+        group: str,
+        market_data: Optional[MarketData],
+        fundamental_data: Optional[FundamentalData],
+        news_data: Optional[NewsData],
+        market_cap: float,
+        data_quality: Optional[DataQualityResult] = None,
+    ) -> Optional[StockAnalysisResult]:
+        """
+        단일 종목을 비동기로 분석합니다 (LLM 사용).
+        """
+        # 종목 정보
+        name = self.fetcher.get_stock_name(symbol)
+        sector = get_sector_by_symbol(symbol)
+        if sector == "Unknown":
+            sector = ""
+
+        # StockDataBundle 생성
+        data_bundle = StockDataBundle.from_collected_data(
+            symbol=symbol,
+            name=name,
+            sector=sector,
+            market_cap=market_cap,
+            market_data=market_data,
+            fundamental_data=fundamental_data,
+            news_data=news_data,
+        )
+
+        # LLM 분석 시도
+        if self.use_llm and self.llm_scorer.is_available():
+            try:
+                llm_result = await self.llm_scorer.analyze_stock(data_bundle)
+                return self._llm_result_to_analysis_result(
+                    llm_result, symbol, name, sector, group, market_cap, data_quality, news_data
+                )
+            except Exception as e:
+                self._log_warning(f"LLM analysis failed for {symbol}, falling back to RubricEngine: {e}")
+
+        # RubricEngine 폴백
+        return self._analyze_single_rubric(
+            symbol, name, sector, group, market_data, fundamental_data, news_data,
+            market_cap, data_quality
+        )
 
     def _analyze_single(
         self,
@@ -294,12 +370,34 @@ class StockAnalyzer(BaseAgent):
         data_quality: Optional[DataQualityResult] = None,
     ) -> Optional[StockAnalysisResult]:
         """
-        단일 종목을 분석합니다.
+        단일 종목을 분석합니다 (RubricEngine 사용, 동기).
         """
         # 종목 정보
         name = self.fetcher.get_stock_name(symbol)
         sector = get_sector_by_symbol(symbol)
+        if sector == "Unknown":
+            sector = ""
 
+        return self._analyze_single_rubric(
+            symbol, name, sector, group, market_data, fundamental_data, news_data,
+            market_cap, data_quality
+        )
+
+    def _analyze_single_rubric(
+        self,
+        symbol: str,
+        name: str,
+        sector: str,
+        group: str,
+        market_data: Optional[MarketData],
+        fundamental_data: Optional[FundamentalData],
+        news_data: Optional[NewsData],
+        market_cap: float,
+        data_quality: Optional[DataQualityResult] = None,
+    ) -> Optional[StockAnalysisResult]:
+        """
+        RubricEngine을 사용한 단일 종목 분석.
+        """
         # V2용 추가 데이터 추출
         atr_pct = market_data.atr_pct if market_data and hasattr(market_data, 'atr_pct') else None
         beta = market_data.beta if market_data and hasattr(market_data, 'beta') else None
@@ -326,11 +424,10 @@ class StockAnalyzer(BaseAgent):
         )
 
         # StockAnalysisResult 생성
-        # CategoryScore 객체에서 weighted_score 추출
         result = StockAnalysisResult(
             symbol=symbol,
             name=name,
-            sector=sector if sector != "Unknown" else "",
+            sector=sector,
             group=group,
             market_cap=market_cap,
             rubric_result=rubric_result,
@@ -343,9 +440,57 @@ class StockAnalyzer(BaseAgent):
             total_score=rubric_result.total_score,
             investment_grade=rubric_result.grade,
             data_quality=data_quality,
+            news_items=[
+                {"title": item.title, "sentiment": item.sentiment}
+                for item in news_data.news_items[:5]
+            ] if news_data else [],
         )
 
         return result
+
+    def _llm_result_to_analysis_result(
+        self,
+        llm_result: LLMScoreResult,
+        symbol: str,
+        name: str,
+        sector: str,
+        group: str,
+        market_cap: float,
+        data_quality: Optional[DataQualityResult],
+        news_data: Optional[NewsData],
+    ) -> StockAnalysisResult:
+        """
+        LLMScoreResult를 StockAnalysisResult로 변환합니다.
+        """
+        return StockAnalysisResult(
+            symbol=symbol,
+            name=name,
+            sector=sector,
+            group=group,
+            market_cap=market_cap,
+            rubric_result=None,  # LLM 분석에서는 RubricResult 없음
+            technical_score=llm_result.technical_score,
+            supply_score=llm_result.supply_score,
+            fundamental_score=llm_result.fundamental_score,
+            market_score=llm_result.market_score,
+            risk_score=llm_result.risk_score,
+            relative_strength_score=llm_result.relative_strength_score,
+            total_score=llm_result.total_score,
+            investment_grade=llm_result.grade,
+            data_quality=data_quality,
+            # LLM 분석 결과
+            summary=llm_result.summary,
+            financial_analysis=llm_result.financial_analysis,
+            technical_analysis=llm_result.technical_analysis,
+            market_sentiment=llm_result.market_sentiment,
+            comprehensive_analysis=llm_result.comprehensive_analysis,
+            investment_thesis=llm_result.investment_thesis,
+            risks=llm_result.risks,
+            news_items=[
+                {"title": item.title, "sentiment": item.sentiment}
+                for item in news_data.news_items[:5]
+            ] if news_data else [],
+        )
 
     def _get_market_caps(self, symbols: List[str]) -> Dict[str, float]:
         """

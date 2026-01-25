@@ -1,7 +1,7 @@
 """
 Core Module
 
-핵심 설정, 루브릭 엔진, 오케스트레이터 모듈.
+핵심 설정, 루브릭 엔진, LLM 스코어러, 오케스트레이터 모듈.
 """
 
 from src.core.config import (
@@ -16,7 +16,8 @@ from src.core.config import (
 from src.core.rubric import RubricEngine, RubricResult, CategoryScore
 from src.core.logging_config import setup_logging, get_logger
 
-# Orchestrator는 순환 import 방지를 위해 직접 import
+# LLMScorer와 Orchestrator는 순환 import 방지를 위해 직접 import
+# from src.core.llm_scorer import LLMScorer, LLMScoreResult, SectorLLMResult
 # from src.core.orchestrator import Orchestrator, RunOptions, AnalysisOutput, print_summary
 
 __all__ = [
