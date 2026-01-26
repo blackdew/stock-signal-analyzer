@@ -113,6 +113,10 @@ class LLMScoreResult:
     # 판단 근거
     category_reasoning: Dict[str, str] = field(default_factory=dict)
 
+    # LLM 실패로 인한 기본값 여부
+    is_fallback: bool = False
+    fallback_reason: str = ""
+
     def to_category_scores(self) -> Dict[str, CategoryScore]:
         """CategoryScore 딕셔너리로 변환 (기존 RubricResult 호환)"""
         return {
@@ -233,7 +237,7 @@ class LLMScorer:
         """
         if not self.is_available():
             logger.warning("LLM API key not configured, returning default scores")
-            return self._create_default_result(data.symbol, data.name)
+            return self._create_default_result(data.symbol, data.name, "API 키 미설정")
 
         # 캐시 확인
         cache_key = self._generate_cache_key(data)
@@ -258,8 +262,17 @@ class LLMScorer:
             return result
 
         except Exception as e:
+            error_msg = str(e)
+            if "429" in error_msg or "quota" in error_msg.lower():
+                reason = "API 할당량 초과 (크레딧 부족)"
+            elif "401" in error_msg or "authentication" in error_msg.lower():
+                reason = "API 인증 실패"
+            elif "timeout" in error_msg.lower():
+                reason = "API 요청 타임아웃"
+            else:
+                reason = f"API 오류: {error_msg[:100]}"
             logger.error(f"LLM stock analysis failed for {data.symbol}: {e}")
-            return self._create_default_result(data.symbol, data.name)
+            return self._create_default_result(data.symbol, data.name, reason)
 
     async def analyze_sector(
         self,
@@ -427,7 +440,7 @@ class LLMScorer:
             logger.error(f"JSON parse error for sector {sector_name}: {e}")
             return self._create_default_sector_result(sector_name)
 
-    def _create_default_result(self, symbol: str, name: str) -> LLMScoreResult:
+    def _create_default_result(self, symbol: str, name: str, reason: str = "LLM 분석 실패") -> LLMScoreResult:
         """기본 결과 생성 (LLM 실패 시)"""
         return LLMScoreResult(
             symbol=symbol,
@@ -447,6 +460,8 @@ class LLMScorer:
             comprehensive_analysis="종합적인 분석이 필요합니다.",
             investment_thesis=["추가 분석 필요"],
             risks=["데이터 부족으로 인한 분석 한계"],
+            is_fallback=True,
+            fallback_reason=reason,
         )
 
     def _create_default_sector_result(self, sector_name: str) -> SectorLLMResult:

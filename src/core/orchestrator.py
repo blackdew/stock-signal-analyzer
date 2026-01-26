@@ -284,6 +284,24 @@ class Orchestrator:
 
             stats["data_quality"] = quality_summary_dict
 
+            # LLM 분석 실패 체크
+            fallback_stocks = [s for s in ranking_result.final_18 if s.is_fallback]
+            if fallback_stocks:
+                fallback_pct = len(fallback_stocks) / len(ranking_result.final_18) * 100
+                first_reason = fallback_stocks[0].fallback_reason
+                stats["llm_fallback_count"] = len(fallback_stocks)
+                stats["llm_fallback_reason"] = first_reason
+
+                if fallback_pct >= 80:
+                    self.logger.error(
+                        f"🚫 LLM 분석 대부분 실패: {len(fallback_stocks)}/{len(ranking_result.final_18)}개 ({fallback_pct:.0f}%) - {first_reason}"
+                    )
+                    self.logger.error("⚠️ 분석 결과가 신뢰할 수 없습니다. OpenAI API 설정을 확인하세요.")
+                elif fallback_pct >= 50:
+                    self.logger.warning(
+                        f"⚠️ LLM 분석 다수 실패: {len(fallback_stocks)}개 ({fallback_pct:.0f}%) - {first_reason}"
+                    )
+
             # Phase 2: 섹터 리포트 생성 (01_sector_report.md)
             if options.output_format in ("markdown", "both"):
                 phase_start = time.time()

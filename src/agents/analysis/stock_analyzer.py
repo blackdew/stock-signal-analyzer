@@ -100,6 +100,10 @@ class StockAnalysisResult:
     # Raw News Data for Context
     news_items: Optional[List[Dict[str, Any]]] = None
 
+    # LLM 실패로 인한 기본값 여부
+    is_fallback: bool = False
+    fallback_reason: str = ""
+
     def to_dict(self) -> Dict[str, Any]:
         """딕셔너리로 변환"""
         result = {
@@ -318,6 +322,17 @@ class StockAnalyzer(BaseAgent):
             except Exception as e:
                 self._log_error(f"Failed to analyze {symbol}: {e}")
 
+        # LLM 폴백 체크 및 경고
+        if results:
+            fallbacks = [r for r in results.values() if r.is_fallback]
+            if fallbacks:
+                fallback_pct = len(fallbacks) / len(results) * 100
+                first_reason = fallbacks[0].fallback_reason
+                if fallback_pct >= 50:
+                    self._log_error(f"⚠️ LLM 분석 실패: {len(fallbacks)}/{len(results)}개 종목 ({fallback_pct:.0f}%) - {first_reason}")
+                elif fallback_pct > 0:
+                    self._log_warning(f"⚠️ LLM 분석 일부 실패: {len(fallbacks)}개 종목 - {first_reason}")
+
         # 분석 완료 요약
         if results:
             scores = [r.total_score for r in results.values()]
@@ -508,6 +523,8 @@ class StockAnalyzer(BaseAgent):
                 {"title": item.title, "sentiment": item.sentiment}
                 for item in news_data.news_items[:5]
             ] if news_data else [],
+            is_fallback=llm_result.is_fallback,
+            fallback_reason=llm_result.fallback_reason,
         )
 
     def _get_market_caps(self, symbols: List[str]) -> Dict[str, float]:
