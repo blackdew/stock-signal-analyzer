@@ -23,9 +23,18 @@
                                 │
                                 ▼
                     ┌───────────────────┐
-                    │  RubricEngine V2  │
-                    │  (6개 카테고리)    │
+                    │  StockDataBundle  │
+                    │  (데이터 통합)     │
                     └───────────────────┘
+                                │
+                    ┌───────────┴───────────┐
+                    ▼                       ▼
+          ┌───────────────┐       ┌───────────────┐
+          │  LLMScorer    │ ───── │ RubricEngine  │
+          │  (GPT-5.2)    │fallback│    V2        │
+          └───────────────┘       └───────────────┘
+                    │                       │
+                    └───────────┬───────────┘
                                 │
         ┌───────────────────────┼───────────────────────┐
         ▼                       ▼                       ▼
@@ -122,25 +131,42 @@ class BaseAgent(ABC):
 캐시 저장 (output/data/cache/)
 ```
 
-### 2단계: 루브릭 평가 (V2)
+### 2단계: LLM 점수 산출 (RubricEngine 폴백)
 
 ```
 MarketData ─────┐
                 │
-FundamentalData ┼──▶ RubricEngine V2 ──▶ RubricResult
-                │         │
-NewsData ───────┘         ▼
-                   ┌──────────────────────────┐
-                   │ total_score: 65.3        │
-                   │ grade: "Buy"             │
-                   │ technical: 16.25/25      │
-                   │ supply: 12.5/20          │
-                   │ fundamental: 12.5/20     │
-                   │ market: 9.75/15          │
-                   │ risk: 7.0/10             │
-                   │ relative_strength: 7.5/10│
-                   └──────────────────────────┘
+FundamentalData ┼──▶ StockDataBundle ──▶ LLMScorer (GPT-5.2)
+                │                             │
+NewsData ───────┘                        fallback (API 실패 시)
+                                              │
+                                              ▼
+                                       RubricEngine V2
+                                              │
+                                              ▼
+                   ┌──────────────────────────────────────┐
+                   │ LLMScoreResult / RubricResult        │
+                   │ ─────────────────────────────────────│
+                   │ total_score: 65.3                    │
+                   │ grade: "Buy"                         │
+                   │ technical: 16.25/25                  │
+                   │ supply: 12.5/20                      │
+                   │ fundamental: 12.5/20                 │
+                   │ market: 9.75/15                      │
+                   │ risk: 7.0/10                         │
+                   │ relative_strength: 7.5/10            │
+                   │ ─────────────────────────────────────│
+                   │ summary: "AI 반도체 최대 수혜주..."   │
+                   │ investment_thesis: [...]             │
+                   │ risks: [...]                         │
+                   │ category_reasoning: {...}            │
+                   │ is_fallback: false                   │
+                   └──────────────────────────────────────┘
 ```
+
+**is_fallback / fallback_reason 필드:**
+- `is_fallback: true`: LLM API 실패로 RubricEngine 또는 기본값 사용
+- `fallback_reason`: 실패 사유 (API 할당량 초과, 인증 실패, 타임아웃 등)
 
 ### 3단계: 분석 에이전트 파이프라인
 
@@ -314,6 +340,136 @@ if position <= 0.8: return 4.0   # 고점 근처
 return 2.0                       # 천장권 (주의)
 ```
 
+## LLM 분석 파이프라인
+
+### 아키텍처 개요
+
+```
+                    ┌─────────────────────────────────────────────────┐
+                    │              StockDataBundle                     │
+                    │  ┌─────────────┐  ┌─────────────┐  ┌──────────┐│
+                    │  │ price_data  │  │ technical   │  │ supply   ││
+                    │  │ - 현재가     │  │ - MA20/60   │  │ - 외국인  ││
+                    │  │ - 52주 고저  │  │ - RSI/MACD  │  │ - 기관   ││
+                    │  └─────────────┘  └─────────────┘  └──────────┘│
+                    │  ┌─────────────┐  ┌─────────────┐               │
+                    │  │ fundamental │  │ news_data   │               │
+                    │  │ - PER/PBR   │  │ - 센티먼트   │               │
+                    │  │ - ROE/성장률 │  │ - 헤드라인  │               │
+                    │  └─────────────┘  └─────────────┘               │
+                    └────────────────────────┬────────────────────────┘
+                                             │
+                              to_prompt_context()
+                                             │
+                                             ▼
+                    ┌─────────────────────────────────────────────────┐
+                    │        src/core/prompts/stock_analysis.py       │
+                    │  ┌───────────────────────────────────────────┐  │
+                    │  │ 루브릭 점수 평가 가이드                     │  │
+                    │  │ - 기술적 분석 (25점) 기준표                 │  │
+                    │  │ - 수급 분석 (20점) 기준표                   │  │
+                    │  │ - 펀더멘털 분석 (20점) 기준표               │  │
+                    │  │ - 시장 환경 (15점) 기준표                   │  │
+                    │  │ - 리스크 평가 (10점) 기준표                 │  │
+                    │  │ - 상대 강도 (10점) 기준표                   │  │
+                    │  │ - JSON 응답 스키마                         │  │
+                    │  └───────────────────────────────────────────┘  │
+                    └────────────────────────┬────────────────────────┘
+                                             │
+                                             ▼
+                    ┌─────────────────────────────────────────────────┐
+                    │                 LLMScorer                        │
+                    │  ┌───────────────────────────────────────────┐  │
+                    │  │ 1. 캐시 확인 (24시간 TTL)                  │  │
+                    │  │ 2. OpenAI API 호출 (GPT-5.2)              │  │
+                    │  │ 3. JSON 파싱 & 검증 (schemas.py)          │  │
+                    │  │ 4. LLMScoreResult 생성                    │  │
+                    │  │                                           │  │
+                    │  │ 실패 시 fallback:                          │  │
+                    │  │ - is_fallback = True                      │  │
+                    │  │ - fallback_reason = "API 할당량 초과"      │  │
+                    │  └───────────────────────────────────────────┘  │
+                    └────────────────────────┬────────────────────────┘
+                                             │
+                                             ▼
+                    ┌─────────────────────────────────────────────────┐
+                    │               LLMScoreResult                     │
+                    │  ┌─────────────────────────────────────────────┐│
+                    │  │ 점수: technical, supply, fundamental,       ││
+                    │  │       market, risk, relative_strength       ││
+                    │  │ total_score, grade                          ││
+                    │  ├─────────────────────────────────────────────┤│
+                    │  │ 분석: summary, financial_analysis,          ││
+                    │  │       technical_analysis, market_sentiment, ││
+                    │  │       comprehensive_analysis                ││
+                    │  ├─────────────────────────────────────────────┤│
+                    │  │ 추가: investment_thesis (투자포인트)        ││
+                    │  │       risks (리스크요인)                    ││
+                    │  │       category_reasoning (판단근거)         ││
+                    │  └─────────────────────────────────────────────┘│
+                    └─────────────────────────────────────────────────┘
+```
+
+### 폴백 메커니즘
+
+```
+LLMScorer.analyze_stock()
+         │
+         ▼
+┌─────────────────────┐
+│ API 키 확인         │──────▶ 없음 ──▶ 기본값 (is_fallback=True)
+└─────────────────────┘
+         │ 있음
+         ▼
+┌─────────────────────┐
+│ 캐시 확인           │──────▶ 캐시 히트 ──▶ 캐시된 결과 반환
+└─────────────────────┘
+         │ 캐시 미스
+         ▼
+┌─────────────────────┐
+│ OpenAI API 호출     │──────▶ 실패 ──▶ 기본값 (fallback_reason 설정)
+└─────────────────────┘                   │
+         │ 성공                           ▼
+         ▼                        - "API 할당량 초과 (크레딧 부족)"
+┌─────────────────────┐           - "API 인증 실패"
+│ JSON 파싱 & 검증    │──────▶ 실패 ──▶ 기본값
+└─────────────────────┘           - "API 요청 타임아웃"
+         │ 성공                   - "API 오류: ..."
+         ▼
+┌─────────────────────┐
+│ 캐시 저장 & 반환    │
+└─────────────────────┘
+```
+
+### StockAnalyzer에서의 사용
+
+```python
+# StockAnalyzer의 분석 흐름
+async def analyze_symbols(symbols, group):
+    # 1. 데이터 수집
+    market_data = await market_data_agent.collect(symbols)
+    fundamental_data = await fundamental_agent.collect(symbols)
+    news_data = await news_agent.collect(symbols)
+
+    for symbol in symbols:
+        # 2. StockDataBundle 생성
+        data_bundle = StockDataBundle.from_collected_data(...)
+
+        # 3. LLM 분석 시도
+        if use_llm and llm_scorer.is_available():
+            llm_result = await llm_scorer.analyze_stock(data_bundle)
+            result = convert_to_analysis_result(llm_result)
+        else:
+            # 4. RubricEngine 폴백
+            rubric_result = rubric_engine.calculate(...)
+            result = convert_to_analysis_result(rubric_result)
+
+    # 5. 폴백 경고 로그
+    fallbacks = [r for r in results if r.is_fallback]
+    if fallbacks:
+        log_warning(f"LLM 분석 실패: {len(fallbacks)}개 - {fallbacks[0].fallback_reason}")
+```
+
 ## 캐시 시스템
 
 ### 캐시 전략
@@ -378,6 +534,23 @@ CacheManager
   - `/api/stocks/{symbol}/supply` - 외국인/기관 순매수 추이
 - 정적 파일 서빙 (프론트엔드 통합 배포)
 
+### Phase 7 (완료)
+- LLM 기반 점수 산출 시스템 (LLMScorer)
+  - GPT-5.2 모델 기반 분석
+  - 6개 카테고리별 점수 + 판단 근거 생성
+  - RubricEngine 폴백 메커니즘
+  - 24시간 캐시 (데이터 해시 기반)
+- StockDataBundle: LLM 분석용 데이터 통합
+  - 가격/기술적지표/수급/재무/뉴스 데이터 통합
+  - `to_prompt_context()`: 프롬프트용 텍스트 변환
+- src/core/prompts/ 모듈
+  - `stock_analysis.py`: 종목 분석 프롬프트 (상세 평가 기준표 포함)
+  - `sector_analysis.py`: 섹터 분석 프롬프트
+  - `schemas.py`: JSON 스키마 및 검증 함수
+- is_fallback / fallback_reason 필드 추가
+  - LLM 실패 추적 및 폴백 사유 기록
+  - StockAnalyzer에서 폴백 비율 경고 로그 출력
+
 ### 향후 계획
 - 웹 대시보드 (poc-web에서 PoC 진행 중)
 - 알림 시스템
@@ -391,8 +564,15 @@ src/
 ├── core/                        # 핵심 모듈
 │   ├── config.py                # 전역 설정 (13개 섹터, RUBRIC_WEIGHTS V2)
 │   ├── rubric.py                # 루브릭 엔진 V2 (6개 카테고리)
+│   ├── llm.py                   # LLMAnalyzer (상세 분석 생성)
+│   ├── llm_scorer.py            # LLMScorer (LLM 기반 점수 산출)
 │   ├── orchestrator.py          # 파이프라인 조율
-│   └── logging_config.py        # 로깅 설정
+│   ├── logging_config.py        # 로깅 설정
+│   └── prompts/                 # LLM 프롬프트 템플릿
+│       ├── __init__.py
+│       ├── stock_analysis.py    # 종목 분석 프롬프트
+│       ├── sector_analysis.py   # 섹터 분석 프롬프트
+│       └── schemas.py           # JSON 스키마 및 검증
 │
 ├── data/                        # 데이터 계층
 │   ├── fetcher.py               # 데이터 수집
@@ -404,10 +584,11 @@ src/
 │   ├── data/                    # 데이터 수집 에이전트
 │   │   ├── market_data_agent.py   # 시장 데이터 수집
 │   │   ├── fundamental_agent.py   # 재무제표 수집
-│   │   └── news_agent.py          # 뉴스/센티먼트 수집
+│   │   ├── news_agent.py          # 뉴스/센티먼트 수집
+│   │   └── data_bundle.py         # StockDataBundle (LLM용 데이터 통합)
 │   │
 │   ├── analysis/                # 분석 에이전트
-│   │   ├── stock_analyzer.py      # 개별 종목 루브릭 점수
+│   │   ├── stock_analyzer.py      # 개별 종목 점수 (LLMScorer/RubricEngine)
 │   │   ├── sector_analyzer.py     # 섹터 시가총액 가중 평균
 │   │   └── ranking_agent.py       # 4개 그룹 순위, 최종 18개, Top 5
 │   │

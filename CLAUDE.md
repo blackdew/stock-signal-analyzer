@@ -128,8 +128,14 @@ trading/
 │   │   ├── config.py            # SECTORS(13개), RUBRIC_WEIGHTS(V2), INVESTMENT_GRADES
 │   │   ├── rubric.py            # RubricEngine V2 (6개 카테고리)
 │   │   ├── llm.py               # LLMAnalyzer - OpenAI 기반 상세 분석 생성
+│   │   ├── llm_scorer.py        # LLMScorer - LLM 기반 점수 산출 (RubricEngine 대체)
 │   │   ├── orchestrator.py      # Orchestrator - 전체 파이프라인 조율
-│   │   └── logging_config.py    # 로깅 설정, TaskLogHandler (SSE 로그 스트리밍)
+│   │   ├── logging_config.py    # 로깅 설정, TaskLogHandler (SSE 로그 스트리밍)
+│   │   └── prompts/             # LLM 프롬프트 템플릿
+│   │       ├── __init__.py
+│   │       ├── stock_analysis.py     # 개별 종목 분석 프롬프트
+│   │       ├── sector_analysis.py    # 섹터 분석 프롬프트
+│   │       └── schemas.py            # JSON 출력 스키마 및 검증
 │   │
 │   ├── data/                    # 데이터 수집 및 캐싱
 │   │   ├── __init__.py
@@ -144,11 +150,12 @@ trading/
 │   │   │   ├── __init__.py
 │   │   │   ├── market_data_agent.py    # 시장 데이터 수집
 │   │   │   ├── fundamental_agent.py    # 재무제표 수집
-│   │   │   └── news_agent.py           # 뉴스/센티먼트 수집
+│   │   │   ├── news_agent.py           # 뉴스/센티먼트 수집
+│   │   │   └── data_bundle.py          # StockDataBundle - LLM 분석용 데이터 통합
 │   │   │
 │   │   ├── analysis/            # 분석 에이전트
 │   │   │   ├── __init__.py
-│   │   │   ├── stock_analyzer.py       # 개별 종목 루브릭 점수
+│   │   │   ├── stock_analyzer.py       # 개별 종목 점수 (LLMScorer 우선, RubricEngine 폴백)
 │   │   │   ├── sector_analyzer.py      # 섹터 시가총액 가중 평균
 │   │   │   ├── ranking_agent.py        # 4개 그룹 순위, 최종 18개, Top 5
 │   │   │   └── data_quality.py         # 데이터 품질 검증
@@ -424,6 +431,128 @@ if analyzer.is_available():
 **섹터별 컨텍스트 지원:**
 13개 섹터(반도체, 조선, 방산/우주, 전력인프라, 바이오, 로봇, 자동차, 신재생에너지, 지주, 뷰티, 금융, 푸드, 엔터)에 대한 전문적인 컨텍스트 프롬프트 제공.
 
+### src/core/llm_scorer.py
+LLM 기반 점수 산출기. 기존 RubricEngine을 대체하여 LLM이 직접 점수와 분석을 생성합니다.
+
+```python
+from src.core.llm_scorer import LLMScorer, LLMScoreResult, SectorLLMResult
+
+# LLM 스코어러 초기화 (OPENAI_API_KEY 환경변수 필요)
+scorer = LLMScorer()
+
+# LLM 사용 가능 여부 확인
+if scorer.is_available():
+    # 개별 종목 분석
+    result = await scorer.analyze_stock(data_bundle)
+
+    print(result.total_score)  # 75.3
+    print(result.grade)        # "Buy"
+    print(result.summary)      # "AI 반도체 슈퍼사이클의 최대 수혜주"
+
+    # 섹터 분석
+    sector_result = await scorer.analyze_sector(
+        sector_name="반도체",
+        weighted_score=72.5,
+        simple_score=68.3,
+        technical_score=18.5,
+        supply_score=16.2,
+        fundamental_score=15.8,
+        market_score=12.0,
+        stock_count=5,
+        total_market_cap=500000,
+        top_stocks=[...],
+        supply_data={...},
+    )
+```
+
+**LLMScoreResult 필드:**
+- `symbol`, `name`: 종목 코드, 종목명
+- 점수 (6개 카테고리): `technical_score` (0-25), `supply_score` (0-20), `fundamental_score` (0-20), `market_score` (0-15), `risk_score` (0-10), `relative_strength_score` (0-10)
+- `total_score`: 총점 (0-100)
+- `grade`: 투자 등급 (Strong Buy/Buy/Hold/Sell/Strong Sell)
+- 분석 텍스트: `summary`, `financial_analysis`, `technical_analysis`, `market_sentiment`, `comprehensive_analysis`
+- `investment_thesis`: 투자 포인트 리스트
+- `risks`: 리스크 요인 리스트
+- `category_reasoning`: 카테고리별 판단 근거
+- `is_fallback`: LLM 실패로 인한 기본값 여부
+- `fallback_reason`: 폴백 사유 (API 할당량 초과, 인증 실패 등)
+
+**SectorLLMResult 필드:**
+- `sector_name`: 섹터명
+- `reasoning`: 섹터 분석 요약
+- `outlook`: 향후 전망
+- `key_drivers`: 핵심 모멘텀 리스트
+- `investment_strategy`: 투자 전략
+
+### src/core/prompts/
+LLM 분석을 위한 프롬프트 템플릿 모듈.
+
+```python
+from src.core.prompts import (
+    STOCK_ANALYSIS_PROMPT,
+    build_stock_analysis_prompt,
+    SECTOR_ANALYSIS_PROMPT,
+    build_sector_analysis_prompt,
+    STOCK_SCORE_SCHEMA,
+    SECTOR_SCORE_SCHEMA,
+)
+
+# 종목 분석 프롬프트 생성
+prompt = build_stock_analysis_prompt(data_bundle.to_prompt_context())
+
+# 섹터 분석 프롬프트 생성
+prompt = build_sector_analysis_prompt(
+    sector_name="반도체",
+    sector_context="메모리/시스템 반도체, AI 가속기 포함",
+    stock_count=5,
+    ...
+)
+```
+
+**프롬프트 구성:**
+- `stock_analysis.py`: 개별 종목 분석 프롬프트 (6개 카테고리별 상세 평가 기준표 포함)
+- `sector_analysis.py`: 섹터 분석 프롬프트 (수급 현황, 상위 종목 분석)
+- `schemas.py`: JSON 출력 스키마 정의 및 응답 검증 함수 (`validate_stock_score()`, `validate_sector_score()`)
+
+### src/agents/data/data_bundle.py
+LLM 분석을 위한 종합 데이터 번들. 수집된 모든 데이터를 LLM 프롬프트에 적합한 형태로 통합합니다.
+
+```python
+from src.agents.data.data_bundle import StockDataBundle
+
+# 수집된 데이터로부터 번들 생성
+bundle = StockDataBundle.from_collected_data(
+    symbol="005930",
+    name="삼성전자",
+    sector="반도체",
+    market_cap=3000000,
+    market_data=market_data,       # MarketData 객체
+    fundamental_data=fundamental,  # FundamentalData 객체
+    news_data=news,               # NewsData 객체
+)
+
+# LLM 프롬프트용 컨텍스트 문자열 생성
+context = bundle.to_prompt_context()
+# 출력:
+# ## 종목 정보
+# - 종목명: 삼성전자
+# - 종목코드: 005930
+# - 섹터: 반도체
+# ...
+
+# 딕셔너리로 변환
+data_dict = bundle.to_dict()
+```
+
+**StockDataBundle 필드:**
+- `symbol`, `name`, `sector`, `market_cap`: 기본 정보
+- `price_data`: 현재가, 전일대비, 52주 고저, 52주 내 위치
+- `technical_indicators`: MA20, MA60, RSI, MACD, ADX, ATR%, Beta, 20일 수익률
+- `supply_data`: 외국인/기관 5일 순매수, 연속 순매수 일수, 거래대금
+- `fundamental_data`: PER, PBR, ROE, 영업이익률, 성장률, 부채비율
+- `news_data`: 뉴스 건수, 센티먼트 비율, 주요 헤드라인
+- `sector_context`: 섹터별 분석 컨텍스트
+
 ### src/agents/base_agent.py
 모든 에이전트의 추상 기반 클래스.
 
@@ -450,6 +579,7 @@ data = await agent.collect(["005930", "000660"])
 - **MarketDataAgent**: 시장 데이터 수집 (주가, 거래량, 기술적 지표)
 - **FundamentalAgent**: 재무제표 수집 (PER, PBR, ROE, 성장률, 부채비율)
 - **NewsAgent**: 뉴스 및 센티먼트 분석
+- **StockDataBundle**: LLM 분석을 위한 종합 데이터 번들
 
 ### src/agents/analysis/
 분석 에이전트 모듈.
@@ -474,9 +604,11 @@ print(result.final_18)   # 최종 18개 종목
 print(result.final_top5) # Top 5 종목
 ```
 
-- **StockAnalyzer**: 개별 종목 루브릭 점수 산출
+- **StockAnalyzer**: 개별 종목 점수 산출
   - 4개 그룹별 분석: KOSPI Top10, KOSPI 11~20, KOSDAQ Top10, 섹터별
-  - RubricEngine V2 기반 점수 계산
+  - LLMScorer 우선, RubricEngine 폴백 방식
+  - `use_llm` 옵션으로 LLM 사용 여부 제어
+  - `is_fallback`, `fallback_reason` 필드로 LLM 실패 추적
 
 - **SectorAnalyzer**: 섹터별 점수 산출
   - 시가총액 가중 평균 점수 계산

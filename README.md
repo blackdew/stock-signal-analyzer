@@ -14,6 +14,7 @@
 | Phase 4 | 완료 | 리포트 에이전트 (StockReportAgent, SectorReportAgent, SummaryAgent) |
 | Phase 5 | 완료 | Orchestrator 및 CLI (main.py) |
 | Phase 6 | 완료 | Web API (FastAPI 기반 REST API) |
+| Phase 7 | 완료 | LLM 기반 점수 산출 (LLMScorer, RubricEngine 폴백) |
 
 ### 테스트 현황
 - **총 279개 테스트**
@@ -121,11 +122,13 @@ cd poc-web && npm run dev
 - **MarketDataAgent**: 시장 데이터 (주가, 거래량, 기술적 지표)
 - **FundamentalAgent**: 재무제표 (PER, PBR, ROE, 성장률)
 - **NewsAgent**: 뉴스 센티먼트
+- **StockDataBundle**: LLM 분석을 위한 종합 데이터 번들
 
 ### 분석 에이전트
-- **StockAnalyzer**: 개별 종목 루브릭 점수 산출
+- **StockAnalyzer**: 개별 종목 점수 산출 (LLMScorer 우선, RubricEngine 폴백)
 - **SectorAnalyzer**: 섹터별 시가총액 가중 평균 점수
 - **RankingAgent**: 4개 그룹 순위, 최종 18개 종목, Top 5 선정
+- **LLMScorer**: LLM 기반 점수 및 분석 생성 (GPT-5.2)
 
 ### 리포트 에이전트
 - **StockReportAgent**: 개별 종목 마크다운 리포트 생성
@@ -152,7 +155,9 @@ trading/
 │   ├── core/               # 설정 및 평가 엔진
 │   │   ├── config.py       # SECTORS(13개), RUBRIC_WEIGHTS(V2)
 │   │   ├── rubric.py       # RubricEngine V2 (6개 카테고리)
-│   │   └── orchestrator.py # 전체 파이프라인 조율
+│   │   ├── llm_scorer.py   # LLMScorer (LLM 기반 점수 산출)
+│   │   ├── orchestrator.py # 전체 파이프라인 조율
+│   │   └── prompts/        # LLM 프롬프트 템플릿
 │   ├── data/               # 데이터 수집 및 캐싱
 │   │   ├── fetcher.py      # StockDataFetcher
 │   │   └── cache.py        # CacheManager
@@ -161,7 +166,8 @@ trading/
 │       ├── data/           # 데이터 수집 에이전트
 │       │   ├── market_data_agent.py
 │       │   ├── fundamental_agent.py
-│       │   └── news_agent.py
+│       │   ├── news_agent.py
+│       │   └── data_bundle.py    # StockDataBundle
 │       ├── analysis/       # 분석 에이전트
 │       │   ├── stock_analyzer.py
 │       │   ├── sector_analyzer.py
