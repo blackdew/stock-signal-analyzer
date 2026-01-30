@@ -635,7 +635,6 @@ class StockAnalyzer(BaseAgent):
         news_data: Optional[NewsData],
         market_data: Optional[MarketData] = None,
         fundamental_data: Optional[FundamentalData] = None,
-        data_bundle: Optional[StockDataBundle] = None,
         sector_rank: Optional[int] = None,
         sector_total: Optional[int] = None,
         sector_return_5d: Optional[float] = None,
@@ -654,6 +653,7 @@ class StockAnalyzer(BaseAgent):
         beta = market_data.beta if market_data and hasattr(market_data, 'beta') else None
         max_drawdown_pct = market_data.max_drawdown_pct if market_data and hasattr(market_data, 'max_drawdown_pct') else None
         stock_return_20d = market_data.return_20d if market_data and hasattr(market_data, 'return_20d') else None
+        dividend_yield = fundamental_data.dividend_yield if fundamental_data and hasattr(fundamental_data, 'dividend_yield') else None
 
         try:
             rubric_result = self.rubric_engine.calculate(
@@ -668,6 +668,10 @@ class StockAnalyzer(BaseAgent):
                 beta=beta,
                 max_drawdown_pct=max_drawdown_pct,
                 stock_return_20d=stock_return_20d,
+                dividend_yield=dividend_yield,
+                sector_rank=sector_rank,
+                sector_total=sector_total,
+                sector_return_5d=sector_return_5d,
             )
         except Exception as e:
             self._log_debug(f"RubricEngine 점수 계산 실패 for {symbol}: {e}")
@@ -712,7 +716,6 @@ class StockAnalyzer(BaseAgent):
                 ] if news_data else [],
                 is_fallback=True,
                 fallback_reason=llm_result.fallback_reason,
-                data_bundle=data_bundle,  # 원본 데이터 번들 저장
             )
 
         # LLM 분석 성공 시 LLM V3 점수 직접 사용
@@ -879,7 +882,88 @@ class StockAnalyzer(BaseAgent):
 
         self._log_info(f"Analyzing sector '{sector_name}' with {len(symbols)} stocks")
 
-        return await self.analyze_symbols(symbols, group=f"sector_{sector_name}")
+        # 섹터 내 시총 기반 순위 계산
+        sector_ranks = self._calculate_sector_ranks(symbols)
+
+        # 섹터 5일 수익률 계산 (시총 가중 평균)
+        sector_return_5d = self._calculate_sector_return_5d(symbols)
+
+        return await self.analyze_symbols(
+            symbols,
+            group=f"sector_{sector_name}",
+            sector_ranks=sector_ranks,
+            sector_return_5d=sector_return_5d,
+        )
+
+    def _calculate_sector_ranks(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+        """
+        섹터 내 시총 기반 순위를 계산합니다.
+
+        Args:
+            symbols: 섹터 내 종목 코드 리스트
+
+        Returns:
+            종목코드를 키로 하는 순위 정보 딕셔너리 {symbol: {"rank": int, "total": int}}
+        """
+        market_caps = self._get_market_caps(symbols)
+        total = len(symbols)
+
+        # 시총 내림차순 정렬
+        sorted_symbols = sorted(
+            symbols,
+            key=lambda s: market_caps.get(s, 0),
+            reverse=True
+        )
+
+        return {
+            symbol: {"rank": rank, "total": total}
+            for rank, symbol in enumerate(sorted_symbols, 1)
+        }
+
+    def _calculate_sector_return_5d(self, symbols: List[str]) -> Optional[float]:
+        """
+        섹터의 5일 수익률을 계산합니다 (시총 가중 평균).
+
+        Args:
+            symbols: 섹터 내 종목 코드 리스트
+
+        Returns:
+            섹터 5일 수익률 (%), 계산 불가 시 None
+        """
+        try:
+            market_caps = self._get_market_caps(symbols)
+
+            # 5일 수익률 조회 (간단하게 전일대비 변동률 사용)
+            total_market_cap = 0
+            weighted_return = 0
+
+            for symbol in symbols:
+                market_cap = market_caps.get(symbol, 0)
+                if market_cap <= 0:
+                    continue
+
+                # 주가 변동률 조회
+                try:
+                    stock_data = self.fetcher.fetch_stock_data(symbol)
+                    if stock_data is not None and len(stock_data) >= 5:
+                        # 5일 수익률 = (현재가 - 5일전 종가) / 5일전 종가 * 100
+                        current_close = stock_data['Close'].iloc[-1]
+                        close_5d_ago = stock_data['Close'].iloc[-5]
+                        return_5d = (current_close - close_5d_ago) / close_5d_ago * 100
+
+                        weighted_return += return_5d * market_cap
+                        total_market_cap += market_cap
+                except Exception:
+                    continue
+
+            if total_market_cap > 0:
+                return weighted_return / total_market_cap
+
+            return None
+
+        except Exception as e:
+            self._log_warning(f"Failed to calculate sector return: {e}")
+            return None
 
     async def analyze_all_sectors(
         self,
