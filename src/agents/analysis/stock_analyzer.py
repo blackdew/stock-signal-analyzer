@@ -538,6 +538,9 @@ class StockAnalyzer(BaseAgent):
         news_data: Optional[NewsData],
         market_cap: float,
         data_quality: Optional[DataQualityResult] = None,
+        sector_rank: Optional[int] = None,
+        sector_total: Optional[int] = None,
+        sector_return_5d: Optional[float] = None,
     ) -> Optional[StockAnalysisResult]:
         """
         단일 종목을 분석합니다 (RubricEngine 사용, 동기).
@@ -550,7 +553,8 @@ class StockAnalyzer(BaseAgent):
 
         return self._analyze_single_rubric(
             symbol, name, sector, group, market_data, fundamental_data, news_data,
-            market_cap, data_quality
+            market_cap, data_quality,
+            sector_rank=sector_rank, sector_total=sector_total, sector_return_5d=sector_return_5d,
         )
 
     def _analyze_single_rubric(
@@ -564,6 +568,9 @@ class StockAnalyzer(BaseAgent):
         news_data: Optional[NewsData],
         market_cap: float,
         data_quality: Optional[DataQualityResult] = None,
+        sector_rank: Optional[int] = None,
+        sector_total: Optional[int] = None,
+        sector_return_5d: Optional[float] = None,
     ) -> Optional[StockAnalysisResult]:
         """
         RubricEngine을 사용한 단일 종목 분석.
@@ -578,6 +585,9 @@ class StockAnalyzer(BaseAgent):
         low_52w = market_data.low_52w if market_data and hasattr(market_data, 'low_52w') else None
         high_52w = market_data.high_52w if market_data and hasattr(market_data, 'high_52w') else None
 
+        # V3용 추가 데이터 추출
+        dividend_yield = fundamental_data.dividend_yield if fundamental_data and hasattr(fundamental_data, 'dividend_yield') else None
+
         # RubricEngine으로 점수 계산
         rubric_result = self.rubric_engine.calculate(
             symbol=symbol,
@@ -591,6 +601,10 @@ class StockAnalyzer(BaseAgent):
             beta=beta,
             max_drawdown_pct=max_drawdown_pct,
             stock_return_20d=stock_return_20d,
+            dividend_yield=dividend_yield,
+            sector_rank=sector_rank,
+            sector_total=sector_total,
+            sector_return_5d=sector_return_5d,
         )
 
         # StockAnalysisResult 생성
