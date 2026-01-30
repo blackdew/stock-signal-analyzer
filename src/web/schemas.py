@@ -134,6 +134,51 @@ class RelativeStrengthDetailsSchema(BaseModel):
     alpha_value: Optional[float] = Field(default=None, description="알파 값 (%)")
 
 
+# =============================================================================
+# V3 8대 핵심 루브릭 세부 스키마
+# =============================================================================
+
+
+class ValuationDetailsSchema(BaseModel):
+    """밸류에이션 분석 세부 정보 (V3)"""
+    per: Optional[float] = Field(default=None, description="PER 점수")
+    pbr: Optional[float] = Field(default=None, description="PBR 점수")
+    # 원본 값
+    per_value: Optional[float] = Field(default=None, description="PER 값")
+    pbr_value: Optional[float] = Field(default=None, description="PBR 값")
+    sector_avg_per: Optional[float] = Field(default=None, description="업종 평균 PER")
+    sector_avg_pbr: Optional[float] = Field(default=None, description="업종 평균 PBR")
+
+
+class MomentumDetailsSchema(BaseModel):
+    """모멘텀 분석 세부 정보 (V3)"""
+    rsi: Optional[float] = Field(default=None, description="RSI 점수")
+    macd: Optional[float] = Field(default=None, description="MACD 점수")
+    trading_value: Optional[float] = Field(default=None, description="거래대금 점수")
+    # 원본 값
+    rsi_value: Optional[float] = Field(default=None, description="RSI 값")
+    macd_value: Optional[float] = Field(default=None, description="MACD 값")
+    macd_signal_value: Optional[float] = Field(default=None, description="MACD 시그널 값")
+    trading_value_amount: Optional[float] = Field(default=None, description="거래대금 (억원)")
+
+
+class SectorDetailsSchema(BaseModel):
+    """섹터 분석 세부 정보 (V3)"""
+    sector_rank: Optional[float] = Field(default=None, description="섹터 내 순위 점수")
+    sector_momentum: Optional[float] = Field(default=None, description="섹터 모멘텀 점수")
+    # 원본 값
+    sector_rank_value: Optional[int] = Field(default=None, description="섹터 내 순위")
+    sector_total_value: Optional[int] = Field(default=None, description="섹터 내 전체 종목 수")
+    sector_return_5d: Optional[float] = Field(default=None, description="섹터 5일 수익률 (%)")
+
+
+class ShareholderDetailsSchema(BaseModel):
+    """주주환원 분석 세부 정보 (V3)"""
+    dividend_yield: Optional[float] = Field(default=None, description="배당수익률 점수")
+    # 원본 값
+    dividend_yield_value: Optional[float] = Field(default=None, description="배당수익률 (%)")
+
+
 class StockAnalysisSchema(BaseModel):
     """개별 종목 분석 결과"""
     symbol: str = Field(description="종목 코드", examples=["005930"])
@@ -142,12 +187,19 @@ class StockAnalysisSchema(BaseModel):
     group: str = Field(description="그룹명", examples=["kospi_top10"])
     market_cap: float = Field(description="시가총액 (억원)")
 
+    # V2 기본 카테고리 점수
     technical_score: float = Field(description="기술적 분석 점수")
     supply_score: float = Field(description="수급 분석 점수")
     fundamental_score: float = Field(description="펀더멘털 분석 점수")
     market_score: float = Field(description="시장 환경 점수")
     risk_score: float = Field(default=0.0, description="리스크 점수 (V2)")
     relative_strength_score: float = Field(default=0.0, description="상대 강도 점수 (V2)")
+
+    # V3 8대 핵심 루브릭 점수
+    valuation_score: float = Field(default=0.0, description="밸류에이션 점수 (V3, 20%)")
+    momentum_score: float = Field(default=0.0, description="모멘텀 점수 (V3, 15%)")
+    sector_score: float = Field(default=0.0, description="섹터 점수 (V3, 10%)")
+    shareholder_score: float = Field(default=0.0, description="주주환원 점수 (V3, 5%)")
 
     total_score: float = Field(description="총점 (100점 만점)")
     investment_grade: str = Field(description="투자 등급", examples=["Buy"])
@@ -161,13 +213,19 @@ class StockAnalysisSchema(BaseModel):
 
     data_quality: Optional[DataQualitySchema] = Field(default=None, description="데이터 품질")
 
-    # 세부 분석 정보
+    # V2 세부 분석 정보
     technical_details: Optional[TechnicalDetailsSchema] = Field(default=None, description="기술적 분석 세부")
     supply_details: Optional[SupplyDetailsSchema] = Field(default=None, description="수급 분석 세부")
     fundamental_details: Optional[FundamentalDetailsSchema] = Field(default=None, description="펀더멘털 분석 세부")
     market_details: Optional[MarketDetailsSchema] = Field(default=None, description="시장 환경 세부")
     risk_details: Optional[RiskDetailsSchema] = Field(default=None, description="리스크 평가 세부")
     relative_strength_details: Optional[RelativeStrengthDetailsSchema] = Field(default=None, description="상대 강도 세부")
+
+    # V3 세부 분석 정보 (8대 핵심 루브릭)
+    valuation_details: Optional[ValuationDetailsSchema] = Field(default=None, description="밸류에이션 분석 세부 (V3)")
+    momentum_details: Optional[MomentumDetailsSchema] = Field(default=None, description="모멘텀 분석 세부 (V3)")
+    sector_details: Optional[SectorDetailsSchema] = Field(default=None, description="섹터 분석 세부 (V3)")
+    shareholder_details: Optional[ShareholderDetailsSchema] = Field(default=None, description="주주환원 분석 세부 (V3)")
 
     # LLM 상세 분석 (Phase 1: 리포트 품질 개선)
     summary: Optional[str] = Field(default=None, description="핵심 요약 (1-2문장)", examples=["AI 메모리 반도체(HBM) 시장의 절대적 지배력을 바탕으로 사상 최대 실적 경신이 기대되는 대장주"])

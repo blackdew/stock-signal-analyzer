@@ -635,6 +635,54 @@ class StockDataFetcher:
             logger.warning(f"종목 {symbol}: 시가총액 조회 실패 - {e}")
             return None
 
+    def get_dividend_yield(self, symbol: str) -> Optional[float]:
+        """
+        종목의 배당수익률을 조회합니다 (네이버 금융).
+
+        Args:
+            symbol: 종목 코드 (예: '005930')
+
+        Returns:
+            배당수익률 (%), 조회 실패시 None
+        """
+        try:
+            url = f"https://finance.naver.com/item/main.naver?code={symbol}"
+            response = requests.get(url, headers=self._headers, timeout=10)
+            response.encoding = response.apparent_encoding or "utf-8"
+            soup = BeautifulSoup(response.text, "html.parser")
+
+            # 배당수익률 추출 (per_table에서 조회)
+            # "배당수익률" 텍스트를 포함하는 th 태그를 찾고 인접 td에서 값 추출
+            tables = soup.select("table.per_table")
+            for table in tables:
+                for tr in table.select("tr"):
+                    th = tr.select_one("th")
+                    td = tr.select_one("td")
+                    if th and td and "배당수익률" in th.text:
+                        # "2.15%" -> 2.15
+                        yield_text = td.text.strip().replace("%", "").replace(",", "")
+                        if yield_text and yield_text != "-":
+                            dividend_yield = float(yield_text)
+                            logger.debug(f"종목 {symbol}: 배당수익률 조회 성공 - {dividend_yield}%")
+                            return dividend_yield
+
+            # 대체 위치: em 태그에서 직접 검색
+            for em in soup.select("em"):
+                parent_text = em.parent.text if em.parent else ""
+                if "배당수익률" in parent_text:
+                    yield_text = em.text.strip().replace("%", "").replace(",", "")
+                    if yield_text and yield_text != "-":
+                        dividend_yield = float(yield_text)
+                        logger.debug(f"종목 {symbol}: 배당수익률 조회 성공 - {dividend_yield}%")
+                        return dividend_yield
+
+            logger.debug(f"종목 {symbol}: 배당수익률 정보 없음")
+            return None
+
+        except Exception as e:
+            logger.warning(f"종목 {symbol}: 배당수익률 조회 실패 - {e}")
+            return None
+
     def get_kospi_index(self, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
         """
         KOSPI 지수 데이터를 가져옵니다.

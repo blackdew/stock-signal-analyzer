@@ -54,6 +54,12 @@ class StockAnalysisResult:
         risk_score: 리스크 점수 (V2)
         relative_strength_score: 상대 강도 점수 (V2)
 
+        # V3 8대 핵심 루브릭 점수
+        valuation_score: 밸류에이션 점수 (V3)
+        momentum_score: 모멘텀 점수 (V3)
+        sector_score: 섹터 점수 (V3)
+        shareholder_score: 주주환원 점수 (V3)
+
         total_score: 총점
         investment_grade: 투자 등급
 
@@ -69,13 +75,19 @@ class StockAnalysisResult:
     # RubricEngine 결과
     rubric_result: Optional[RubricResult] = None
 
-    # 점수 (100점 만점 기준 환산)
+    # 점수 (100점 만점 기준 환산) - V2 기본 카테고리
     technical_score: float = 0.0
     supply_score: float = 0.0
     fundamental_score: float = 0.0
     market_score: float = 0.0
     risk_score: float = 0.0
     relative_strength_score: float = 0.0
+
+    # V3 8대 핵심 루브릭 점수
+    valuation_score: float = 0.0          # 밸류에이션 (20%)
+    momentum_score: float = 0.0           # 모멘텀 (15%)
+    sector_score: float = 0.0             # 섹터 (10%)
+    shareholder_score: float = 0.0        # 주주환원 (5%)
 
     total_score: float = 0.0
     investment_grade: str = "Hold"
@@ -118,6 +130,11 @@ class StockAnalysisResult:
             "market_score": self.market_score,
             "risk_score": self.risk_score,
             "relative_strength_score": self.relative_strength_score,
+            # V3 카테고리 점수
+            "valuation_score": self.valuation_score,
+            "momentum_score": self.momentum_score,
+            "sector_score": self.sector_score,
+            "shareholder_score": self.shareholder_score,
             "total_score": self.total_score,
             "investment_grade": self.investment_grade,
             "rank_in_group": self.rank_in_group,
@@ -152,6 +169,19 @@ class StockAnalysisResult:
             # 상대 강도 세부 (V2)
             if rubric.relative_strength and rubric.relative_strength.details:
                 result["relative_strength_details"] = rubric.relative_strength.details
+
+            # V3 카테고리 세부 정보
+            if rubric.valuation and rubric.valuation.details:
+                result["valuation_details"] = rubric.valuation.details
+
+            if rubric.momentum and rubric.momentum.details:
+                result["momentum_details"] = rubric.momentum.details
+
+            if rubric.sector and rubric.sector.details:
+                result["sector_details"] = rubric.sector.details
+
+            if rubric.shareholder and rubric.shareholder.details:
+                result["shareholder_details"] = rubric.shareholder.details
 
         # LLM category_reasoning을 세부 데이터로 변환 (rubric_result가 없는 경우)
         elif self.category_reasoning:
@@ -469,6 +499,11 @@ class StockAnalyzer(BaseAgent):
             market_score=rubric_result.market.weighted_score,
             risk_score=rubric_result.risk.weighted_score if rubric_result.risk else 0.0,
             relative_strength_score=rubric_result.relative_strength.weighted_score if rubric_result.relative_strength else 0.0,
+            # V3 카테고리 점수
+            valuation_score=rubric_result.valuation.weighted_score if rubric_result.valuation else 0.0,
+            momentum_score=rubric_result.momentum.weighted_score if rubric_result.momentum else 0.0,
+            sector_score=rubric_result.sector.weighted_score if rubric_result.sector else 0.0,
+            shareholder_score=rubric_result.shareholder.weighted_score if rubric_result.shareholder else 0.0,
             total_score=rubric_result.total_score,
             investment_grade=rubric_result.grade,
             data_quality=data_quality,

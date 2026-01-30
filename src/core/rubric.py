@@ -9,7 +9,7 @@ Rubric Engine
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from src.core.config import RUBRIC_WEIGHTS, RUBRIC_WEIGHTS_V1, get_grade_from_score
+from src.core.config import RUBRIC_WEIGHTS, RUBRIC_WEIGHTS_V1, RUBRIC_WEIGHTS_V3, get_grade_from_score
 
 
 # =============================================================================
@@ -45,12 +45,18 @@ class RubricResult:
     risk: Optional[CategoryScore] = None              # 리스크 평가
     relative_strength: Optional[CategoryScore] = None  # 상대 강도
 
+    # V3 카테고리 (8대 핵심 루브릭)
+    valuation: Optional[CategoryScore] = None         # 밸류에이션 (PER, PBR)
+    momentum: Optional[CategoryScore] = None          # 모멘텀 (RSI, MACD, 거래대금)
+    sector: Optional[CategoryScore] = None            # 섹터 (섹터순위, 섹터모멘텀)
+    shareholder: Optional[CategoryScore] = None       # 주주환원 (배당수익률)
+
     # 최종 결과
     total_score: float = 0.0  # 0-100 합계
     grade: str = "Hold"       # Strong Buy, Buy, Hold, Sell, Strong Sell
 
     # 버전 정보
-    rubric_version: str = "v2"  # v1: 4개 카테고리, v2: 6개 카테고리
+    rubric_version: str = "v2"  # v1: 4개 카테고리, v2: 6개 카테고리, v3: 8개 카테고리
 
 
 # =============================================================================
@@ -534,17 +540,28 @@ class RubricEngine:
         )
 
         print(f"총점: {result.total_score}, 등급: {result.grade}")
+
+        # V3 (8대 핵심 루브릭) 사용
+        engine_v3 = RubricEngine(use_v3=True)
+        result_v3 = engine_v3.calculate(...)
     """
 
-    def __init__(self, use_v2: bool = True):
+    def __init__(self, use_v2: bool = True, use_v3: bool = False):
         """
         루브릭 엔진 초기화
 
         Args:
             use_v2: True면 V2 (6개 카테고리), False면 V1 (4개 카테고리)
+            use_v3: True면 V3 (8대 핵심 루브릭, use_v2보다 우선)
         """
-        self.use_v2 = use_v2
-        self.weights = RUBRIC_WEIGHTS if use_v2 else RUBRIC_WEIGHTS_V1
+        self.use_v3 = use_v3
+        self.use_v2 = use_v2 if not use_v3 else False
+        if use_v3:
+            self.weights = RUBRIC_WEIGHTS_V3
+        elif use_v2:
+            self.weights = RUBRIC_WEIGHTS
+        else:
+            self.weights = RUBRIC_WEIGHTS_V1
 
     def calculate(
         self,
@@ -566,6 +583,8 @@ class RubricEngine:
         sector_total: Optional[int] = None,
         stock_return_20d: Optional[float] = None,
         market_return_20d: Optional[float] = None,
+        # V3 추가 파라미터 (주주환원)
+        dividend_yield: Optional[float] = None,
     ) -> RubricResult:
         """
         루브릭 평가를 수행합니다.
@@ -587,10 +606,34 @@ class RubricEngine:
             sector_total: 섹터 내 전체 종목 수 (V2, 선택)
             stock_return_20d: 종목 20일 수익률 (V2, 선택)
             market_return_20d: 시장 20일 수익률 (V2, 선택)
+            dividend_yield: 배당수익률 (V3, 선택)
 
         Returns:
             RubricResult 객체
         """
+        # V3 모드: 8대 핵심 루브릭
+        if self.use_v3:
+            return self._calculate_v3(
+                symbol=symbol,
+                name=name,
+                market_data=market_data,
+                fundamental_data=fundamental_data,
+                news_data=news_data,
+                low_52w=low_52w,
+                high_52w=high_52w,
+                sector_return_5d=sector_return_5d,
+                target_price=target_price,
+                atr_pct=atr_pct,
+                beta=beta,
+                max_drawdown_pct=max_drawdown_pct,
+                sector_rank=sector_rank,
+                sector_total=sector_total,
+                stock_return_20d=stock_return_20d,
+                market_return_20d=market_return_20d,
+                dividend_yield=dividend_yield,
+            )
+
+        # V1/V2 모드: 기존 로직
         # 1. 기술적 분석 점수 계산 (V2: 25점, V1: 30점)
         technical = self._calculate_technical(market_data, low_52w, high_52w)
 
@@ -1031,6 +1074,391 @@ class RubricEngine:
         """
         return self.calculate(symbol=symbol, name=name)
 
+    def _calculate_v3(
+        self,
+        symbol: str,
+        name: str,
+        market_data: Optional[Any],
+        fundamental_data: Optional[Any],
+        news_data: Optional[Any],
+        low_52w: Optional[float],
+        high_52w: Optional[float],
+        sector_return_5d: Optional[float],
+        target_price: Optional[float],
+        atr_pct: Optional[float],
+        beta: Optional[float],
+        max_drawdown_pct: Optional[float],
+        sector_rank: Optional[int],
+        sector_total: Optional[int],
+        stock_return_20d: Optional[float],
+        market_return_20d: Optional[float],
+        dividend_yield: Optional[float],
+    ) -> RubricResult:
+        """
+        V3 8대 핵심 루브릭 평가를 수행합니다.
+
+        V3 카테고리:
+        1. 밸류에이션 (20%): PER, PBR
+        2. 펀더멘털 (15%): ROE, 성장률, 부채비율
+        3. 수급 (15%): 외국인, 기관
+        4. 모멘텀 (15%): RSI, MACD, 거래대금
+        5. 기술적 (10%): 추세, 지지/저항, ADX
+        6. 섹터 (10%): 섹터순위, 섹터모멘텀
+        7. 리스크 (10%): 변동성, 베타, 하방리스크
+        8. 주주환원 (5%): 배당수익률
+        """
+        # 데이터 추출 - 기술적/모멘텀
+        ma20 = getattr(market_data, "ma20", None) if market_data else None
+        ma60 = getattr(market_data, "ma60", None) if market_data else None
+        rsi = getattr(market_data, "rsi", None) if market_data else None
+        current_price = getattr(market_data, "current_price", None) if market_data else None
+        macd = getattr(market_data, "macd", None) if market_data else None
+        macd_signal = getattr(market_data, "macd_signal", None) if market_data else None
+        adx = getattr(market_data, "adx", None) if market_data else None
+        trading_value = getattr(market_data, "trading_value", None) if market_data else None
+
+        # 데이터 추출 - 수급
+        foreign_net = getattr(market_data, "foreign_net_buy", None) if market_data else None
+        inst_net = getattr(market_data, "institution_net_buy", None) if market_data else None
+
+        # 데이터 추출 - 펀더멘털
+        per = getattr(fundamental_data, "per", None) if fundamental_data else None
+        sector_avg_per = getattr(fundamental_data, "sector_avg_per", None) if fundamental_data else None
+        pbr = getattr(fundamental_data, "pbr", None) if fundamental_data else None
+        sector_avg_pbr = getattr(fundamental_data, "sector_avg_pbr", None) if fundamental_data else None
+        roe = getattr(fundamental_data, "roe", None) if fundamental_data else None
+        op_growth = getattr(fundamental_data, "operating_profit_growth", None) if fundamental_data else None
+        debt_ratio = getattr(fundamental_data, "debt_ratio", None) if fundamental_data else None
+
+        # 데이터 추출 - 뉴스
+        avg_sentiment = getattr(news_data, "avg_sentiment_score", None) if news_data else None
+
+        # 52주 위치 계산
+        position_52w = None
+        if None not in (current_price, low_52w, high_52w) and high_52w != low_52w:
+            position_52w = (current_price - low_52w) / (high_52w - low_52w) * 100
+
+        # =================================================================
+        # 1. 밸류에이션 (20점): PER(10) + PBR(10)
+        # =================================================================
+        per_raw = calc_per_score(per, sector_avg_per)  # 0-10
+        pbr_raw = calc_pbr_score(pbr, sector_avg_pbr)  # 0-5
+        pbr_scaled = pbr_raw * 2  # 0-10으로 스케일
+
+        valuation_raw_total = per_raw + pbr_scaled  # 0-20
+        valuation_normalized = (valuation_raw_total / 20) * 100
+        valuation_weighted = (valuation_normalized / 100) * self.weights["valuation"]
+
+        valuation = CategoryScore(
+            name="valuation",
+            score=round(valuation_normalized, 1),
+            max_score=self.weights["valuation"],
+            weighted_score=round(valuation_weighted, 1),
+            details={
+                "per": round(per_raw, 2),
+                "pbr": round(pbr_scaled, 2),
+                "per_value": round(per, 2) if per else None,
+                "pbr_value": round(pbr, 2) if pbr else None,
+                "sector_avg_per": round(sector_avg_per, 2) if sector_avg_per else None,
+                "sector_avg_pbr": round(sector_avg_pbr, 2) if sector_avg_pbr else None,
+            }
+        )
+
+        # =================================================================
+        # 2. 펀더멘털 (15점): ROE(5) + 성장률(6) + 부채비율(4)
+        # =================================================================
+        roe_raw = calc_roe_score(roe)  # 0-5
+        growth_raw = calc_growth_score(op_growth)  # 0-10
+        debt_raw = calc_debt_score(debt_ratio)  # 0-5
+
+        # 스케일 조정
+        roe_scaled = roe_raw  # 0-5
+        growth_scaled = (growth_raw / 10) * 6  # 0-6
+        debt_scaled = (debt_raw / 5) * 4  # 0-4
+
+        fundamental_raw_total = roe_scaled + growth_scaled + debt_scaled  # 0-15
+        fundamental_normalized = (fundamental_raw_total / 15) * 100
+        fundamental_weighted = (fundamental_normalized / 100) * self.weights["fundamental"]
+
+        fundamental = CategoryScore(
+            name="fundamental",
+            score=round(fundamental_normalized, 1),
+            max_score=self.weights["fundamental"],
+            weighted_score=round(fundamental_weighted, 1),
+            details={
+                "roe": round(roe_scaled, 2),
+                "growth": round(growth_scaled, 2),
+                "debt": round(debt_scaled, 2),
+                "roe_value": round(roe, 2) if roe else None,
+                "op_growth_value": round(op_growth, 2) if op_growth else None,
+                "debt_ratio_value": round(debt_ratio, 2) if debt_ratio else None,
+            }
+        )
+
+        # =================================================================
+        # 3. 수급 (15점): 외국인(7.5) + 기관(7.5)
+        # =================================================================
+        foreign_raw = calc_foreign_score(foreign_net)  # 0-10
+        inst_raw = calc_institution_score(inst_net)  # 0-10
+
+        # 스케일 조정
+        foreign_scaled = (foreign_raw / 10) * 7.5  # 0-7.5
+        inst_scaled = (inst_raw / 10) * 7.5  # 0-7.5
+
+        supply_raw_total = foreign_scaled + inst_scaled  # 0-15
+        supply_normalized = (supply_raw_total / 15) * 100
+        supply_weighted = (supply_normalized / 100) * self.weights["supply"]
+
+        # 연속 순매수 일수 계산
+        foreign_consecutive = 0
+        if foreign_net:
+            for amount in foreign_net:
+                if amount > 0:
+                    foreign_consecutive += 1
+                else:
+                    break
+        inst_consecutive = 0
+        if inst_net:
+            for amount in inst_net:
+                if amount > 0:
+                    inst_consecutive += 1
+                else:
+                    break
+
+        supply = CategoryScore(
+            name="supply",
+            score=round(supply_normalized, 1),
+            max_score=self.weights["supply"],
+            weighted_score=round(supply_weighted, 1),
+            details={
+                "foreign": round(foreign_scaled, 2),
+                "institution": round(inst_scaled, 2),
+                "foreign_net_5d": foreign_net if foreign_net else [],
+                "foreign_consecutive_days": foreign_consecutive,
+                "institution_net_5d": inst_net if inst_net else [],
+                "institution_consecutive_days": inst_consecutive,
+            }
+        )
+
+        # =================================================================
+        # 4. 모멘텀 (15점): RSI(5) + MACD(5) + 거래대금(5)
+        # =================================================================
+        rsi_raw = calc_rsi_score(rsi)  # 0-10
+        macd_raw = calc_macd_score(macd, macd_signal)  # 0-5
+        tv_raw = calc_trading_value_score(trading_value, None)  # 0-5
+
+        # 스케일 조정
+        rsi_scaled = (rsi_raw / 10) * 5  # 0-5
+        macd_scaled = macd_raw  # 0-5
+        tv_scaled = tv_raw  # 0-5
+
+        momentum_raw_total = rsi_scaled + macd_scaled + tv_scaled  # 0-15
+        momentum_normalized = (momentum_raw_total / 15) * 100
+        momentum_weighted = (momentum_normalized / 100) * self.weights["momentum"]
+
+        momentum = CategoryScore(
+            name="momentum",
+            score=round(momentum_normalized, 1),
+            max_score=self.weights["momentum"],
+            weighted_score=round(momentum_weighted, 1),
+            details={
+                "rsi": round(rsi_scaled, 2),
+                "macd": round(macd_scaled, 2),
+                "trading_value": round(tv_scaled, 2),
+                "rsi_value": round(rsi, 1) if rsi else None,
+                "macd_value": round(macd, 2) if macd else None,
+                "macd_signal_value": round(macd_signal, 2) if macd_signal else None,
+                "trading_value_amount": round(trading_value, 2) if trading_value else None,
+            }
+        )
+
+        # =================================================================
+        # 5. 기술적 (10점): 추세(4) + 지지/저항(3) + ADX(3)
+        # =================================================================
+        trend_raw = calc_trend_score(ma20, ma60)  # 0-10
+        sr_raw = calc_support_resistance_score(current_price, low_52w, high_52w)  # 0-10
+        adx_raw = calc_adx_score(adx)  # 0-5
+
+        # 스케일 조정
+        trend_scaled = (trend_raw / 10) * 4  # 0-4
+        sr_scaled = (sr_raw / 10) * 3  # 0-3
+        adx_scaled = (adx_raw / 5) * 3  # 0-3
+
+        technical_raw_total = trend_scaled + sr_scaled + adx_scaled  # 0-10
+        technical_normalized = (technical_raw_total / 10) * 100
+        technical_weighted = (technical_normalized / 100) * self.weights["technical"]
+
+        technical = CategoryScore(
+            name="technical",
+            score=round(technical_normalized, 1),
+            max_score=self.weights["technical"],
+            weighted_score=round(technical_weighted, 1),
+            details={
+                "trend": round(trend_scaled, 2),
+                "support_resistance": round(sr_scaled, 2),
+                "adx": round(adx_scaled, 2),
+                "ma20_value": round(ma20, 0) if ma20 else None,
+                "ma60_value": round(ma60, 0) if ma60 else None,
+                "adx_value": round(adx, 1) if adx else None,
+                "current_price": round(current_price, 0) if current_price else None,
+                "low_52w": round(low_52w, 0) if low_52w else None,
+                "high_52w": round(high_52w, 0) if high_52w else None,
+                "position_52w": round(position_52w, 1) if position_52w else None,
+            }
+        )
+
+        # =================================================================
+        # 6. 섹터 (10점): 섹터순위(5) + 섹터모멘텀(5)
+        # =================================================================
+        rank_raw = calc_sector_rank_score(sector_rank, sector_total)  # 0-5
+        sector_mom_raw = calc_sector_momentum_score(sector_return_5d)  # 0-5
+
+        sector_raw_total = rank_raw + sector_mom_raw  # 0-10
+        sector_normalized = (sector_raw_total / 10) * 100
+        sector_weighted = (sector_normalized / 100) * self.weights["sector"]
+
+        sector_cat = CategoryScore(
+            name="sector",
+            score=round(sector_normalized, 1),
+            max_score=self.weights["sector"],
+            weighted_score=round(sector_weighted, 1),
+            details={
+                "sector_rank": round(rank_raw, 2),
+                "sector_momentum": round(sector_mom_raw, 2),
+                "sector_rank_value": sector_rank,
+                "sector_total_value": sector_total,
+                "sector_return_5d": round(sector_return_5d, 2) if sector_return_5d else None,
+            }
+        )
+
+        # =================================================================
+        # 7. 리스크 (10점): 변동성(4) + 베타(3) + 하방리스크(3)
+        # =================================================================
+        volatility_raw = calc_volatility_score(atr_pct)  # 0-4
+        beta_raw = calc_beta_score(beta)  # 0-3
+        downside_raw = calc_downside_risk_score(max_drawdown_pct)  # 0-3
+
+        risk_raw_total = volatility_raw + beta_raw + downside_raw  # 0-10
+        risk_normalized = (risk_raw_total / 10) * 100
+        risk_weighted = (risk_normalized / 100) * self.weights["risk"]
+
+        risk = CategoryScore(
+            name="risk",
+            score=round(risk_normalized, 1),
+            max_score=self.weights["risk"],
+            weighted_score=round(risk_weighted, 1),
+            details={
+                "volatility": round(volatility_raw, 2),
+                "beta": round(beta_raw, 2),
+                "downside_risk": round(downside_raw, 2),
+                "atr_pct_value": round(atr_pct, 2) if atr_pct else None,
+                "beta_value": round(beta, 2) if beta else None,
+                "max_drawdown_value": round(max_drawdown_pct, 2) if max_drawdown_pct else None,
+            }
+        )
+
+        # =================================================================
+        # 8. 주주환원 (5점): 배당수익률(5)
+        # =================================================================
+        dividend_raw = calc_dividend_yield_score(dividend_yield)  # 0-5
+
+        shareholder_raw_total = dividend_raw  # 0-5
+        shareholder_normalized = (shareholder_raw_total / 5) * 100
+        shareholder_weighted = (shareholder_normalized / 100) * self.weights["shareholder"]
+
+        shareholder = CategoryScore(
+            name="shareholder",
+            score=round(shareholder_normalized, 1),
+            max_score=self.weights["shareholder"],
+            weighted_score=round(shareholder_weighted, 1),
+            details={
+                "dividend_yield": round(dividend_raw, 2),
+                "dividend_yield_value": round(dividend_yield, 2) if dividend_yield else None,
+            }
+        )
+
+        # =================================================================
+        # 총점 계산 (100점 만점)
+        # =================================================================
+        total_score = (
+            valuation.weighted_score +
+            fundamental.weighted_score +
+            supply.weighted_score +
+            momentum.weighted_score +
+            technical.weighted_score +
+            sector_cat.weighted_score +
+            risk.weighted_score +
+            shareholder.weighted_score
+        )
+
+        # 투자 등급 판정
+        grade = get_investment_grade(total_score)
+
+        # V3에서도 기존 V2 필드 호환을 위해 market, relative_strength 생성
+        # (V3에서는 사용하지 않지만 API 호환성 유지)
+        news_score = calc_news_score(avg_sentiment)
+        analyst_score = calc_analyst_score(target_price, current_price)
+        market_raw_total = news_score + sector_mom_raw + analyst_score
+        market_normalized = (market_raw_total / 20) * 100
+
+        market = CategoryScore(
+            name="market",
+            score=round(market_normalized, 1),
+            max_score=15,  # V2 기준
+            weighted_score=0.0,  # V3에서는 사용하지 않음
+            details={
+                "news": round(news_score, 2),
+                "sector_momentum": round(sector_mom_raw, 2),
+                "analyst": round(analyst_score, 2),
+            }
+        )
+
+        # 알파 계산
+        alpha = None
+        if stock_return_20d is not None and market_return_20d is not None:
+            alpha = stock_return_20d - market_return_20d
+
+        alpha_score = calc_alpha_score(stock_return_20d, market_return_20d)
+        rs_raw_total = rank_raw + alpha_score
+        rs_normalized = (rs_raw_total / 10) * 100
+
+        relative_strength = CategoryScore(
+            name="relative_strength",
+            score=round(rs_normalized, 1),
+            max_score=10,  # V2 기준
+            weighted_score=0.0,  # V3에서는 사용하지 않음
+            details={
+                "sector_rank": round(rank_raw, 2),
+                "alpha": round(alpha_score, 2),
+                "sector_rank_value": sector_rank,
+                "sector_total_value": sector_total,
+                "stock_return_value": round(stock_return_20d, 2) if stock_return_20d else None,
+                "market_return_value": round(market_return_20d, 2) if market_return_20d else None,
+                "alpha_value": round(alpha, 2) if alpha else None,
+            }
+        )
+
+        return RubricResult(
+            symbol=symbol,
+            name=name,
+            # V2 호환 카테고리 (API 호환성)
+            technical=technical,
+            supply=supply,
+            fundamental=fundamental,
+            market=market,
+            risk=risk,
+            relative_strength=relative_strength,
+            # V3 전용 카테고리
+            valuation=valuation,
+            momentum=momentum,
+            sector=sector_cat,
+            shareholder=shareholder,
+            # 최종 결과
+            total_score=round(total_score, 1),
+            grade=grade,
+            rubric_version="v3",
+        )
+
 
 # =============================================================================
 # 점수 계산 함수들 - 리스크 평가 (10점) - 신규
@@ -1314,3 +1742,42 @@ def calc_roe_score(roe: Optional[float]) -> float:
         return 1.0  # 저조
     else:
         return 0.0  # 적자
+
+
+# =============================================================================
+# 점수 계산 함수들 - V3 주주환원 (5점)
+# =============================================================================
+
+
+def calc_dividend_yield_score(dividend_yield: Optional[float]) -> float:
+    """
+    배당수익률 점수 계산 (5점 만점)
+
+    배당수익률이 높을수록 주주환원 정책이 좋다고 평가합니다.
+    - 5% 이상: 최우수 (고배당)
+    - 3% 이상: 우수
+    - 2% 이상: 양호
+    - 1% 이상: 보통
+    - 0% 초과: 미흡
+
+    Args:
+        dividend_yield: 배당수익률 (%)
+
+    Returns:
+        0.0 ~ 5.0 사이의 점수
+    """
+    if dividend_yield is None:
+        return 2.5  # 데이터 없으면 중간값
+
+    if dividend_yield >= 5:
+        return 5.0  # 고배당
+    elif dividend_yield >= 3:
+        return 4.0  # 우수
+    elif dividend_yield >= 2:
+        return 3.0  # 양호
+    elif dividend_yield >= 1:
+        return 2.0  # 보통
+    elif dividend_yield > 0:
+        return 1.0  # 미흡
+    else:
+        return 0.0  # 무배당
