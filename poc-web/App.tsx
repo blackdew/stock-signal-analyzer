@@ -34,6 +34,8 @@ import StockCard from './components/StockCard';
 import StockModal from './components/StockModal';
 import ChatSidebar from './components/ChatSidebar';
 import SectorBarChart from './components/SectorBarChart';
+import TopSectorCard from './components/TopSectorCard';
+import StockRecommendCard from './components/StockRecommendCard';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import ReactMarkdown from 'react-markdown';
@@ -727,57 +729,39 @@ const App = () => {
 
         {/* Dynamic Views based on Tabs */}
         {(activeTab === 'sectors' && report.topSectors) && (
-            <div className="space-y-8 pt-10">
-               <h2 className="text-2xl font-bold flex items-center gap-2"><Briefcase className="text-emerald-400"/> 섹터 분석</h2>
-
-               {/* Sector Bar Chart */}
-               {report.allSectors && report.allSectors.length > 0 && (
-                   <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
-                       <h3 className="text-lg font-semibold text-white mb-4">섹터별 점수 순위</h3>
-                       <SectorBarChart sectors={report.allSectors} />
-                   </div>
-               )}
-
-               {/* Top 3 Sectors Detail */}
-               <div>
-                   <h3 className="text-lg font-semibold text-white mb-4">상위 3개 섹터 상세</h3>
-                   <div className="grid grid-cols-1 gap-6">
-                       {report.topSectors.map((sector, idx) => (
-                           <div key={idx} className="bg-slate-800 border border-slate-700 rounded-xl p-6 break-inside-avoid">
-                               <div className="flex justify-between items-start mb-4">
-                                   <h3 className="text-xl font-bold text-white">{sector.name}</h3>
-                                   <div className="flex items-center gap-2">
-                                       {sector.weightedScore && (
-                                           <span className="text-emerald-400 font-bold">{sector.weightedScore.toFixed(1)}점</span>
-                                       )}
-                                       <span className="bg-emerald-500/20 text-emerald-400 text-xs px-2 py-1 rounded font-bold">#{idx + 1}</span>
-                                   </div>
-                               </div>
-                               <p className="text-slate-300 mb-6">{sector.reasoning}</p>
-                               <div>
-                                   <h4 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">대장주 (Leading Stocks)</h4>
-                                   <div className="flex flex-wrap gap-2">
-                                       {sector.topStocks.map((stock, sIdx) => (
-                                           <span key={sIdx} className="bg-slate-900 text-slate-200 px-3 py-1 rounded border border-slate-700 text-sm">
-                                               {stock}
-                                           </span>
-                                       ))}
-                                   </div>
-                               </div>
-                           </div>
+            <div className="space-y-12 pt-10">
+               {/* 유망 섹터 Top 3 */}
+               <section>
+                   <h2 className="text-2xl font-bold flex items-center gap-2 mb-6">
+                       <Briefcase className="text-emerald-400"/> 유망 섹터 Top 3
+                   </h2>
+                   <div className="space-y-4">
+                       {report.topSectors.slice(0, 3).map((sector, idx) => (
+                           <TopSectorCard key={idx} sector={sector} rank={idx + 1} />
                        ))}
                    </div>
-               </div>
+               </section>
 
-               {report.sectorBestPicks && (
-                   <div className="mt-12 break-before-page">
-                       <h3 className="text-xl font-bold mb-4 text-slate-300">상세 분석: 섹터별 추천주</h3>
+               {/* 섹터별 점수 순위 차트 */}
+               {report.allSectors && report.allSectors.length > 0 && (
+                   <section>
+                       <h2 className="text-xl font-bold text-white mb-4">섹터별 점수 순위</h2>
+                       <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+                           <SectorBarChart sectors={report.allSectors} />
+                       </div>
+                   </section>
+               )}
+
+               {/* 상세 분석: 섹터별 추천주 */}
+               {report.sectorBestPicks && report.sectorBestPicks.length > 0 && (
+                   <section>
+                       <h2 className="text-xl font-bold mb-6 text-white">상세 분석: 섹터별 추천주</h2>
                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                           {report.sectorBestPicks.map((stock, i) => (
-                               <StockCard key={i} stock={stock} onClick={() => setSelectedStock(stock)} />
+                           {report.sectorBestPicks.slice(0, 6).map((stock, i) => (
+                               <StockRecommendCard key={i} stock={stock} onClick={() => setSelectedStock(stock)} />
                            ))}
                        </div>
-                   </div>
+                   </section>
                )}
             </div>
         )}
