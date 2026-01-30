@@ -549,7 +549,7 @@ data_dict = bundle.to_dict()
 - `price_data`: 현재가, 전일대비, 52주 고저, 52주 내 위치
 - `technical_indicators`: MA20, MA60, RSI, MACD, ADX, ATR%, Beta, 20일 수익률
 - `supply_data`: 외국인/기관 5일 순매수, 연속 순매수 일수, 거래대금
-- `fundamental_data`: PER, PBR, ROE, 영업이익률, 성장률, 부채비율
+- `fundamental_data`: PER, PBR, ROE, 영업이익률, 성장률, 부채비율, 배당수익률
 - `news_data`: 뉴스 건수, 센티먼트 비율, 주요 헤드라인
 - `sector_context`: 섹터별 분석 컨텍스트
 
@@ -577,7 +577,7 @@ data = await agent.collect(["005930", "000660"])
 데이터 수집 에이전트 모듈.
 
 - **MarketDataAgent**: 시장 데이터 수집 (주가, 거래량, 기술적 지표)
-- **FundamentalAgent**: 재무제표 수집 (PER, PBR, ROE, 성장률, 부채비율)
+- **FundamentalAgent**: 재무제표 수집 (PER, PBR, ROE, 성장률, 부채비율, 배당수익률)
 - **NewsAgent**: 뉴스 및 센티먼트 분석
 - **StockDataBundle**: LLM 분석을 위한 종합 데이터 번들
 
@@ -609,6 +609,7 @@ print(result.final_top5) # Top 5 종목
   - LLMScorer 우선, RubricEngine 폴백 방식
   - `use_llm` 옵션으로 LLM 사용 여부 제어
   - `is_fallback`, `fallback_reason` 필드로 LLM 실패 추적
+  - 섹터 분석 시 시총 기반 순위 및 5일 수익률 자동 계산
 
 - **SectorAnalyzer**: 섹터별 점수 산출
   - 시가총액 가중 평균 점수 계산
