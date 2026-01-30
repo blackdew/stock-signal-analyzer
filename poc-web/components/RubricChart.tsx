@@ -30,8 +30,9 @@ const RubricChart: React.FC<Props> = ({ score, version = 'v3' }) => {
     { subject: '상대강도(10%)', A: score.relative_strength, fullMark: 10 },
   ];
 
-  // V3 데이터가 있는지 확인 (valuation이 있으면 V3)
-  const hasV3Data = score.valuation !== undefined && score.valuation > 0;
+  // V3 데이터가 있는지 확인 (valuation이 undefined가 아니면 V3)
+  // V3 점수가 0일 수도 있으므로 > 0이 아닌 !== undefined로 체크
+  const hasV3Data = score.valuation !== undefined;
   const useV3 = version === 'v3' && hasV3Data;
   const data = useV3 ? dataV3 : dataV2;
   const maxDomain = useV3 ? 20 : 25;

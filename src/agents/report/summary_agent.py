@@ -174,35 +174,22 @@ class SummaryAgent(BaseAgent):
         rank: int,
     ) -> Dict[str, Any]:
         """
-        Top 3 종목의 상세 정보를 빌드합니다.
+        Top 5 종목의 상세 정보를 빌드합니다.
+        V3 8대 핵심 루브릭 점수와 LLM 분석 결과를 포함합니다.
         """
         # 선정 이유 생성
         selection_reason = self._generate_selection_reason(stock, rank)
 
-        return {
+        # stock.to_dict()의 데이터를 기반으로 구성 (LLM 분석 결과 포함)
+        base_data = stock.to_dict()
+
+        # 추가/덮어쓸 필드만 업데이트
+        base_data.update({
             "rank": rank,
-            "symbol": stock.symbol,
-            "name": stock.name,
-            "sector": stock.sector,
-            "total_score": round(stock.total_score, 2),
-            "investment_grade": stock.investment_grade,
-            "market_cap": round(stock.market_cap, 2),
-
-            # 카테고리별 점수
-            "technical_score": round(stock.technical_score, 2),
-            "supply_score": round(stock.supply_score, 2),
-            "fundamental_score": round(stock.fundamental_score, 2),
-            "market_score": round(stock.market_score, 2),
-            "risk_score": round(stock.risk_score, 2),
-            "relative_strength_score": round(stock.relative_strength_score, 2),
-
-            # 그룹 정보
-            "group": stock.group,
-            "rank_in_group": stock.rank_in_group,
-
-            # 선정 이유
             "selection_reason": selection_reason,
-        }
+        })
+
+        return base_data
 
     def _generate_selection_reason(
         self,
@@ -211,15 +198,18 @@ class SummaryAgent(BaseAgent):
     ) -> str:
         """
         Top 5 선정 이유를 종목별로 차별화하여 생성합니다.
+        V3 8대 핵심 루브릭 기준.
         """
-        # 카테고리별 점수와 만점 비율 계산
+        # V3 8대 핵심 루브릭 카테고리별 점수와 만점 비율 계산
         categories = {
-            "기술적 분석": (stock.technical_score, 25, "차트 흐름이 우수"),
-            "수급": (stock.supply_score, 20, "외국인/기관 매수세 유입"),
-            "펀더멘털": (stock.fundamental_score, 20, "재무 건전성 양호"),
-            "시장 환경": (stock.market_score, 15, "업종 모멘텀 긍정적"),
-            "리스크": (stock.risk_score, 10, "변동성 대비 안정적"),
-            "상대 강도": (stock.relative_strength_score, 10, "섹터 내 상위권"),
+            "밸류에이션": (stock.valuation_score, 20, "밸류에이션 매력도 우수"),
+            "펀더멘털": (stock.fundamental_score, 15, "재무 건전성 양호"),
+            "수급": (stock.supply_score, 15, "외국인/기관 매수세 유입"),
+            "모멘텀": (stock.momentum_score, 15, "상승 모멘텀 강함"),
+            "기술적": (stock.technical_score, 10, "차트 흐름 긍정적"),
+            "섹터": (stock.sector_score, 10, "섹터 내 상위권"),
+            "리스크": (stock.risk_score, 10, "리스크 관리 양호"),
+            "주주환원": (stock.shareholder_score, 5, "주주환원 정책 우수"),
         }
 
         # 만점 대비 비율로 정렬하여 가장 강한 카테고리 찾기
@@ -354,15 +344,17 @@ class SummaryAgent(BaseAgent):
 
 ## 💡 투자 안내
 
-이 리포트는 루브릭 기반 정량 분석을 통해 자동 생성되었습니다.
+이 리포트는 LLM 기반 V3 8대 핵심 루브릭 분석을 통해 자동 생성되었습니다.
 
-**평가 기준 (100점 만점)**:
-- 기술적 분석 (25점): 추세, RSI, 지지/저항, MACD, ADX
-- 수급 분석 (20점): 외국인, 기관, 거래대금
-- 펀더멘털 분석 (20점): PER, PBR, ROE, 성장률, 부채비율
-- 시장 환경 (15점): 뉴스 센티먼트, 섹터 모멘텀, 애널리스트
-- 리스크 평가 (10점): 변동성, 베타, 하방 리스크
-- 상대 강도 (10점): 섹터 내 순위, 시장 대비 알파
+**V3 8대 핵심 루브릭 (100점 만점)**:
+- 밸류에이션 (20점): PER, PBR
+- 펀더멘털 (15점): ROE, 성장률, 부채비율
+- 수급 (15점): 외국인/기관 순매수, 거래대금
+- 모멘텀 (15점): RSI, MACD, 20일 수익률
+- 기술적 (10점): 추세, 52주 위치
+- 섹터 (10점): 섹터 모멘텀, 섹터 내 순위
+- 리스크 (10점): 변동성, 베타, 하방 리스크
+- 주주환원 (5점): 배당수익률
 
 **투자 등급**:
 | 등급 | 점수 범위 | 의미 |
@@ -401,6 +393,7 @@ class SummaryAgent(BaseAgent):
     def _render_top5_details(self, stocks: List[StockAnalysisResult]) -> str:
         """
         Top 5 상세 분석을 렌더링합니다.
+        V3 8대 핵심 루브릭 기준.
         """
         details = []
 
@@ -418,13 +411,15 @@ class SummaryAgent(BaseAgent):
 | 투자 등급 | {stock.investment_grade} |
 | 분석 그룹 | {self._translate_group_name(stock.group)} |
 
-**카테고리별 점수**:
-- 기술적 분석: {stock.technical_score:.1f}/25점
-- 수급 분석: {stock.supply_score:.1f}/20점
-- 펀더멘털: {stock.fundamental_score:.1f}/20점
-- 시장 환경: {stock.market_score:.1f}/15점
+**V3 8대 핵심 루브릭 점수**:
+- 밸류에이션: {stock.valuation_score:.1f}/20점
+- 펀더멘털: {stock.fundamental_score:.1f}/15점
+- 수급: {stock.supply_score:.1f}/15점
+- 모멘텀: {stock.momentum_score:.1f}/15점
+- 기술적: {stock.technical_score:.1f}/10점
+- 섹터: {stock.sector_score:.1f}/10점
 - 리스크: {stock.risk_score:.1f}/10점
-- 상대 강도: {stock.relative_strength_score:.1f}/10점
+- 주주환원: {stock.shareholder_score:.1f}/5점
 
 **선정 이유**: {selection_reason}
 """

@@ -156,45 +156,49 @@ const StockModal: React.FC<Props> = ({ stock, onClose, high52w, low52w, currentP
             </div>
 
             {/* Right Column: Detailed Markdown Analysis */}
-            <div className="lg:col-span-2 space-y-8">
-                <section>
-                    <h3 className="text-xl font-bold text-white mb-3 border-b border-slate-800 pb-2">핵심 요약</h3>
-                    <p className="text-slate-300 text-lg leading-relaxed">{stock.summary}</p>
+            <div className="lg:col-span-2 space-y-6">
+                {/* 핵심 요약 섹션 */}
+                <section className="bg-slate-800/30 p-5 rounded-xl border border-slate-700/50">
+                    <h3 className="text-base font-semibold text-white mb-3 border-b border-slate-700 pb-2">핵심 요약</h3>
+                    <p className="text-slate-300 text-sm leading-relaxed">{stock.summary}</p>
                 </section>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="bg-slate-800/30 p-5 rounded-xl border border-slate-700/50">
-                        <h4 className="text-lg font-semibold text-blue-400 mb-3 flex items-center gap-2">
-                            <PieChart size={18} /> 재무 & 밸류에이션 분석
+                {/* 2열 분석 그리드 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-700/50">
+                        <h4 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2 border-b border-slate-700 pb-2">
+                            <PieChart size={16} /> 재무 & 밸류에이션 분석
                         </h4>
-                        <div className="prose prose-invert prose-sm max-w-none text-slate-300">
+                        <div className="prose prose-invert prose-sm max-w-none text-slate-300 text-sm [&>p]:text-sm [&>ul]:text-sm [&>ol]:text-sm [&>h1]:text-base [&>h2]:text-sm [&>h3]:text-sm [&>strong]:text-slate-200">
                             <ReactMarkdown>{stock.financialAnalysis || "분석 데이터 없음"}</ReactMarkdown>
                         </div>
                     </div>
-                    <div className="bg-slate-800/30 p-5 rounded-xl border border-slate-700/50">
-                        <h4 className="text-lg font-semibold text-purple-400 mb-3 flex items-center gap-2">
-                            <Activity size={18} /> 기술적 & 차트 분석
+                    <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-700/50">
+                        <h4 className="text-sm font-semibold text-purple-400 mb-3 flex items-center gap-2 border-b border-slate-700 pb-2">
+                            <Activity size={16} /> 기술적 & 차트 분석
                         </h4>
-                        <div className="prose prose-invert prose-sm max-w-none text-slate-300">
+                        <div className="prose prose-invert prose-sm max-w-none text-slate-300 text-sm [&>p]:text-sm [&>ul]:text-sm [&>ol]:text-sm [&>h1]:text-base [&>h2]:text-sm [&>h3]:text-sm [&>strong]:text-slate-200">
                             <ReactMarkdown>{stock.technicalAnalysis || "분석 데이터 없음"}</ReactMarkdown>
                         </div>
                     </div>
                 </div>
 
-                <section className="bg-slate-800/30 p-5 rounded-xl border border-slate-700/50">
-                    <h4 className="text-lg font-semibold text-orange-400 mb-3 flex items-center gap-2">
-                        <Newspaper size={18} /> 뉴스 & 시장 센티멘트
+                {/* 뉴스 & 시장 센티멘트 */}
+                <section className="bg-slate-800/30 p-4 rounded-xl border border-slate-700/50">
+                    <h4 className="text-sm font-semibold text-orange-400 mb-3 flex items-center gap-2 border-b border-slate-700 pb-2">
+                        <Newspaper size={16} /> 뉴스 & 시장 센티멘트
                     </h4>
-                    <div className="prose prose-invert prose-sm max-w-none text-slate-300">
+                    <div className="prose prose-invert prose-sm max-w-none text-slate-300 text-sm [&>p]:text-sm [&>ul]:text-sm [&>ol]:text-sm [&>h1]:text-base [&>h2]:text-sm [&>h3]:text-sm [&>strong]:text-slate-200">
                         <ReactMarkdown>{stock.marketSentiment || "분석 데이터 없음"}</ReactMarkdown>
                     </div>
                 </section>
 
-                 <section className="bg-emerald-900/10 p-6 rounded-xl border border-emerald-500/30">
-                    <h4 className="text-xl font-semibold text-emerald-400 mb-4 flex items-center gap-2">
-                        <FileText size={20} /> 종합 투자 의견 (Comprehensive Verdict)
+                {/* 종합 투자 의견 */}
+                <section className="bg-emerald-900/10 p-5 rounded-xl border border-emerald-500/30">
+                    <h4 className="text-sm font-semibold text-emerald-400 mb-3 flex items-center gap-2 border-b border-emerald-500/20 pb-2">
+                        <FileText size={16} /> 종합 투자 의견 (Comprehensive Verdict)
                     </h4>
-                    <div className="prose prose-invert prose-base max-w-none text-slate-200">
+                    <div className="prose prose-invert prose-sm max-w-none text-slate-200 text-sm [&>p]:text-sm [&>ul]:text-sm [&>ol]:text-sm [&>h1]:text-base [&>h2]:text-sm [&>h3]:text-sm [&>strong]:text-emerald-300">
                         <ReactMarkdown>{stock.comprehensiveAnalysis || "종합 분석 데이터 없음"}</ReactMarkdown>
                     </div>
                 </section>

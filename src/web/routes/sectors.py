@@ -56,16 +56,42 @@ def _stock_dict_to_schema(stock_dict: Dict[str, Any]) -> StockAnalysisSchema:
         sector=stock_dict.get("sector", ""),
         group=stock_dict.get("group", ""),
         market_cap=stock_dict.get("market_cap", 0),
+        # V2 카테고리 점수
         technical_score=stock_dict.get("technical_score", 0),
         supply_score=stock_dict.get("supply_score", 0),
         fundamental_score=stock_dict.get("fundamental_score", 0),
         market_score=stock_dict.get("market_score", 0),
         risk_score=stock_dict.get("risk_score", 0),
         relative_strength_score=stock_dict.get("relative_strength_score", 0),
+        # V3 8대 핵심 루브릭 점수
+        valuation_score=stock_dict.get("valuation_score", 0),
+        momentum_score=stock_dict.get("momentum_score", 0),
+        sector_score=stock_dict.get("sector_score", 0),
+        shareholder_score=stock_dict.get("shareholder_score", 0),
         total_score=stock_dict.get("total_score", 0),
         investment_grade=stock_dict.get("investment_grade", "Hold"),
         rank_in_group=stock_dict.get("rank_in_group", 0),
         final_rank=stock_dict.get("final_rank"),
+        # 세부 분석 정보
+        technical_details=stock_dict.get("technical_details"),
+        supply_details=stock_dict.get("supply_details"),
+        fundamental_details=stock_dict.get("fundamental_details"),
+        market_details=stock_dict.get("market_details"),
+        risk_details=stock_dict.get("risk_details"),
+        relative_strength_details=stock_dict.get("relative_strength_details"),
+        # V3 세부 분석 정보
+        valuation_details=stock_dict.get("valuation_details"),
+        momentum_details=stock_dict.get("momentum_details"),
+        sector_details=stock_dict.get("sector_details"),
+        shareholder_details=stock_dict.get("shareholder_details"),
+        # LLM 분석 결과
+        summary=stock_dict.get("summary"),
+        financial_analysis=stock_dict.get("financial_analysis"),
+        technical_analysis=stock_dict.get("technical_analysis"),
+        market_sentiment=stock_dict.get("market_sentiment"),
+        comprehensive_analysis=stock_dict.get("comprehensive_analysis"),
+        investment_thesis=stock_dict.get("investment_thesis"),
+        risks=stock_dict.get("risks"),
     )
 
 

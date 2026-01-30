@@ -2,14 +2,14 @@
 JSON Output Schemas
 
 LLM 응답의 JSON 스키마 정의.
-응답 파싱 및 검증에 사용됩니다.
+V3 8대 핵심 루브릭을 지원합니다.
 """
 
 from typing import Any, Dict, List, TypedDict
 
 
 # =============================================================================
-# Stock Score Schema
+# Stock Score Schema (V3 8대 핵심 루브릭)
 # =============================================================================
 
 class CategoryScoreSchema(TypedDict):
@@ -18,8 +18,35 @@ class CategoryScoreSchema(TypedDict):
     reasoning: str
 
 
+class CategoriesSchemaV3(TypedDict):
+    """V3 8대 핵심 루브릭 스키마"""
+    valuation: CategoryScoreSchema      # 밸류에이션 (20점)
+    fundamental: CategoryScoreSchema    # 펀더멘털 (15점)
+    supply: CategoryScoreSchema         # 수급 (15점)
+    momentum: CategoryScoreSchema       # 모멘텀 (15점)
+    technical: CategoryScoreSchema      # 기술적 (10점)
+    sector: CategoryScoreSchema         # 섹터 (10점)
+    risk: CategoryScoreSchema           # 리스크 (10점)
+    shareholder: CategoryScoreSchema    # 주주환원 (5점)
+
+
+class StockScoreSchemaV3(TypedDict):
+    """종목 점수 응답 스키마 (V3)"""
+    total_score: float
+    grade: str
+    categories: CategoriesSchemaV3
+    summary: str
+    financial_analysis: str
+    technical_analysis: str
+    market_sentiment: str
+    comprehensive_analysis: str
+    investment_thesis: List[str]
+    risks: List[str]
+
+
+# 하위 호환성을 위한 V2 스키마 (deprecated)
 class CategoriesSchema(TypedDict):
-    """전체 카테고리 스키마"""
+    """전체 카테고리 스키마 (V2, deprecated)"""
     technical: CategoryScoreSchema
     supply: CategoryScoreSchema
     fundamental: CategoryScoreSchema
@@ -29,7 +56,7 @@ class CategoriesSchema(TypedDict):
 
 
 class StockScoreSchema(TypedDict):
-    """종목 점수 응답 스키마"""
+    """종목 점수 응답 스키마 (V2, deprecated)"""
     total_score: float
     grade: str
     categories: CategoriesSchema
@@ -58,6 +85,7 @@ class SectorScoreSchema(TypedDict):
 # Schema Definitions (for validation)
 # =============================================================================
 
+# V3 8대 핵심 루브릭 스키마
 STOCK_SCORE_SCHEMA: Dict[str, Any] = {
     "type": "object",
     "required": [
@@ -73,17 +101,9 @@ STOCK_SCORE_SCHEMA: Dict[str, Any] = {
         },
         "categories": {
             "type": "object",
-            "required": ["technical", "supply", "fundamental", "market", "risk", "relative_strength"],
+            "required": ["valuation", "fundamental", "supply", "momentum", "technical", "sector", "risk", "shareholder"],
             "properties": {
-                "technical": {
-                    "type": "object",
-                    "required": ["score", "reasoning"],
-                    "properties": {
-                        "score": {"type": "number", "minimum": 0, "maximum": 25},
-                        "reasoning": {"type": "string"}
-                    }
-                },
-                "supply": {
+                "valuation": {
                     "type": "object",
                     "required": ["score", "reasoning"],
                     "properties": {
@@ -95,15 +115,39 @@ STOCK_SCORE_SCHEMA: Dict[str, Any] = {
                     "type": "object",
                     "required": ["score", "reasoning"],
                     "properties": {
-                        "score": {"type": "number", "minimum": 0, "maximum": 20},
+                        "score": {"type": "number", "minimum": 0, "maximum": 15},
                         "reasoning": {"type": "string"}
                     }
                 },
-                "market": {
+                "supply": {
                     "type": "object",
                     "required": ["score", "reasoning"],
                     "properties": {
                         "score": {"type": "number", "minimum": 0, "maximum": 15},
+                        "reasoning": {"type": "string"}
+                    }
+                },
+                "momentum": {
+                    "type": "object",
+                    "required": ["score", "reasoning"],
+                    "properties": {
+                        "score": {"type": "number", "minimum": 0, "maximum": 15},
+                        "reasoning": {"type": "string"}
+                    }
+                },
+                "technical": {
+                    "type": "object",
+                    "required": ["score", "reasoning"],
+                    "properties": {
+                        "score": {"type": "number", "minimum": 0, "maximum": 10},
+                        "reasoning": {"type": "string"}
+                    }
+                },
+                "sector": {
+                    "type": "object",
+                    "required": ["score", "reasoning"],
+                    "properties": {
+                        "score": {"type": "number", "minimum": 0, "maximum": 10},
                         "reasoning": {"type": "string"}
                     }
                 },
@@ -115,11 +159,11 @@ STOCK_SCORE_SCHEMA: Dict[str, Any] = {
                         "reasoning": {"type": "string"}
                     }
                 },
-                "relative_strength": {
+                "shareholder": {
                     "type": "object",
                     "required": ["score", "reasoning"],
                     "properties": {
-                        "score": {"type": "number", "minimum": 0, "maximum": 10},
+                        "score": {"type": "number", "minimum": 0, "maximum": 5},
                         "reasoning": {"type": "string"}
                     }
                 }
@@ -165,7 +209,7 @@ SECTOR_SCORE_SCHEMA: Dict[str, Any] = {
 
 def validate_stock_score(data: Dict[str, Any]) -> bool:
     """
-    종목 점수 응답을 검증합니다.
+    종목 점수 응답을 검증합니다 (V3 8대 루브릭).
 
     Args:
         data: LLM 응답 JSON
@@ -193,9 +237,9 @@ def validate_stock_score(data: Dict[str, Any]) -> bool:
         if data["grade"] not in valid_grades:
             return False
 
-        # 카테고리 확인
+        # V3 카테고리 확인
         categories = data.get("categories", {})
-        required_categories = ["technical", "supply", "fundamental", "market", "risk", "relative_strength"]
+        required_categories = ["valuation", "fundamental", "supply", "momentum", "technical", "sector", "risk", "shareholder"]
         for cat in required_categories:
             if cat not in categories:
                 return False

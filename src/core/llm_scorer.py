@@ -2,7 +2,7 @@
 LLM Scorer Module
 
 LLM을 활용하여 종목 점수와 분석을 생성하는 모듈.
-기존 RubricEngine을 대체하여 더 유연하고 맥락을 고려한 분석을 제공합니다.
+V3 8대 핵심 루브릭 (밸류에이션, 펀더멘털, 수급, 모멘텀, 기술적, 섹터, 리스크, 주주환원)을 지원합니다.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 LLM_SCORE_CACHE_TTL = 24  # LLM 점수 캐시: 24시간
-DEFAULT_MODEL = "gpt-5.2"
+DEFAULT_MODEL = "gpt-4o-mini"
 MAX_TOKENS = 8000
 TEMPERATURE = 0.3  # 점수 일관성을 위해 낮은 temperature
 
@@ -60,19 +60,21 @@ class CategoryScore:
 @dataclass
 class LLMScoreResult:
     """
-    LLM이 생성한 점수+분석 결과
+    LLM이 생성한 점수+분석 결과 (V3 8대 핵심 루브릭)
 
     Attributes:
         symbol: 종목 코드
         name: 종목명
 
-        # 점수 (기존 스키마 호환)
-        technical_score: 기술적 분석 점수 (0-25)
-        supply_score: 수급 분석 점수 (0-20)
-        fundamental_score: 펀더멘털 분석 점수 (0-20)
-        market_score: 시장 환경 점수 (0-15)
-        risk_score: 리스크 평가 점수 (0-10)
-        relative_strength_score: 상대 강도 점수 (0-10)
+        # V3 8대 핵심 루브릭 점수
+        valuation_score: 밸류에이션 점수 (0-20)
+        fundamental_score: 펀더멘털 점수 (0-15)
+        supply_score: 수급 점수 (0-15)
+        momentum_score: 모멘텀 점수 (0-15)
+        technical_score: 기술적 점수 (0-10)
+        sector_score: 섹터 점수 (0-10)
+        risk_score: 리스크 점수 (0-10)
+        shareholder_score: 주주환원 점수 (0-5)
         total_score: 총점 (0-100)
         grade: 투자 등급
 
@@ -91,15 +93,21 @@ class LLMScoreResult:
     symbol: str
     name: str
 
-    # 점수
-    technical_score: float = 0.0
-    supply_score: float = 0.0
-    fundamental_score: float = 0.0
-    market_score: float = 0.0
-    risk_score: float = 0.0
-    relative_strength_score: float = 0.0
+    # V3 8대 핵심 루브릭 점수
+    valuation_score: float = 0.0      # 밸류에이션 (20점)
+    fundamental_score: float = 0.0    # 펀더멘털 (15점)
+    supply_score: float = 0.0         # 수급 (15점)
+    momentum_score: float = 0.0       # 모멘텀 (15점)
+    technical_score: float = 0.0      # 기술적 (10점)
+    sector_score: float = 0.0         # 섹터 (10점)
+    risk_score: float = 0.0           # 리스크 (10점)
+    shareholder_score: float = 0.0    # 주주환원 (5점)
     total_score: float = 0.0
     grade: str = "Hold"
+
+    # 하위 호환성을 위한 V2 필드 (deprecated, V3에서 매핑)
+    market_score: float = 0.0
+    relative_strength_score: float = 0.0
 
     # 분석 텍스트
     summary: str = ""
@@ -118,31 +126,43 @@ class LLMScoreResult:
     fallback_reason: str = ""
 
     def to_category_scores(self) -> Dict[str, CategoryScore]:
-        """CategoryScore 딕셔너리로 변환 (기존 RubricResult 호환)"""
+        """CategoryScore 딕셔너리로 변환 (V3 8대 루브릭)"""
         return {
-            "technical": CategoryScore(
-                name="technical",
-                score=self.technical_score,
-                max_score=25,
-                reasoning=self.category_reasoning.get("technical", "")
-            ),
-            "supply": CategoryScore(
-                name="supply",
-                score=self.supply_score,
+            "valuation": CategoryScore(
+                name="valuation",
+                score=self.valuation_score,
                 max_score=20,
-                reasoning=self.category_reasoning.get("supply", "")
+                reasoning=self.category_reasoning.get("valuation", "")
             ),
             "fundamental": CategoryScore(
                 name="fundamental",
                 score=self.fundamental_score,
-                max_score=20,
+                max_score=15,
                 reasoning=self.category_reasoning.get("fundamental", "")
             ),
-            "market": CategoryScore(
-                name="market",
-                score=self.market_score,
+            "supply": CategoryScore(
+                name="supply",
+                score=self.supply_score,
                 max_score=15,
-                reasoning=self.category_reasoning.get("market", "")
+                reasoning=self.category_reasoning.get("supply", "")
+            ),
+            "momentum": CategoryScore(
+                name="momentum",
+                score=self.momentum_score,
+                max_score=15,
+                reasoning=self.category_reasoning.get("momentum", "")
+            ),
+            "technical": CategoryScore(
+                name="technical",
+                score=self.technical_score,
+                max_score=10,
+                reasoning=self.category_reasoning.get("technical", "")
+            ),
+            "sector": CategoryScore(
+                name="sector",
+                score=self.sector_score,
+                max_score=10,
+                reasoning=self.category_reasoning.get("sector", "")
             ),
             "risk": CategoryScore(
                 name="risk",
@@ -150,11 +170,11 @@ class LLMScoreResult:
                 max_score=10,
                 reasoning=self.category_reasoning.get("risk", "")
             ),
-            "relative_strength": CategoryScore(
-                name="relative_strength",
-                score=self.relative_strength_score,
-                max_score=10,
-                reasoning=self.category_reasoning.get("relative_strength", "")
+            "shareholder": CategoryScore(
+                name="shareholder",
+                score=self.shareholder_score,
+                max_score=5,
+                reasoning=self.category_reasoning.get("shareholder", "")
             ),
         }
 
@@ -185,9 +205,7 @@ class SectorLLMResult:
 
 class LLMScorer:
     """
-    LLM 기반 점수 산출기
-
-    기존 RubricEngine을 대체하여 LLM이 직접 점수와 분석을 생성합니다.
+    LLM 기반 점수 산출기 (V3 8대 핵심 루브릭)
 
     사용 예시:
         scorer = LLMScorer()
@@ -227,7 +245,7 @@ class LLMScorer:
 
     async def analyze_stock(self, data: StockDataBundle) -> LLMScoreResult:
         """
-        개별 종목을 분석합니다.
+        개별 종목을 분석합니다 (V3 8대 핵심 루브릭).
 
         Args:
             data: StockDataBundle 인스턴스
@@ -365,7 +383,7 @@ class LLMScorer:
                     },
                     {"role": "user", "content": prompt}
                 ],
-                max_completion_tokens=MAX_TOKENS,
+                max_tokens=MAX_TOKENS,
                 temperature=TEMPERATURE,
                 response_format={"type": "json_object"},
             )
@@ -375,28 +393,45 @@ class LLMScorer:
             raise
 
     def _parse_stock_response(self, response_text: str, symbol: str, name: str) -> LLMScoreResult:
-        """LLM 응답을 파싱하여 LLMScoreResult로 변환"""
+        """LLM 응답을 파싱하여 LLMScoreResult로 변환 (V3 8대 루브릭)"""
         try:
             data = json.loads(response_text)
 
             # 검증
             if not validate_stock_score(data):
                 logger.warning(f"Invalid LLM response for {symbol}, using defaults")
-                return self._create_default_result(symbol, name)
+                return self._create_default_result(symbol, name, "LLM 응답 검증 실패")
 
             categories = data.get("categories", {})
+
+            # V3 8대 루브릭 점수 파싱
+            valuation_score = categories.get("valuation", {}).get("score", 0)
+            fundamental_score = categories.get("fundamental", {}).get("score", 0)
+            supply_score = categories.get("supply", {}).get("score", 0)
+            momentum_score = categories.get("momentum", {}).get("score", 0)
+            technical_score = categories.get("technical", {}).get("score", 0)
+            sector_score = categories.get("sector", {}).get("score", 0)
+            risk_score = categories.get("risk", {}).get("score", 0)
+            shareholder_score = categories.get("shareholder", {}).get("score", 0)
 
             return LLMScoreResult(
                 symbol=symbol,
                 name=name,
-                technical_score=categories.get("technical", {}).get("score", 0),
-                supply_score=categories.get("supply", {}).get("score", 0),
-                fundamental_score=categories.get("fundamental", {}).get("score", 0),
-                market_score=categories.get("market", {}).get("score", 0),
-                risk_score=categories.get("risk", {}).get("score", 0),
-                relative_strength_score=categories.get("relative_strength", {}).get("score", 0),
+                # V3 점수
+                valuation_score=valuation_score,
+                fundamental_score=fundamental_score,
+                supply_score=supply_score,
+                momentum_score=momentum_score,
+                technical_score=technical_score,
+                sector_score=sector_score,
+                risk_score=risk_score,
+                shareholder_score=shareholder_score,
                 total_score=data.get("total_score", 50),
                 grade=data.get("grade", "Hold"),
+                # 하위 호환 (V2 매핑)
+                market_score=sector_score,  # V3 섹터 -> V2 시장환경
+                relative_strength_score=momentum_score * 0.67,  # V3 모멘텀 일부 -> V2 상대강도
+                # 분석 텍스트
                 summary=data.get("summary", ""),
                 financial_analysis=data.get("financial_analysis", ""),
                 technical_analysis=data.get("technical_analysis", ""),
@@ -405,18 +440,20 @@ class LLMScorer:
                 investment_thesis=data.get("investment_thesis", []),
                 risks=data.get("risks", []),
                 category_reasoning={
-                    "technical": categories.get("technical", {}).get("reasoning", ""),
-                    "supply": categories.get("supply", {}).get("reasoning", ""),
+                    "valuation": categories.get("valuation", {}).get("reasoning", ""),
                     "fundamental": categories.get("fundamental", {}).get("reasoning", ""),
-                    "market": categories.get("market", {}).get("reasoning", ""),
+                    "supply": categories.get("supply", {}).get("reasoning", ""),
+                    "momentum": categories.get("momentum", {}).get("reasoning", ""),
+                    "technical": categories.get("technical", {}).get("reasoning", ""),
+                    "sector": categories.get("sector", {}).get("reasoning", ""),
                     "risk": categories.get("risk", {}).get("reasoning", ""),
-                    "relative_strength": categories.get("relative_strength", {}).get("reasoning", ""),
+                    "shareholder": categories.get("shareholder", {}).get("reasoning", ""),
                 },
             )
 
         except json.JSONDecodeError as e:
             logger.error(f"JSON parse error for {symbol}: {e}")
-            return self._create_default_result(symbol, name)
+            return self._create_default_result(symbol, name, "JSON 파싱 실패")
 
     def _parse_sector_response(self, response_text: str, sector_name: str) -> SectorLLMResult:
         """LLM 응답을 파싱하여 SectorLLMResult로 변환"""
@@ -441,18 +478,25 @@ class LLMScorer:
             return self._create_default_sector_result(sector_name)
 
     def _create_default_result(self, symbol: str, name: str, reason: str = "LLM 분석 실패") -> LLMScoreResult:
-        """기본 결과 생성 (LLM 실패 시)"""
+        """기본 결과 생성 (LLM 실패 시) - V3 중간값"""
         return LLMScoreResult(
             symbol=symbol,
             name=name,
-            technical_score=12.5,
-            supply_score=10.0,
-            fundamental_score=10.0,
-            market_score=7.5,
-            risk_score=5.0,
-            relative_strength_score=5.0,
+            # V3 중간값
+            valuation_score=10.0,    # 20점 만점
+            fundamental_score=7.5,   # 15점 만점
+            supply_score=7.5,        # 15점 만점
+            momentum_score=7.5,      # 15점 만점
+            technical_score=5.0,     # 10점 만점
+            sector_score=5.0,        # 10점 만점
+            risk_score=5.0,          # 10점 만점
+            shareholder_score=2.5,   # 5점 만점
             total_score=50.0,
             grade="Hold",
+            # 하위 호환
+            market_score=5.0,
+            relative_strength_score=5.0,
+            # 분석 텍스트
             summary="분석 데이터가 제한적입니다.",
             financial_analysis="재무 분석이 필요합니다.",
             technical_analysis="기술적 분석이 필요합니다.",
@@ -488,18 +532,25 @@ class LLMScorer:
         return f"llm_score_{data.symbol}_{data_hash}"
 
     def _result_to_dict(self, result: LLMScoreResult) -> dict:
-        """결과를 딕셔너리로 변환"""
+        """결과를 딕셔너리로 변환 (V3)"""
         return {
             "symbol": result.symbol,
             "name": result.name,
-            "technical_score": result.technical_score,
-            "supply_score": result.supply_score,
+            # V3 점수
+            "valuation_score": result.valuation_score,
             "fundamental_score": result.fundamental_score,
-            "market_score": result.market_score,
+            "supply_score": result.supply_score,
+            "momentum_score": result.momentum_score,
+            "technical_score": result.technical_score,
+            "sector_score": result.sector_score,
             "risk_score": result.risk_score,
-            "relative_strength_score": result.relative_strength_score,
+            "shareholder_score": result.shareholder_score,
             "total_score": result.total_score,
             "grade": result.grade,
+            # 하위 호환
+            "market_score": result.market_score,
+            "relative_strength_score": result.relative_strength_score,
+            # 분석 텍스트
             "summary": result.summary,
             "financial_analysis": result.financial_analysis,
             "technical_analysis": result.technical_analysis,
@@ -511,18 +562,25 @@ class LLMScorer:
         }
 
     def _dict_to_result(self, data: dict) -> LLMScoreResult:
-        """딕셔너리를 결과로 변환"""
+        """딕셔너리를 결과로 변환 (V3)"""
         return LLMScoreResult(
             symbol=data.get("symbol", ""),
             name=data.get("name", ""),
-            technical_score=data.get("technical_score", 0),
-            supply_score=data.get("supply_score", 0),
+            # V3 점수
+            valuation_score=data.get("valuation_score", 0),
             fundamental_score=data.get("fundamental_score", 0),
-            market_score=data.get("market_score", 0),
+            supply_score=data.get("supply_score", 0),
+            momentum_score=data.get("momentum_score", 0),
+            technical_score=data.get("technical_score", 0),
+            sector_score=data.get("sector_score", 0),
             risk_score=data.get("risk_score", 0),
-            relative_strength_score=data.get("relative_strength_score", 0),
+            shareholder_score=data.get("shareholder_score", 0),
             total_score=data.get("total_score", 50),
             grade=data.get("grade", "Hold"),
+            # 하위 호환
+            market_score=data.get("market_score", 0),
+            relative_strength_score=data.get("relative_strength_score", 0),
+            # 분석 텍스트
             summary=data.get("summary", ""),
             financial_analysis=data.get("financial_analysis", ""),
             technical_analysis=data.get("technical_analysis", ""),

@@ -532,67 +532,97 @@ class StockAnalyzer(BaseAgent):
         """
         LLMScoreResult를 StockAnalysisResult로 변환합니다.
         V3 8대 루브릭 점수도 계산하여 포함합니다.
+
+        LLM이 fallback인 경우(API 실패 등) RubricEngine의 실제 점수를 사용합니다.
         """
-        # V3 8대 루브릭 점수 계산 (RubricEngine 사용)
-        valuation_score = 0.0
-        momentum_score = 0.0
-        sector_score = 0.0
-        shareholder_score = 0.0
+        # RubricEngine으로 점수 계산 (V3 포함)
+        rubric_result = None
+        low_52w = market_data.low_52w if market_data and hasattr(market_data, 'low_52w') else None
+        high_52w = market_data.high_52w if market_data and hasattr(market_data, 'high_52w') else None
+        atr_pct = market_data.atr_pct if market_data and hasattr(market_data, 'atr_pct') else None
+        beta = market_data.beta if market_data and hasattr(market_data, 'beta') else None
+        max_drawdown_pct = market_data.max_drawdown_pct if market_data and hasattr(market_data, 'max_drawdown_pct') else None
+        stock_return_20d = market_data.return_20d if market_data and hasattr(market_data, 'return_20d') else None
 
-        if self.rubric_engine.use_v3 and (market_data or fundamental_data):
-            try:
-                # V3 점수 계산을 위해 RubricEngine 호출
-                low_52w = market_data.low_52w if market_data and hasattr(market_data, 'low_52w') else None
-                high_52w = market_data.high_52w if market_data and hasattr(market_data, 'high_52w') else None
-                atr_pct = market_data.atr_pct if market_data and hasattr(market_data, 'atr_pct') else None
-                beta = market_data.beta if market_data and hasattr(market_data, 'beta') else None
-                max_drawdown_pct = market_data.max_drawdown_pct if market_data and hasattr(market_data, 'max_drawdown_pct') else None
-                stock_return_20d = market_data.return_20d if market_data and hasattr(market_data, 'return_20d') else None
+        try:
+            rubric_result = self.rubric_engine.calculate(
+                symbol=symbol,
+                name=name,
+                market_data=market_data,
+                fundamental_data=fundamental_data,
+                news_data=news_data,
+                low_52w=low_52w,
+                high_52w=high_52w,
+                atr_pct=atr_pct,
+                beta=beta,
+                max_drawdown_pct=max_drawdown_pct,
+                stock_return_20d=stock_return_20d,
+            )
+        except Exception as e:
+            self._log_debug(f"RubricEngine 점수 계산 실패 for {symbol}: {e}")
 
-                rubric_result = self.rubric_engine.calculate(
-                    symbol=symbol,
-                    name=name,
-                    market_data=market_data,
-                    fundamental_data=fundamental_data,
-                    news_data=news_data,
-                    low_52w=low_52w,
-                    high_52w=high_52w,
-                    atr_pct=atr_pct,
-                    beta=beta,
-                    max_drawdown_pct=max_drawdown_pct,
-                    stock_return_20d=stock_return_20d,
-                )
+        # LLM이 fallback인 경우 RubricEngine 점수 사용
+        if llm_result.is_fallback and rubric_result:
+            self._log_debug(f"LLM fallback for {symbol}, using RubricEngine scores")
+            return StockAnalysisResult(
+                symbol=symbol,
+                name=name,
+                sector=sector,
+                group=group,
+                market_cap=market_cap,
+                rubric_result=rubric_result,
+                # V2 카테고리 점수 (RubricEngine에서)
+                technical_score=rubric_result.technical.weighted_score,
+                supply_score=rubric_result.supply.weighted_score,
+                fundamental_score=rubric_result.fundamental.weighted_score,
+                market_score=rubric_result.market.weighted_score,
+                risk_score=rubric_result.risk.weighted_score if rubric_result.risk else 5.0,
+                relative_strength_score=rubric_result.relative_strength.weighted_score if rubric_result.relative_strength else 5.0,
+                # V3 8대 루브릭 점수
+                valuation_score=rubric_result.valuation.weighted_score if rubric_result.valuation else 0.0,
+                momentum_score=rubric_result.momentum.weighted_score if rubric_result.momentum else 0.0,
+                sector_score=rubric_result.sector.weighted_score if rubric_result.sector else 0.0,
+                shareholder_score=rubric_result.shareholder.weighted_score if rubric_result.shareholder else 0.0,
+                total_score=rubric_result.total_score,
+                investment_grade=rubric_result.grade,
+                data_quality=data_quality,
+                # Fallback 템플릿 분석 (RubricEngine 기반)
+                summary=f"{rubric_result.grade} 등급 (총점: {rubric_result.total_score:.1f}점)",
+                financial_analysis=None,  # apiService에서 템플릿 생성
+                technical_analysis=None,
+                market_sentiment=None,
+                comprehensive_analysis=None,
+                investment_thesis=None,
+                risks=None,
+                category_reasoning=None,
+                news_items=[
+                    {"title": item.title, "sentiment": item.sentiment}
+                    for item in news_data.news_items[:5]
+                ] if news_data else [],
+                is_fallback=True,
+                fallback_reason=llm_result.fallback_reason,
+            )
 
-                # V3 점수 추출
-                if rubric_result.valuation:
-                    valuation_score = rubric_result.valuation.weighted_score
-                if rubric_result.momentum:
-                    momentum_score = rubric_result.momentum.weighted_score
-                if rubric_result.sector:
-                    sector_score = rubric_result.sector.weighted_score
-                if rubric_result.shareholder:
-                    shareholder_score = rubric_result.shareholder.weighted_score
-            except Exception as e:
-                self._log_debug(f"V3 점수 계산 실패 for {symbol}: {e}")
-
+        # LLM 분석 성공 시 LLM V3 점수 직접 사용
         return StockAnalysisResult(
             symbol=symbol,
             name=name,
             sector=sector,
             group=group,
             market_cap=market_cap,
-            rubric_result=None,  # LLM 분석에서는 RubricResult 없음
+            rubric_result=rubric_result,  # 참고용 (to_dict에서 details 추출)
+            # V3 8대 핵심 루브릭 점수 (LLM에서 직접)
             technical_score=llm_result.technical_score,
             supply_score=llm_result.supply_score,
             fundamental_score=llm_result.fundamental_score,
-            market_score=llm_result.market_score,
+            market_score=0.0,  # V3에서는 미사용 (V2 호환성 유지)
             risk_score=llm_result.risk_score,
-            relative_strength_score=llm_result.relative_strength_score,
-            # V3 8대 루브릭 점수
-            valuation_score=valuation_score,
-            momentum_score=momentum_score,
-            sector_score=sector_score,
-            shareholder_score=shareholder_score,
+            relative_strength_score=0.0,  # V3에서는 미사용 (V2 호환성 유지)
+            # V3 전용 카테고리 점수 (LLM에서 직접)
+            valuation_score=llm_result.valuation_score,
+            momentum_score=llm_result.momentum_score,
+            sector_score=llm_result.sector_score,
+            shareholder_score=llm_result.shareholder_score,
             total_score=llm_result.total_score,
             investment_grade=llm_result.grade,
             data_quality=data_quality,
