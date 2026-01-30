@@ -247,7 +247,7 @@ class StockAnalyzer(BaseAgent):
     market_data_agent: MarketDataAgent = field(default_factory=MarketDataAgent)
     fundamental_agent: FundamentalAgent = field(default_factory=FundamentalAgent)
     news_agent: NewsAgent = field(default_factory=NewsAgent)
-    rubric_engine: RubricEngine = field(default_factory=RubricEngine)
+    rubric_engine: RubricEngine = field(default_factory=lambda: RubricEngine(use_v3=True))
     llm_scorer: LLMScorer = field(default_factory=LLMScorer)
     fetcher: StockDataFetcher = field(default_factory=StockDataFetcher)
     quality_validator: DataQualityValidator = field(default_factory=DataQualityValidator)
@@ -410,7 +410,8 @@ class StockAnalyzer(BaseAgent):
             try:
                 llm_result = await self.llm_scorer.analyze_stock(data_bundle)
                 return self._llm_result_to_analysis_result(
-                    llm_result, symbol, name, sector, group, market_cap, data_quality, news_data
+                    llm_result, symbol, name, sector, group, market_cap, data_quality, news_data,
+                    market_data, fundamental_data  # V3 점수 계산을 위해 추가
                 )
             except Exception as e:
                 self._log_warning(f"LLM analysis failed for {symbol}, falling back to RubricEngine: {e}")
@@ -525,10 +526,55 @@ class StockAnalyzer(BaseAgent):
         market_cap: float,
         data_quality: Optional[DataQualityResult],
         news_data: Optional[NewsData],
+        market_data: Optional[MarketData] = None,
+        fundamental_data: Optional[FundamentalData] = None,
     ) -> StockAnalysisResult:
         """
         LLMScoreResult를 StockAnalysisResult로 변환합니다.
+        V3 8대 루브릭 점수도 계산하여 포함합니다.
         """
+        # V3 8대 루브릭 점수 계산 (RubricEngine 사용)
+        valuation_score = 0.0
+        momentum_score = 0.0
+        sector_score = 0.0
+        shareholder_score = 0.0
+
+        if self.rubric_engine.use_v3 and (market_data or fundamental_data):
+            try:
+                # V3 점수 계산을 위해 RubricEngine 호출
+                low_52w = market_data.low_52w if market_data and hasattr(market_data, 'low_52w') else None
+                high_52w = market_data.high_52w if market_data and hasattr(market_data, 'high_52w') else None
+                atr_pct = market_data.atr_pct if market_data and hasattr(market_data, 'atr_pct') else None
+                beta = market_data.beta if market_data and hasattr(market_data, 'beta') else None
+                max_drawdown_pct = market_data.max_drawdown_pct if market_data and hasattr(market_data, 'max_drawdown_pct') else None
+                stock_return_20d = market_data.return_20d if market_data and hasattr(market_data, 'return_20d') else None
+
+                rubric_result = self.rubric_engine.calculate(
+                    symbol=symbol,
+                    name=name,
+                    market_data=market_data,
+                    fundamental_data=fundamental_data,
+                    news_data=news_data,
+                    low_52w=low_52w,
+                    high_52w=high_52w,
+                    atr_pct=atr_pct,
+                    beta=beta,
+                    max_drawdown_pct=max_drawdown_pct,
+                    stock_return_20d=stock_return_20d,
+                )
+
+                # V3 점수 추출
+                if rubric_result.valuation:
+                    valuation_score = rubric_result.valuation.weighted_score
+                if rubric_result.momentum:
+                    momentum_score = rubric_result.momentum.weighted_score
+                if rubric_result.sector:
+                    sector_score = rubric_result.sector.weighted_score
+                if rubric_result.shareholder:
+                    shareholder_score = rubric_result.shareholder.weighted_score
+            except Exception as e:
+                self._log_debug(f"V3 점수 계산 실패 for {symbol}: {e}")
+
         return StockAnalysisResult(
             symbol=symbol,
             name=name,
@@ -542,6 +588,11 @@ class StockAnalyzer(BaseAgent):
             market_score=llm_result.market_score,
             risk_score=llm_result.risk_score,
             relative_strength_score=llm_result.relative_strength_score,
+            # V3 8대 루브릭 점수
+            valuation_score=valuation_score,
+            momentum_score=momentum_score,
+            sector_score=sector_score,
+            shareholder_score=shareholder_score,
             total_score=llm_result.total_score,
             investment_grade=llm_result.grade,
             data_quality=data_quality,
