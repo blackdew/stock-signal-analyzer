@@ -1,10 +1,18 @@
 export interface RubricScore {
+  // V2 기존 카테고리 (하위 호환)
   technical: number;         // 기술적 분석 (25%)
   supply: number;            // 수급 분석 (20%)
   fundamental: number;       // 펀더멘털 분석 (20%)
   market: number;            // 시장 환경 (15%)
   risk: number;              // 리스크 평가 (10%)
   relative_strength: number; // 상대 강도 (10%)
+
+  // V3 8대 핵심 루브릭 (선택적)
+  valuation?: number;        // 밸류에이션 (20%)
+  momentum?: number;         // 모멘텀 (15%)
+  sector?: number;           // 섹터 (10%)
+  shareholder?: number;      // 주주환원 (5%)
+
   total: number;             // 100점 만점 종합 점수
   grade: InvestmentGrade;    // 투자 등급
 }

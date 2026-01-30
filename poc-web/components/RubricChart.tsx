@@ -4,11 +4,24 @@ import { RubricScore } from '../types';
 
 interface Props {
   score: RubricScore;
+  version?: 'v2' | 'v3';  // 차트 버전 선택
 }
 
-const RubricChart: React.FC<Props> = ({ score }) => {
-  // 백엔드와 동일한 6개 카테고리 (100점 만점 기준, 각 카테고리별 가중치 비율로 표시)
-  const data = [
+const RubricChart: React.FC<Props> = ({ score, version = 'v3' }) => {
+  // V3: 8대 핵심 루브릭 (validation-imgs 기준)
+  const dataV3 = [
+    { subject: '밸류에이션(20%)', A: score.valuation ?? 0, fullMark: 20 },
+    { subject: '펀더멘털(15%)', A: score.fundamental ?? 0, fullMark: 15 },
+    { subject: '수급(15%)', A: score.supply ?? 0, fullMark: 15 },
+    { subject: '모멘텀(15%)', A: score.momentum ?? 0, fullMark: 15 },
+    { subject: '기술적(10%)', A: score.technical ?? 0, fullMark: 10 },
+    { subject: '섹터(10%)', A: score.sector ?? 0, fullMark: 10 },
+    { subject: '리스크(10%)', A: score.risk ?? 0, fullMark: 10 },
+    { subject: '주주환원(5%)', A: score.shareholder ?? 0, fullMark: 5 },
+  ];
+
+  // V2: 6대 카테고리 (기존 버전)
+  const dataV2 = [
     { subject: '기술적(25%)', A: score.technical, fullMark: 25 },
     { subject: '수급(20%)', A: score.supply, fullMark: 20 },
     { subject: '펀더멘털(20%)', A: score.fundamental, fullMark: 20 },
@@ -17,13 +30,19 @@ const RubricChart: React.FC<Props> = ({ score }) => {
     { subject: '상대강도(10%)', A: score.relative_strength, fullMark: 10 },
   ];
 
+  // V3 데이터가 있는지 확인 (valuation이 있으면 V3)
+  const hasV3Data = score.valuation !== undefined && score.valuation > 0;
+  const useV3 = version === 'v3' && hasV3Data;
+  const data = useV3 ? dataV3 : dataV2;
+  const maxDomain = useV3 ? 20 : 25;
+
   return (
     <div className="h-56 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <RadarChart cx="50%" cy="50%" outerRadius="75%" data={data}>
           <PolarGrid stroke="#475569" />
           <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 10 }} />
-          <PolarRadiusAxis angle={30} domain={[0, 25]} tick={false} axisLine={false} />
+          <PolarRadiusAxis angle={30} domain={[0, maxDomain]} tick={false} axisLine={false} />
           <Radar
             name="점수"
             dataKey="A"
@@ -32,9 +51,10 @@ const RubricChart: React.FC<Props> = ({ score }) => {
             fill="#10b981"
             fillOpacity={0.4}
           />
-          <Tooltip 
+          <Tooltip
             contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#f1f5f9' }}
             itemStyle={{ color: '#10b981' }}
+            formatter={(value: number) => [`${value.toFixed(1)}점`, '점수']}
           />
         </RadarChart>
       </ResponsiveContainer>

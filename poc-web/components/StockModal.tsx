@@ -97,18 +97,20 @@ const StockModal: React.FC<Props> = ({ stock, onClose, high52w, low52w, currentP
             <div className="lg:col-span-1 space-y-6">
                 <div className="bg-slate-800/50 rounded-xl p-5 border border-slate-700">
                 <h3 className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
-                    <BarChart3 size={16} /> 6대 핵심 루브릭 (Score: {stock.rubric.total})
+                    <BarChart3 size={16} /> 8대 핵심 루브릭 (Score: {stock.rubric.total})
                 </h3>
-                <RubricChart score={stock.rubric} />
+                <RubricChart score={stock.rubric} version="v3" />
                 <div className="mt-4 space-y-2 text-xs">
-                     {/* Mini Score Table - 6개 카테고리 */}
+                     {/* Mini Score Table - 8대 카테고리 (V3) */}
                      <div className="grid grid-cols-2 gap-2">
-                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>기술적(25%)</span><span className="text-emerald-400 font-bold">{stock.rubric.technical}</span></div>
-                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>수급(20%)</span><span className="text-white font-bold">{stock.rubric.supply}</span></div>
-                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>펀더멘털(20%)</span><span className="text-white font-bold">{stock.rubric.fundamental}</span></div>
-                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>시장환경(15%)</span><span className="text-white font-bold">{stock.rubric.market}</span></div>
-                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>리스크(10%)</span><span className="text-white font-bold">{stock.rubric.risk}</span></div>
-                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>상대강도(10%)</span><span className="text-white font-bold">{stock.rubric.relative_strength}</span></div>
+                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>밸류에이션</span><span className="text-emerald-400 font-bold">{stock.rubric.valuation?.toFixed(1) ?? '-'}</span></div>
+                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>펀더멘털</span><span className="text-white font-bold">{stock.rubric.fundamental?.toFixed(1) ?? '-'}</span></div>
+                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>수급</span><span className="text-white font-bold">{stock.rubric.supply?.toFixed(1) ?? '-'}</span></div>
+                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>모멘텀</span><span className="text-white font-bold">{stock.rubric.momentum?.toFixed(1) ?? '-'}</span></div>
+                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>기술적</span><span className="text-white font-bold">{stock.rubric.technical?.toFixed(1) ?? '-'}</span></div>
+                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>섹터</span><span className="text-white font-bold">{stock.rubric.sector?.toFixed(1) ?? '-'}</span></div>
+                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>리스크</span><span className="text-white font-bold">{stock.rubric.risk?.toFixed(1) ?? '-'}</span></div>
+                        <div className="flex justify-between p-2 bg-slate-800 rounded"><span>주주환원</span><span className="text-white font-bold">{stock.rubric.shareholder?.toFixed(1) ?? '-'}</span></div>
                      </div>
                 </div>
                 </div>

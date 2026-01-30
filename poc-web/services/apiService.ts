@@ -35,12 +35,18 @@ interface BackendStockAnalysis {
   sector: string;
   group: string;
   market_cap: number;
+  // V2 점수 (하위 호환)
   technical_score: number;
   supply_score: number;
   fundamental_score: number;
   market_score: number;
   risk_score: number;
   relative_strength_score: number;
+  // V3 8대 핵심 루브릭 점수 (선택적)
+  valuation_score?: number;
+  momentum_score?: number;
+  sector_score?: number;
+  shareholder_score?: number;
   total_score: number;
   investment_grade: string;
   rank_in_group: number;
@@ -125,18 +131,24 @@ interface ErrorResponse {
 
 /**
  * 백엔드 종목 분석 결과를 프론트엔드 RubricScore로 변환합니다.
- * 백엔드와 프론트엔드 타입이 이제 동일한 6개 카테고리를 사용합니다.
+ * V2(6개 카테고리)와 V3(8대 핵심 루브릭) 모두 지원합니다.
  */
 const transformRubric = (backend: BackendStockAnalysis): RubricScore => {
   const grade = getGradeFromScore(backend.total_score);
 
   return {
+    // V2 기존 카테고리 (하위 호환)
     technical: backend.technical_score,
     supply: backend.supply_score,
     fundamental: backend.fundamental_score,
     market: backend.market_score,
     risk: backend.risk_score,
     relative_strength: backend.relative_strength_score,
+    // V3 8대 핵심 루브릭 (선택적)
+    valuation: backend.valuation_score,
+    momentum: backend.momentum_score,
+    sector: backend.sector_score,
+    shareholder: backend.shareholder_score,
     total: backend.total_score,
     grade: grade,
   };
