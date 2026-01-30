@@ -416,6 +416,11 @@ class StockAnalyzer(BaseAgent):
             try:
                 self._log_progress(i, total, f"Analyzing {symbol}")
 
+                # 섹터 순위 정보 추출
+                sector_info = sector_ranks.get(symbol, {}) if sector_ranks else {}
+                sector_rank = sector_info.get("rank")
+                sector_total = sector_info.get("total")
+
                 if use_llm:
                     # LLM 분석 (비동기)
                     result = await self._analyze_single_async(
@@ -426,6 +431,9 @@ class StockAnalyzer(BaseAgent):
                         news_data=news_data.get(symbol),
                         market_cap=market_caps.get(symbol, 0),
                         data_quality=quality_results.get(symbol),
+                        sector_rank=sector_rank,
+                        sector_total=sector_total,
+                        sector_return_5d=sector_return_5d,
                     )
                 else:
                     # RubricEngine 분석 (동기)
@@ -437,6 +445,9 @@ class StockAnalyzer(BaseAgent):
                         news_data=news_data.get(symbol),
                         market_cap=market_caps.get(symbol, 0),
                         data_quality=quality_results.get(symbol),
+                        sector_rank=sector_rank,
+                        sector_total=sector_total,
+                        sector_return_5d=sector_return_5d,
                     )
 
                 if result:
