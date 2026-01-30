@@ -661,7 +661,7 @@ class StockDataFetcher:
                     if th and td and "배당수익률" in th.text:
                         # "2.15%" -> 2.15
                         yield_text = td.text.strip().replace("%", "").replace(",", "")
-                        if yield_text and yield_text != "-":
+                        if yield_text and yield_text not in ("-", "N/A", "n/a", ""):
                             dividend_yield = float(yield_text)
                             logger.debug(f"종목 {symbol}: 배당수익률 조회 성공 - {dividend_yield}%")
                             return dividend_yield
@@ -671,7 +671,7 @@ class StockDataFetcher:
                 parent_text = em.parent.text if em.parent else ""
                 if "배당수익률" in parent_text:
                     yield_text = em.text.strip().replace("%", "").replace(",", "")
-                    if yield_text and yield_text != "-":
+                    if yield_text and yield_text not in ("-", "N/A", "n/a", ""):
                         dividend_yield = float(yield_text)
                         logger.debug(f"종목 {symbol}: 배당수익률 조회 성공 - {dividend_yield}%")
                         return dividend_yield
