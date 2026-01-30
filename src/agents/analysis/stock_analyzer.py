@@ -116,6 +116,9 @@ class StockAnalysisResult:
     is_fallback: bool = False
     fallback_reason: str = ""
 
+    # 원본 데이터 번들 (LLM 분석 시 to_dict()에서 상세 데이터 추출용)
+    data_bundle: Optional[StockDataBundle] = None
+
     def to_dict(self) -> Dict[str, Any]:
         """딕셔너리로 변환"""
         result = {
@@ -170,12 +173,26 @@ class StockAnalysisResult:
             if rubric.relative_strength and rubric.relative_strength.details:
                 result["relative_strength_details"] = rubric.relative_strength.details
 
-            # V3 카테고리 세부 정보
+            # V3 카테고리 세부 정보 + V2 호환 필드 복사
             if rubric.valuation and rubric.valuation.details:
                 result["valuation_details"] = rubric.valuation.details
+                # V2 호환: fundamental_details에 PER/PBR 복사
+                if "fundamental_details" in result:
+                    result["fundamental_details"]["per_value"] = rubric.valuation.details.get("per_value")
+                    result["fundamental_details"]["pbr_value"] = rubric.valuation.details.get("pbr_value")
+                    result["fundamental_details"]["sector_avg_per"] = rubric.valuation.details.get("sector_avg_per")
+                    result["fundamental_details"]["sector_avg_pbr"] = rubric.valuation.details.get("sector_avg_pbr")
 
             if rubric.momentum and rubric.momentum.details:
                 result["momentum_details"] = rubric.momentum.details
+                # V2 호환: technical_details에 RSI/MACD 복사
+                if "technical_details" in result:
+                    result["technical_details"]["rsi_value"] = rubric.momentum.details.get("rsi_value")
+                    result["technical_details"]["macd_value"] = rubric.momentum.details.get("macd_value")
+                    result["technical_details"]["macd_signal_value"] = rubric.momentum.details.get("macd_signal_value")
+                # V2 호환: supply_details에 거래대금 복사
+                if "supply_details" in result:
+                    result["supply_details"]["trading_value_amount"] = rubric.momentum.details.get("trading_value_amount")
 
             if rubric.sector and rubric.sector.details:
                 result["sector_details"] = rubric.sector.details
@@ -185,12 +202,83 @@ class StockAnalysisResult:
 
         # LLM category_reasoning을 세부 데이터로 변환 (rubric_result가 없는 경우)
         elif self.category_reasoning:
-            result["technical_details"] = {"reasoning": self.category_reasoning.get("technical", "")}
-            result["supply_details"] = {"reasoning": self.category_reasoning.get("supply", "")}
-            result["fundamental_details"] = {"reasoning": self.category_reasoning.get("fundamental", "")}
-            result["market_details"] = {"reasoning": self.category_reasoning.get("market", "")}
-            result["risk_details"] = {"reasoning": self.category_reasoning.get("risk", "")}
-            result["relative_strength_details"] = {"reasoning": self.category_reasoning.get("relative_strength", "")}
+            # data_bundle에서 원본 데이터 추출
+            fd = self.data_bundle.fundamental_data if self.data_bundle else {}
+            ti = self.data_bundle.technical_indicators if self.data_bundle else {}
+            sd = self.data_bundle.supply_data if self.data_bundle else {}
+            pd = self.data_bundle.price_data if self.data_bundle else {}
+
+            # 기술적 분석 세부 (원본 값 + reasoning)
+            result["technical_details"] = {
+                "reasoning": self.category_reasoning.get("technical", ""),
+                "ma20": ti.get("ma20"),
+                "ma60": ti.get("ma60"),
+                "rsi": ti.get("rsi"),
+                "macd": ti.get("macd"),
+                "macd_signal": ti.get("macd_signal"),
+                "adx": ti.get("adx"),
+                "atr_pct": ti.get("atr_pct"),
+                "beta": ti.get("beta"),
+                "return_20d": ti.get("return_20d"),
+                "current_price": pd.get("current_price"),
+                "price_change_pct": pd.get("price_change_pct"),
+                "low_52w": pd.get("low_52w"),
+                "high_52w": pd.get("high_52w"),
+                "position_52w": pd.get("position_52w"),
+            }
+
+            # 수급 분석 세부 (원본 값 + reasoning)
+            result["supply_details"] = {
+                "reasoning": self.category_reasoning.get("supply", ""),
+                "foreign_net_5d": sd.get("foreign_net_5d"),
+                "foreign_total_5d": sd.get("foreign_total_5d"),
+                "foreign_consecutive_days": sd.get("foreign_consecutive_days"),
+                "institution_net_5d": sd.get("institution_net_5d"),
+                "institution_total_5d": sd.get("institution_total_5d"),
+                "institution_consecutive_days": sd.get("institution_consecutive_days"),
+                "volume": sd.get("volume"),
+                "avg_volume_20d": sd.get("avg_volume_20d"),
+                "trading_value": sd.get("trading_value"),
+            }
+
+            # 펀더멘털 분석 세부 (원본 값 + reasoning)
+            result["fundamental_details"] = {
+                "reasoning": self.category_reasoning.get("fundamental", ""),
+                "per_value": fd.get("per"),
+                "pbr_value": fd.get("pbr"),
+                "roe_value": fd.get("roe"),
+                "operating_margin": fd.get("operating_margin"),
+                "revenue_growth": fd.get("revenue_growth"),
+                "op_growth_value": fd.get("operating_profit_growth"),
+                "debt_ratio_value": fd.get("debt_ratio"),
+                "sector_avg_per": fd.get("sector_avg_per"),
+                "sector_avg_pbr": fd.get("sector_avg_pbr"),
+            }
+
+            # 시장 환경 세부 (뉴스 센티먼트 원본 값 + reasoning)
+            nd = self.data_bundle.news_data if self.data_bundle else {}
+            result["market_details"] = {
+                "reasoning": self.category_reasoning.get("market", ""),
+                "news_total_count": nd.get("total_count"),
+                "news_positive_count": nd.get("positive_count"),
+                "news_negative_count": nd.get("negative_count"),
+                "news_neutral_count": nd.get("neutral_count"),
+                "avg_sentiment_score": nd.get("avg_sentiment_score"),
+            }
+
+            # 리스크 평가 세부 (원본 값 + reasoning)
+            result["risk_details"] = {
+                "reasoning": self.category_reasoning.get("risk", ""),
+                "atr_pct": ti.get("atr_pct"),
+                "beta": ti.get("beta"),
+                "max_drawdown_pct": ti.get("max_drawdown_pct"),
+            }
+
+            # 상대 강도 세부 (원본 값 + reasoning)
+            result["relative_strength_details"] = {
+                "reasoning": self.category_reasoning.get("relative_strength", ""),
+                "return_20d": ti.get("return_20d"),
+            }
             result["category_reasoning"] = self.category_reasoning
 
         # LLM 분석 결과 추가
@@ -268,7 +356,9 @@ class StockAnalyzer(BaseAgent):
     async def analyze_symbols(
         self,
         symbols: List[str],
-        group: str = "custom"
+        group: str = "custom",
+        sector_ranks: Optional[Dict[str, Dict[str, Any]]] = None,
+        sector_return_5d: Optional[float] = None,
     ) -> Dict[str, StockAnalysisResult]:
         """
         여러 종목을 분석합니다.
@@ -276,6 +366,8 @@ class StockAnalyzer(BaseAgent):
         Args:
             symbols: 종목 코드 리스트
             group: 그룹명 (kospi_top10, kospi_11_20, kosdaq_top10, sector_{name}, custom)
+            sector_ranks: 섹터 내 순위 정보 (symbol -> {"rank": int, "total": int})
+            sector_return_5d: 섹터 5일 수익률 (%)
 
         Returns:
             종목코드를 키로 하는 StockAnalysisResult 딕셔너리
@@ -411,7 +503,7 @@ class StockAnalyzer(BaseAgent):
                 llm_result = await self.llm_scorer.analyze_stock(data_bundle)
                 return self._llm_result_to_analysis_result(
                     llm_result, symbol, name, sector, group, market_cap, data_quality, news_data,
-                    market_data, fundamental_data  # V3 점수 계산을 위해 추가
+                    market_data, fundamental_data, data_bundle  # data_bundle 추가
                 )
             except Exception as e:
                 self._log_warning(f"LLM analysis failed for {symbol}, falling back to RubricEngine: {e}")
@@ -528,6 +620,7 @@ class StockAnalyzer(BaseAgent):
         news_data: Optional[NewsData],
         market_data: Optional[MarketData] = None,
         fundamental_data: Optional[FundamentalData] = None,
+        data_bundle: Optional[StockDataBundle] = None,
     ) -> StockAnalysisResult:
         """
         LLMScoreResult를 StockAnalysisResult로 변환합니다.
@@ -601,6 +694,7 @@ class StockAnalyzer(BaseAgent):
                 ] if news_data else [],
                 is_fallback=True,
                 fallback_reason=llm_result.fallback_reason,
+                data_bundle=data_bundle,  # 원본 데이터 번들 저장
             )
 
         # LLM 분석 성공 시 LLM V3 점수 직접 사용
@@ -641,6 +735,7 @@ class StockAnalyzer(BaseAgent):
             ] if news_data else [],
             is_fallback=llm_result.is_fallback,
             fallback_reason=llm_result.fallback_reason,
+            data_bundle=data_bundle,  # 원본 데이터 번들 저장
         )
 
     def _get_market_caps(self, symbols: List[str]) -> Dict[str, float]:

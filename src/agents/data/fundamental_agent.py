@@ -46,6 +46,9 @@ class FundamentalData:
     # 재무건전성
     debt_ratio: Optional[float] = None  # 부채비율 (%)
 
+    # 주주환원
+    dividend_yield: Optional[float] = None  # 배당수익률 (%)
+
     # 업종 평균 (비교용)
     sector_avg_per: Optional[float] = None
     sector_avg_pbr: Optional[float] = None
@@ -137,6 +140,9 @@ class FundamentalAgent(BaseAgent):
         # 재무 데이터 조회
         financial_data = self._fetch_financial_data(symbol)
 
+        # 배당수익률 조회 (기존 fetcher 함수 활용)
+        dividend_yield = self.fetcher.get_dividend_yield(symbol)
+
         if not financial_data:
             # 데이터가 없어도 기본 정보는 반환
             return FundamentalData(
@@ -165,6 +171,7 @@ class FundamentalAgent(BaseAgent):
             revenue_growth=financial_data.get("revenue_growth"),
             operating_profit_growth=financial_data.get("operating_profit_growth"),
             debt_ratio=financial_data.get("debt_ratio"),
+            dividend_yield=dividend_yield,
             sector_avg_per=sector_avg_per,
             sector_avg_pbr=sector_avg_pbr,
         )
@@ -181,6 +188,7 @@ class FundamentalAgent(BaseAgent):
             "revenue_growth": fundamental_data.revenue_growth,
             "operating_profit_growth": fundamental_data.operating_profit_growth,
             "debt_ratio": fundamental_data.debt_ratio,
+            "dividend_yield": fundamental_data.dividend_yield,
             "sector_avg_per": fundamental_data.sector_avg_per,
             "sector_avg_pbr": fundamental_data.sector_avg_pbr,
         }

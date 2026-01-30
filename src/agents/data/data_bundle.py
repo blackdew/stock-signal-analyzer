@@ -167,6 +167,7 @@ class StockDataBundle:
                 "revenue_growth": fundamental_data.revenue_growth,
                 "operating_profit_growth": fundamental_data.operating_profit_growth,
                 "debt_ratio": fundamental_data.debt_ratio,
+                "dividend_yield": fundamental_data.dividend_yield,
                 "sector_avg_per": fundamental_data.sector_avg_per,
                 "sector_avg_pbr": fundamental_data.sector_avg_pbr,
             }
@@ -264,6 +265,7 @@ class StockDataBundle:
             lines.append(f"- 영업이익률: {self._fmt(fd.get('operating_margin'))}%")
             lines.append(f"- 영업이익 성장률(YoY): {self._fmt(fd.get('operating_profit_growth'))}%")
             lines.append(f"- 부채비율: {self._fmt(fd.get('debt_ratio'))}%")
+            lines.append(f"- 배당수익률: {self._fmt(fd.get('dividend_yield'))}%")
             lines.append("")
 
         # 뉴스 센티먼트
