@@ -487,6 +487,9 @@ class StockAnalyzer(BaseAgent):
         news_data: Optional[NewsData],
         market_cap: float,
         data_quality: Optional[DataQualityResult] = None,
+        sector_rank: Optional[int] = None,
+        sector_total: Optional[int] = None,
+        sector_return_5d: Optional[float] = None,
     ) -> Optional[StockAnalysisResult]:
         """
         단일 종목을 비동기로 분석합니다 (LLM 사용).
@@ -514,7 +517,8 @@ class StockAnalyzer(BaseAgent):
                 llm_result = await self.llm_scorer.analyze_stock(data_bundle)
                 return self._llm_result_to_analysis_result(
                     llm_result, symbol, name, sector, group, market_cap, data_quality, news_data,
-                    market_data, fundamental_data, data_bundle  # data_bundle 추가
+                    market_data, fundamental_data, data_bundle,
+                    sector_rank=sector_rank, sector_total=sector_total, sector_return_5d=sector_return_5d,
                 )
             except Exception as e:
                 self._log_warning(f"LLM analysis failed for {symbol}, falling back to RubricEngine: {e}")
@@ -632,6 +636,9 @@ class StockAnalyzer(BaseAgent):
         market_data: Optional[MarketData] = None,
         fundamental_data: Optional[FundamentalData] = None,
         data_bundle: Optional[StockDataBundle] = None,
+        sector_rank: Optional[int] = None,
+        sector_total: Optional[int] = None,
+        sector_return_5d: Optional[float] = None,
     ) -> StockAnalysisResult:
         """
         LLMScoreResult를 StockAnalysisResult로 변환합니다.
