@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- 서비스 레이블 (launchctl에서 사용하는 고유 이름) -->
+    <key>Label</key>
+    <string>com.trading.daily-report</string>
+
+    <!-- 실행할 프로그램: run_daily_report.sh -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/sookbunlee/work/trading/scripts/run_daily_report.sh</string>
+    </array>
+
+    <!-- 작업 디렉토리 -->
+    <key>WorkingDirectory</key>
+    <string>/Users/sookbunlee/work/trading</string>
+
+    <!-- 스케줄: 매일 오전 7시 00분 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>7</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- 표준 출력 로그 -->
+    <key>StandardOutPath</key>
+    <string>/Users/sookbunlee/work/trading/logs/launchd_daily_stdout.log</string>
+
+    <!-- 표준 에러 로그 -->
+    <key>StandardErrorPath</key>
+    <string>/Users/sookbunlee/work/trading/logs/launchd_daily_stderr.log</string>
+
+    <!-- 프로세스가 종료되어도 재시작하지 않음 -->
+    <key>KeepAlive</key>
+    <false/>
+
+    <!-- plist 로드(launchctl load) 시점에 즉시 실행하지 않음 -->
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
