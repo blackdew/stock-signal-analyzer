@@ -78,14 +78,17 @@ class LLMScoreResult:
         total_score: 총점 (0-100)
         grade: 투자 등급
 
-        # 분석 텍스트
-        summary: 핵심 요약
-        financial_analysis: 재무 분석
-        technical_analysis: 기술적 분석
-        market_sentiment: 시장 센티먼트
-        comprehensive_analysis: 종합 분석
-        investment_thesis: 투자 포인트
-        risks: 리스크 요인
+        # 분석 텍스트 (DEPRECATED: LLMAnalyzer가 담당)
+        # LLMScorer는 더 이상 텍스트를 생성하지 않으며(프롬프트에서 제거됨),
+        # 이 필드들은 항상 빈 값. 하위 호환성을 위해 필드는 유지.
+        # 실제 분석 텍스트는 StockReportAgent → LLMAnalyzer 경로에서 채워짐.
+        summary: 핵심 요약 (deprecated)
+        financial_analysis: 재무 분석 (deprecated)
+        technical_analysis: 기술적 분석 (deprecated)
+        market_sentiment: 시장 센티먼트 (deprecated)
+        comprehensive_analysis: 종합 분석 (deprecated)
+        investment_thesis: 투자 포인트 (deprecated)
+        risks: 리스크 요인 (deprecated)
 
         # 판단 근거
         category_reasoning: 카테고리별 판단 근거
@@ -109,7 +112,9 @@ class LLMScoreResult:
     market_score: float = 0.0
     relative_strength_score: float = 0.0
 
-    # 분석 텍스트
+    # 분석 텍스트 (DEPRECATED — e521f88 이후 LLMScorer는 텍스트 생성 안 함)
+    # 필드는 하위 호환성 위해 유지. 실제 텍스트는 LLMAnalyzer가 담당.
+    # 다음 정리에서 매핑 코드 제거 + LLMAnalyzer 실패 폴백 메커니즘 검토 필요.
     summary: str = ""
     financial_analysis: str = ""
     technical_analysis: str = ""
