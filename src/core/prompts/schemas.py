@@ -86,13 +86,10 @@ class SectorScoreSchema(TypedDict):
 # =============================================================================
 
 # V3 8대 핵심 루브릭 스키마
+# 분석 텍스트(summary 등)는 LLMAnalyzer가 별도 담당 — 여기서는 점수만
 STOCK_SCORE_SCHEMA: Dict[str, Any] = {
     "type": "object",
-    "required": [
-        "total_score", "grade", "categories", "summary",
-        "financial_analysis", "technical_analysis", "market_sentiment",
-        "comprehensive_analysis", "investment_thesis", "risks"
-    ],
+    "required": ["total_score", "grade", "categories"],
     "properties": {
         "total_score": {"type": "number", "minimum": 0, "maximum": 100},
         "grade": {
@@ -169,23 +166,6 @@ STOCK_SCORE_SCHEMA: Dict[str, Any] = {
                 }
             }
         },
-        "summary": {"type": "string"},
-        "financial_analysis": {"type": "string"},
-        "technical_analysis": {"type": "string"},
-        "market_sentiment": {"type": "string"},
-        "comprehensive_analysis": {"type": "string"},
-        "investment_thesis": {
-            "type": "array",
-            "items": {"type": "string"},
-            "minItems": 1,
-            "maxItems": 5
-        },
-        "risks": {
-            "type": "array",
-            "items": {"type": "string"},
-            "minItems": 1,
-            "maxItems": 4
-        }
     }
 }
 
@@ -218,12 +198,8 @@ def validate_stock_score(data: Dict[str, Any]) -> bool:
         검증 성공 여부
     """
     try:
-        # 필수 필드 확인
-        required_fields = [
-            "total_score", "grade", "categories", "summary",
-            "financial_analysis", "technical_analysis", "market_sentiment",
-            "comprehensive_analysis", "investment_thesis", "risks"
-        ]
+        # 필수 필드 확인 (텍스트 필드는 LLMAnalyzer가 별도 담당, 여기 검증 X)
+        required_fields = ["total_score", "grade", "categories"]
         for field in required_fields:
             if field not in data:
                 return False

@@ -63,6 +63,8 @@ class StockReportAgent(BaseAgent):
     output_dir: Path = field(default_factory=lambda: DEFAULT_OUTPUT_DIR)
     llm_analyzer: LLMAnalyzer = field(default_factory=LLMAnalyzer)
     use_llm: bool = field(default=True)  # LLM 분석 사용 여부
+    # LLM 동시 호출 한도 (OpenAI rate limit 회피, StockAnalyzer와 동일 기본값)
+    max_concurrent_llm: int = 5
 
     def __post_init__(self):
         """출력 디렉토리 생성 및 로거 초기화"""
@@ -99,11 +101,14 @@ class StockReportAgent(BaseAgent):
         else:
             self._log_info(f"Generating {len(stocks)} stock reports (LLM disabled or unavailable)")
 
-        # 병렬 생성
-        tasks = [
-            self._generate_single_report(stock, use_llm=use_llm_flag)
-            for stock in stocks
-        ]
+        # 병렬 생성 (세마포어로 동시 호출 한도 — gpt-5.2 응답이 길어 무제한 동시 호출 시 rate limit)
+        semaphore = asyncio.Semaphore(self.max_concurrent_llm)
+
+        async def _gen_with_limit(stock: StockAnalysisResult) -> str:
+            async with semaphore:
+                return await self._generate_single_report(stock, use_llm=use_llm_flag)
+
+        tasks = [_gen_with_limit(stock) for stock in stocks]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # 결과 집계
