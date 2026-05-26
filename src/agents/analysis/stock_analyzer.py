@@ -144,6 +144,9 @@ class StockAnalysisResult:
             "rank_in_group": self.rank_in_group,
             "final_rank": self.final_rank,
             "data_quality": self.data_quality.to_dict() if self.data_quality else None,
+            # LLM 폴백 추적 (관측 가능성)
+            "is_fallback": self.is_fallback,
+            "fallback_reason": self.fallback_reason,
         }
 
         # rubric_result 세부 정보 추가
