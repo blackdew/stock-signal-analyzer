@@ -11,6 +11,33 @@ from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
 
+# =============================================================================
+# live_llm 마커: 실제 OpenAI 호출 테스트 제어
+# =============================================================================
+#
+# 기본은 자동 skip — 일반 `pytest` 실행 시 네트워크/비용 발생 방지.
+# 활성화: `uv run pytest --run-live-llm`
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--run-live-llm",
+        action="store_true",
+        default=False,
+        help="live_llm 마커가 붙은 테스트를 실제 실행 (실제 OpenAI 호출 발생)",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--run-live-llm"):
+        return
+    skip_marker = pytest.mark.skip(
+        reason="실제 LLM 호출 테스트는 기본 skip — 활성화: --run-live-llm"
+    )
+    for item in items:
+        if "live_llm" in item.keywords:
+            item.add_marker(skip_marker)
+
+
 @pytest.fixture
 def sample_stock_data():
     """

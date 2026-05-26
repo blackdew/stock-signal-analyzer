@@ -28,3 +28,6 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "live_llm: 실제 OpenAI 호출 발생 (네트워크/비용; --run-live-llm 플래그로만 실행)",
+]
