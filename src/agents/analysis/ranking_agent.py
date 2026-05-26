@@ -192,6 +192,27 @@ class RankingAgent(BaseAgent):
                 seen_symbols.add(stock.symbol)
                 unique_stocks.append(stock)
 
+        # 중복 제거 후 18개 미만이면 분석된 전체 풀에서 점수순 차순위 보충
+        # (KOSPI/KOSDAQ Top + 13개 섹터 전체 분석 결과 활용)
+        initial_count = len(unique_stocks)
+        if initial_count < 18:
+            # sector_results는 SectorAnalysisResult의 List
+            fallback_pool: List[StockAnalysisResult] = (
+                list(kospi_results.values())
+                + list(kosdaq_results.values())
+                + [s for sr in sector_results for s in sr.top_stocks]
+            )
+            fallback_pool.sort(key=lambda x: x.total_score, reverse=True)
+            for stock in fallback_pool:
+                if stock.symbol not in seen_symbols:
+                    seen_symbols.add(stock.symbol)
+                    unique_stocks.append(stock)
+                    if len(unique_stocks) >= 18:
+                        break
+            self._log_debug(
+                f"차순위 보충: 초기 {initial_count}개 → 최종 {len(unique_stocks)}개"
+            )
+
         # 점수순 정렬 및 순위 부여
         unique_stocks.sort(key=lambda x: x.total_score, reverse=True)
         for i, stock in enumerate(unique_stocks, 1):
