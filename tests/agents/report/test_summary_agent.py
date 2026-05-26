@@ -360,6 +360,9 @@ class TestSummaryAgent:
         assert "markdown" in result
         assert Path(result["json"]).exists()
         assert Path(result["markdown"]).exists()
+        # 자정 경계 회귀 방지: date_str이 명시적으로 전달되면 datetime.now() 대신 사용됨
+        # (Orchestrator가 시작 시각 date_str을 잠그고 전달해야 폴더와 JSON 파일명이 일치)
+        assert "analysis_20250118.json" in result["json"]
 
 
 # =============================================================================

@@ -350,7 +350,8 @@ class Orchestrator:
                 summary_dir=date_report_dir,
                 data_dir=Path(self.output_dir) / "data"
             )
-            summary_paths = await summary_agent.generate_summary(ranking_result)
+            # date_str을 명시적으로 전달 (자정 경계에서 폴더와 JSON 파일명 불일치 방지)
+            summary_paths = await summary_agent.generate_summary(ranking_result, date_str=date_str)
             report_paths["summary"] = summary_paths
 
             phase_time = time.time() - phase_start
