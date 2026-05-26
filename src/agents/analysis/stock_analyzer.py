@@ -8,6 +8,7 @@ LLMScorer를 통해 점수와 분석을 생성합니다.
 LLM이 사용 불가능한 경우 RubricEngine으로 폴백합니다.
 """
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -343,6 +344,9 @@ class StockAnalyzer(BaseAgent):
     # LLM 사용 여부 (True: LLM 우선, False: RubricEngine만)
     use_llm: bool = True
 
+    # LLM 동시 호출 한도 (보수적 기본값 5 — OpenAI rate limit 안전)
+    max_concurrent_llm: int = 5
+
     # 마지막 분석의 품질 요약 (Orchestrator에서 참조)
     _last_quality_summary: Optional[DataQualitySummary] = field(default=None, init=False)
 
@@ -412,31 +416,51 @@ class StockAnalyzer(BaseAgent):
         self._log_debug(f"Calculating scores using {analysis_method}...")
 
         total = len(symbols)
-        for i, symbol in enumerate(symbols, 1):
-            try:
-                self._log_progress(i, total, f"Analyzing {symbol}")
 
-                # 섹터 순위 정보 추출
-                sector_info = sector_ranks.get(symbol, {}) if sector_ranks else {}
-                sector_rank = sector_info.get("rank")
-                sector_total = sector_info.get("total")
+        def _sector_info(symbol: str) -> tuple[Optional[int], Optional[int]]:
+            info = sector_ranks.get(symbol, {}) if sector_ranks else {}
+            return info.get("rank"), info.get("total")
 
-                if use_llm:
-                    # LLM 분석 (비동기)
-                    result = await self._analyze_single_async(
-                        symbol=symbol,
-                        group=group,
-                        market_data=market_data.get(symbol),
-                        fundamental_data=fundamental_data.get(symbol),
-                        news_data=news_data.get(symbol),
-                        market_cap=market_caps.get(symbol, 0),
-                        data_quality=quality_results.get(symbol),
-                        sector_rank=sector_rank,
-                        sector_total=sector_total,
-                        sector_return_5d=sector_return_5d,
-                    )
-                else:
-                    # RubricEngine 분석 (동기)
+        if use_llm:
+            # LLM 경로: asyncio.gather + Semaphore로 병렬화
+            # (gpt-5.2 reasoning model 응답이 길어 직렬 처리 시 6시간+ 소요)
+            semaphore = asyncio.Semaphore(self.max_concurrent_llm)
+            completed = 0
+
+            async def analyze_one(symbol: str) -> tuple[str, Optional[StockAnalysisResult]]:
+                nonlocal completed
+                async with semaphore:
+                    try:
+                        sector_rank, sector_total = _sector_info(symbol)
+                        result = await self._analyze_single_async(
+                            symbol=symbol,
+                            group=group,
+                            market_data=market_data.get(symbol),
+                            fundamental_data=fundamental_data.get(symbol),
+                            news_data=news_data.get(symbol),
+                            market_cap=market_caps.get(symbol, 0),
+                            data_quality=quality_results.get(symbol),
+                            sector_rank=sector_rank,
+                            sector_total=sector_total,
+                            sector_return_5d=sector_return_5d,
+                        )
+                        completed += 1
+                        self._log_progress(completed, total, f"Analyzed {symbol}")
+                        return symbol, result
+                    except Exception as e:
+                        self._log_error(f"Failed to analyze {symbol}: {e}")
+                        return symbol, None
+
+            pairs = await asyncio.gather(*(analyze_one(s) for s in symbols))
+            for symbol, result in pairs:
+                if result:
+                    results[symbol] = result
+        else:
+            # RubricEngine 경로: 동기 처리 (이미 빠름, 병렬화 가치 없음)
+            for i, symbol in enumerate(symbols, 1):
+                try:
+                    self._log_progress(i, total, f"Analyzing {symbol}")
+                    sector_rank, sector_total = _sector_info(symbol)
                     result = self._analyze_single(
                         symbol=symbol,
                         group=group,
@@ -449,11 +473,10 @@ class StockAnalyzer(BaseAgent):
                         sector_total=sector_total,
                         sector_return_5d=sector_return_5d,
                     )
-
-                if result:
-                    results[symbol] = result
-            except Exception as e:
-                self._log_error(f"Failed to analyze {symbol}: {e}")
+                    if result:
+                        results[symbol] = result
+                except Exception as e:
+                    self._log_error(f"Failed to analyze {symbol}: {e}")
 
         # LLM 폴백 체크 및 경고
         if results:
