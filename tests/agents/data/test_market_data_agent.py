@@ -59,6 +59,9 @@ def mock_fetcher():
         StockInfo("000660", "SK하이닉스", 10000000.0, "반도체"),
     ]
 
+    # 최근 거래일 (collect()의 날짜 범위 계산에 사용, %Y%m%d 형식)
+    fetcher._get_latest_trading_date.return_value = datetime.now().strftime("%Y%m%d")
+
     return fetcher
 
 

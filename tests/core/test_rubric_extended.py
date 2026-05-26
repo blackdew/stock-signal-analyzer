@@ -308,9 +308,13 @@ class TestPbrScore:
 class TestRoeScore:
     """ROE 점수 계산 테스트"""
 
+    def test_outstanding(self):
+        """최우수: ROE >= 30% (글로벌 경쟁력)"""
+        assert calc_roe_score(32.0) == 5.0
+
     def test_excellent(self):
-        """우수: ROE >= 20%"""
-        assert calc_roe_score(25.0) == 5.0
+        """우수: 20% <= ROE < 30%"""
+        assert calc_roe_score(25.0) == 4.5
 
     def test_good(self):
         """양호: 15% <= ROE < 20%"""

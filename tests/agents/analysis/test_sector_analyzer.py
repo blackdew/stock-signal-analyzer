@@ -168,9 +168,10 @@ class TestSectorAnalyzer:
         analyzer = SectorAnalyzer(use_weighted_average=False)
         assert analyzer.use_weighted_average is False
 
-    def test_calculate_sector_score(self, analyzer, mock_stock_results):
+    @pytest.mark.asyncio
+    async def test_calculate_sector_score(self, analyzer, mock_stock_results):
         """섹터 점수 계산 테스트"""
-        result = analyzer._calculate_sector_score("반도체", mock_stock_results)
+        result = await analyzer._calculate_sector_score("반도체", mock_stock_results)
 
         assert result.sector_name == "반도체"
         assert result.stock_count == 3
@@ -191,7 +192,8 @@ class TestSectorAnalyzer:
         assert len(result.top_stocks) <= 5
         assert result.top_stocks[0].total_score >= result.top_stocks[1].total_score
 
-    def test_calculate_sector_score_zero_market_cap(self, analyzer):
+    @pytest.mark.asyncio
+    async def test_calculate_sector_score_zero_market_cap(self, analyzer):
         """시가총액이 0인 경우"""
         zero_cap_results = {
             "001": StockAnalysisResult(
@@ -212,7 +214,7 @@ class TestSectorAnalyzer:
             ),
         }
 
-        result = analyzer._calculate_sector_score("테스트", zero_cap_results)
+        result = await analyzer._calculate_sector_score("테스트", zero_cap_results)
 
         # 시가총액이 0이면 단순 평균 사용
         assert result.weighted_score == 75.0
@@ -373,7 +375,8 @@ class TestSectorAnalyzer:
 class TestWeightedAverageCalculation:
     """가중 평균 계산 정확성 테스트"""
 
-    def test_weighted_average_large_cap_dominance(self):
+    @pytest.mark.asyncio
+    async def test_weighted_average_large_cap_dominance(self):
         """대형주가 지배적인 경우"""
         analyzer = SectorAnalyzer()
 
@@ -398,7 +401,7 @@ class TestWeightedAverageCalculation:
             ),
         }
 
-        sector_result = analyzer._calculate_sector_score("테스트", results)
+        sector_result = await analyzer._calculate_sector_score("테스트", results)
 
         # 가중 평균: 90 * 0.9 + 50 * 0.1 = 81 + 5 = 86
         assert 85.0 <= sector_result.weighted_score <= 87.0
@@ -406,7 +409,8 @@ class TestWeightedAverageCalculation:
         # 단순 평균: (90 + 50) / 2 = 70
         assert sector_result.simple_score == 70.0
 
-    def test_weighted_average_equal_caps(self):
+    @pytest.mark.asyncio
+    async def test_weighted_average_equal_caps(self):
         """시가총액이 같은 경우"""
         analyzer = SectorAnalyzer()
 
@@ -429,7 +433,7 @@ class TestWeightedAverageCalculation:
             ),
         }
 
-        sector_result = analyzer._calculate_sector_score("테스트", results)
+        sector_result = await analyzer._calculate_sector_score("테스트", results)
 
         # 가중 평균 = 단순 평균 (시총이 같으므로)
         assert sector_result.weighted_score == sector_result.simple_score == 70.0

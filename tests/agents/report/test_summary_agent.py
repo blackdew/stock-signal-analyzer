@@ -309,7 +309,7 @@ class TestSummaryAgent:
         assert "상위 섹터" in md
         assert "그룹별 선정 종목" in md
         assert "최종" in md
-        assert "평가 기준" in md
+        assert "투자 안내" in md
         assert "투자 등급" in md
 
     @pytest.mark.asyncio

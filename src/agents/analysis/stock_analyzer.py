@@ -649,6 +649,7 @@ class StockAnalyzer(BaseAgent):
         news_data: Optional[NewsData],
         market_data: Optional[MarketData] = None,
         fundamental_data: Optional[FundamentalData] = None,
+        data_bundle: Optional[StockDataBundle] = None,
         sector_rank: Optional[int] = None,
         sector_total: Optional[int] = None,
         sector_return_5d: Optional[float] = None,

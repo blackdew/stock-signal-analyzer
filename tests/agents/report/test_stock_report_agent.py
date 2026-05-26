@@ -285,13 +285,12 @@ class TestStockReportAgent:
         """단일 리포트 생성 테스트"""
         agent = StockReportAgent(output_dir=temp_output_dir)
 
-        filepath = await agent._generate_single_report(mock_stock_result, "20250118")
+        filepath = await agent._generate_single_report(mock_stock_result, use_llm=False)
 
-        # 파일 생성 확인
+        # 파일 생성 확인 (파일명은 {symbol}_{name}.md, 날짜는 상위 폴더 구조에 포함)
         assert Path(filepath).exists()
         assert "005930" in filepath
         assert "삼성전자" in filepath
-        assert "20250118" in filepath
 
         # 파일 내용 확인
         with open(filepath, "r", encoding="utf-8") as f:

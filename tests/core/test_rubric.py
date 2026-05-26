@@ -127,34 +127,34 @@ class TestRsiScore:
     """RSI 점수 계산 테스트"""
 
     def test_optimal_range(self):
-        """최적 구간: RSI 40~60"""
+        """최적 구간(모멘텀 기반): RSI 50~70 = 건강한 상승 추세"""
         assert calc_rsi_score(50) == 10.0
-        assert calc_rsi_score(40) == 10.0
         assert calc_rsi_score(60) == 10.0
+        assert calc_rsi_score(70) == 10.0
 
     def test_oversold_recovery(self):
-        """과매도 탈출 구간: RSI 30~40"""
-        assert calc_rsi_score(35) == 8.0
+        """약세 구간: RSI 30~40"""
+        assert calc_rsi_score(35) == 4.0
 
     def test_upward_momentum(self):
-        """상승 모멘텀: RSI 60~70"""
-        assert calc_rsi_score(65) == 7.0
+        """상승 모멘텀: RSI 60~70 (최적 구간 포함)"""
+        assert calc_rsi_score(65) == 10.0
 
     def test_oversold(self):
-        """과매도: RSI 20~30"""
-        assert calc_rsi_score(25) == 6.0
+        """하락 추세: RSI 20~30"""
+        assert calc_rsi_score(25) == 2.0
 
     def test_overbought_warning(self):
-        """과매수 주의: RSI 70~80"""
-        assert calc_rsi_score(75) == 4.0
+        """강한 모멘텀: RSI 70~80 (상승 추세 지속)"""
+        assert calc_rsi_score(75) == 8.0
 
     def test_extreme_oversold(self):
-        """극단적 과매도: RSI < 20"""
-        assert calc_rsi_score(15) == 3.0
+        """극단적 약세: RSI < 20"""
+        assert calc_rsi_score(15) == 1.0
 
     def test_extreme_overbought(self):
-        """극단적 과매수: RSI > 80"""
-        assert calc_rsi_score(85) == 1.0
+        """과열이나 강세 지속 가능: RSI > 80"""
+        assert calc_rsi_score(85) == 6.0
 
     def test_missing_rsi(self):
         """RSI 데이터 없음"""
@@ -162,8 +162,8 @@ class TestRsiScore:
 
     def test_rsi_clamping(self):
         """RSI 범위 클램핑 (0-100)"""
-        assert calc_rsi_score(-10) == 3.0  # 극단적 과매도로 처리
-        assert calc_rsi_score(110) == 1.0  # 극단적 과매수로 처리
+        assert calc_rsi_score(-10) == 1.0  # 0으로 클램핑 → 극단적 약세
+        assert calc_rsi_score(110) == 6.0  # 100으로 클램핑 → 과열
 
 
 # =============================================================================
@@ -175,29 +175,29 @@ class TestSupportResistanceScore:
     """지지/저항 점수 계산 테스트"""
 
     def test_at_bottom(self):
-        """바닥권: 52주 범위의 0~20%"""
+        """바닥권(하락 추세, 모멘텀 기반): 52주 범위의 0~30%"""
         # 현재가 105 (최저 100, 최고 200) → position = 5/100 = 0.05
-        assert calc_support_resistance_score(105, 100, 200) == 10.0
+        assert calc_support_resistance_score(105, 100, 200) == 2.0
 
     def test_near_bottom(self):
-        """저점 근처: 52주 범위의 20~40%"""
+        """저점 근처(약세): 52주 범위의 30~50%"""
         # 현재가 130 (최저 100, 최고 200) → position = 30/100 = 0.3
-        assert calc_support_resistance_score(130, 100, 200) == 8.0
+        assert calc_support_resistance_score(130, 100, 200) == 4.0
 
     def test_middle(self):
-        """중간: 52주 범위의 40~60%"""
+        """중간: 52주 범위의 50~70%"""
         # 현재가 150 (최저 100, 최고 200) → position = 50/100 = 0.5
         assert calc_support_resistance_score(150, 100, 200) == 6.0
 
     def test_near_top(self):
-        """고점 근처: 52주 범위의 60~80%"""
+        """고점 근처(상승 추세): 52주 범위의 70~90%"""
         # 현재가 170 (최저 100, 최고 200) → position = 70/100 = 0.7
-        assert calc_support_resistance_score(170, 100, 200) == 4.0
+        assert calc_support_resistance_score(170, 100, 200) == 8.0
 
     def test_at_ceiling(self):
-        """천장권: 52주 범위의 80~100%"""
+        """신고가 근처(강한 상승 추세): 52주 범위의 90~100%"""
         # 현재가 195 (최저 100, 최고 200) → position = 95/100 = 0.95
-        assert calc_support_resistance_score(195, 100, 200) == 2.0
+        assert calc_support_resistance_score(195, 100, 200) == 10.0
 
     def test_missing_current_price(self):
         """현재가 데이터 없음"""
@@ -229,16 +229,16 @@ class TestForeignScore:
         assert calc_foreign_score([100, 50, 30, 20, 10]) == 10.0
 
     def test_four_consecutive_buy(self):
-        """4일 연속 순매수"""
-        assert calc_foreign_score([100, 50, 30, 20, -10]) == 8.0
+        """4일 순매수: 일수 6.0(4일+) + 누적양수 4.0 = 10.0"""
+        assert calc_foreign_score([100, 50, 30, 20, -10]) == 10.0
 
     def test_three_consecutive_buy(self):
-        """3일 연속 순매수"""
-        assert calc_foreign_score([100, 50, 30, -20, -10]) == 6.0
+        """3일 순매수: 일수 5.0(3일) + 누적양수 4.0 = 9.0"""
+        assert calc_foreign_score([100, 50, 30, -20, -10]) == 9.0
 
     def test_two_consecutive_buy(self):
-        """2일 연속 순매수"""
-        assert calc_foreign_score([100, 50, -30, -20, -10]) == 4.0
+        """2일 순매수: 일수 3.0(2일) + 누적양수 4.0 = 7.0"""
+        assert calc_foreign_score([100, 50, -30, -20, -10]) == 7.0
 
     def test_one_buy(self):
         """1일 순매수"""
@@ -367,12 +367,12 @@ class TestGrowthScore:
     """영업이익 성장률 점수 계산 테스트"""
 
     def test_high_growth(self):
-        """고성장: 30% 이상"""
-        assert calc_growth_score(35) == 10.0
+        """고성장: 30~50%"""
+        assert calc_growth_score(35) == 8.0
 
     def test_growth(self):
-        """성장: 20~30%"""
-        assert calc_growth_score(25) == 8.0
+        """양호한 성장: 20~30%"""
+        assert calc_growth_score(25) == 7.0
 
     def test_moderate_growth(self):
         """완만한 성장: 10~20%"""
@@ -387,8 +387,8 @@ class TestGrowthScore:
         assert calc_growth_score(-5) == 2.0
 
     def test_severe_decline(self):
-        """급격한 역성장: -10% 미만"""
-        assert calc_growth_score(-20) == 0.0
+        """큰 역성장: -10~-30%"""
+        assert calc_growth_score(-20) == 1.0
 
     def test_missing_growth(self):
         """성장률 데이터 없음"""
@@ -771,8 +771,8 @@ class TestEdgeCases:
         # 음수 PER
         assert calc_per_score(-10, 15) == 0.0
 
-        # 음수 RSI (클램핑)
-        assert calc_rsi_score(-10) == 3.0
+        # 음수 RSI (0으로 클램핑 → 극단적 약세)
+        assert calc_rsi_score(-10) == 1.0
 
     def test_zero_values(self):
         """0 값 처리"""
@@ -787,8 +787,8 @@ class TestEdgeCases:
 
     def test_extreme_values(self):
         """극단적 값 처리"""
-        # 매우 높은 RSI
-        assert calc_rsi_score(150) == 1.0
+        # 매우 높은 RSI (100으로 클램핑 → 과열)
+        assert calc_rsi_score(150) == 6.0
 
         # 매우 높은 PER
         assert calc_per_score(1000, 15) == 0.0

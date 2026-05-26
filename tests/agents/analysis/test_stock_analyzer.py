@@ -13,6 +13,7 @@ from src.agents.data.market_data_agent import MarketData
 from src.agents.data.fundamental_agent import FundamentalData
 from src.agents.data.news_agent import NewsData
 from src.core.rubric import RubricResult
+from src.core.config import SECTORS
 
 
 # =============================================================================
@@ -247,21 +248,21 @@ class TestStockAnalyzer:
         assert "000660" in results
 
     def test_get_market_caps(self, analyzer):
-        """시가총액 조회 테스트"""
-        # Mock KRX 리스팅
-        import pandas as pd
+        """시가총액 조회 테스트 (get_market_cap_rank 기반)"""
+        # get_market_cap_rank는 .symbol/.market_cap(억원)을 갖는 StockInfo 리스트를 반환
+        kospi_infos = [
+            MagicMock(symbol="005930", market_cap=4000000),
+            MagicMock(symbol="000660", market_cap=1000000),
+        ]
 
-        mock_krx = pd.DataFrame({
-            "Code": ["005930", "000660"],
-            "Marcap": [400000000000000, 100000000000000],  # 원 단위
-        })
+        def fake_rank(market, top_n):
+            return kospi_infos if market == "KOSPI" else []
 
-        with patch.object(analyzer.fetcher, '_get_krx_listing', return_value=mock_krx):
+        with patch.object(analyzer.fetcher, 'get_market_cap_rank', side_effect=fake_rank):
             result = analyzer._get_market_caps(["005930", "000660"])
 
         assert "005930" in result
         assert "000660" in result
-        # 억원 단위로 변환
         assert result["005930"] == 4000000
         assert result["000660"] == 1000000
 
@@ -282,9 +283,9 @@ class TestStockAnalyzerGroups:
     @pytest.mark.asyncio
     async def test_analyze_kospi_top_mock(self, analyzer):
         """KOSPI Top 분석 테스트 (Mock)"""
-        mock_symbols = [f"00000{i}" for i in range(20)]
+        mock_infos = [MagicMock(symbol=f"00000{i}") for i in range(20)]
 
-        with patch.object(analyzer.fetcher, 'get_market_cap_rank', return_value=mock_symbols):
+        with patch.object(analyzer.fetcher, 'get_market_cap_rank', return_value=mock_infos):
             with patch.object(analyzer, 'analyze_symbols', new_callable=AsyncMock) as mock_analyze:
                 mock_analyze.return_value = {}
                 await analyzer.analyze_kospi_top(20)
@@ -295,9 +296,9 @@ class TestStockAnalyzerGroups:
     @pytest.mark.asyncio
     async def test_analyze_kosdaq_top_mock(self, analyzer):
         """KOSDAQ Top 분석 테스트 (Mock)"""
-        mock_symbols = [f"00000{i}" for i in range(10)]
+        mock_infos = [MagicMock(symbol=f"00000{i}") for i in range(10)]
 
-        with patch.object(analyzer.fetcher, 'get_market_cap_rank', return_value=mock_symbols):
+        with patch.object(analyzer.fetcher, 'get_market_cap_rank', return_value=mock_infos):
             with patch.object(analyzer, 'analyze_symbols', new_callable=AsyncMock) as mock_analyze:
                 mock_analyze.return_value = {}
                 await analyzer.analyze_kosdaq_top(10)
@@ -330,8 +331,8 @@ class TestStockAnalyzerGroups:
             mock_analyze.return_value = {}
             results = await analyzer.analyze_all_sectors()
 
-        # 11개 섹터가 분석되어야 함
-        assert mock_analyze.call_count == 11
+        # config.SECTORS의 모든 섹터가 분석되어야 함
+        assert mock_analyze.call_count == len(SECTORS)
 
 
 # =============================================================================
@@ -391,3 +392,109 @@ class TestStockAnalyzerEdgeCases:
 
         assert "005930" in result
         mock_analyze.assert_called_once_with(["005930"])
+
+
+# =============================================================================
+# LLM 결과 변환 테스트 (회귀 방지)
+# =============================================================================
+
+
+class TestLLMResultConversion:
+    """
+    LLMScoreResult -> StockAnalysisResult 변환 테스트.
+
+    회귀 방지 대상 (docs/issues/llm-scoring-path-broken.md, 평가 항목 C1):
+    `_llm_result_to_analysis_result`의 호출부(analyze_stock 성공 경로)와
+    정의부 시그니처가 어긋나, 위치 인자 `data_bundle`이 `sector_rank`에
+    잘못 바인딩되어 TypeError가 발생하던 버그. 이로 인해 LLM 분석이
+    성공해도 매번 RubricEngine으로 폴백되었다.
+    """
+
+    @pytest.fixture
+    def analyzer(self):
+        """테스트용 분석기"""
+        return StockAnalyzer()
+
+    def test_llm_result_to_analysis_result_matches_call_site(self, analyzer):
+        """
+        `_llm_result_to_analysis_result`가 실제 호출부(stock_analyzer.py 518행)와
+        동일한 인자 형태 — 위치 인자 11개(마지막이 data_bundle) + 키워드 인자 3개 —
+        로 호출될 때 TypeError 없이 정상 동작해야 한다.
+        """
+        from src.core.llm_scorer import LLMScoreResult
+        from src.agents.data.data_bundle import StockDataBundle
+
+        llm_result = LLMScoreResult(
+            symbol="005930",
+            name="삼성전자",
+            valuation_score=15.0,
+            fundamental_score=11.0,
+            supply_score=11.0,
+            momentum_score=11.0,
+            technical_score=7.0,
+            sector_score=7.0,
+            risk_score=7.0,
+            shareholder_score=3.0,
+            total_score=72.0,
+            grade="Buy",
+        )
+        data_bundle = StockDataBundle(
+            symbol="005930",
+            name="삼성전자",
+            sector="반도체",
+            market_cap=4000000.0,
+        )
+
+        # analyze_stock 성공 경로와 동일한 호출 형태:
+        #   위치 인자 11개(llm_result..fundamental_data, data_bundle) + 키워드 3개
+        result = analyzer._llm_result_to_analysis_result(
+            llm_result, "005930", "삼성전자", "반도체", "custom", 4000000.0,
+            None, None, None, None, data_bundle,
+            sector_rank=1, sector_total=10, sector_return_5d=2.0,
+        )
+
+        assert isinstance(result, StockAnalysisResult)
+        assert result.symbol == "005930"
+        assert result.total_score == 72.0
+        assert result.investment_grade == "Buy"
+        # LLM 경로가 정상 동작하면 폴백이 아니어야 한다
+        assert result.is_fallback is False
+        # data_bundle이 결과에 보존되어야 한다
+        assert result.data_bundle is data_bundle
+
+    def test_llm_result_to_analysis_result_uses_llm_scores(self, analyzer):
+        """LLM 분석 성공 시 LLM이 산출한 V3 카테고리 점수를 그대로 사용해야 한다."""
+        from src.core.llm_scorer import LLMScoreResult
+        from src.agents.data.data_bundle import StockDataBundle
+
+        llm_result = LLMScoreResult(
+            symbol="000660",
+            name="SK하이닉스",
+            valuation_score=18.0,
+            fundamental_score=13.0,
+            supply_score=12.0,
+            momentum_score=12.0,
+            technical_score=8.0,
+            sector_score=8.0,
+            risk_score=6.0,
+            shareholder_score=2.0,
+            total_score=79.0,
+            grade="Buy",
+        )
+        data_bundle = StockDataBundle(
+            symbol="000660",
+            name="SK하이닉스",
+            sector="반도체",
+            market_cap=1000000.0,
+        )
+
+        result = analyzer._llm_result_to_analysis_result(
+            llm_result, "000660", "SK하이닉스", "반도체", "custom", 1000000.0,
+            None, None, None, None, data_bundle,
+            sector_rank=2, sector_total=10, sector_return_5d=1.0,
+        )
+
+        assert result.valuation_score == 18.0
+        assert result.momentum_score == 12.0
+        assert result.shareholder_score == 2.0
+        assert result.total_score == 79.0
