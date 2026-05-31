@@ -598,6 +598,19 @@ const handleApiError = async (response: Response): Promise<never> => {
 };
 
 /**
+ * 현재 실행 중인 분석 태스크가 있는지 조회합니다.
+ */
+export const getRunningAnalysis = async (): Promise<{ task_id: string | null; status: 'running' | 'idle'; message?: string }> => {
+  const response = await fetch(`${API_BASE}/api/analysis/running`);
+
+  if (!response.ok) {
+    await handleApiError(response);
+  }
+
+  return response.json();
+};
+
+/**
  * 최신 분석 결과를 조회합니다.
  */
 export const getLatestAnalysis = async (): Promise<AnalysisReport> => {

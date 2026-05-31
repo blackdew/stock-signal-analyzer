@@ -388,6 +388,23 @@ async def get_analysis_history() -> List[Dict[str, Any]]:
 
 
 @router.get(
+    "/analysis/running",
+    response_model=Dict[str, Any],
+)
+async def get_running_analysis(request: Request) -> Dict[str, Any]:
+    """현재 진행 중인 분석 태스크를 조회합니다."""
+    app_state = request.app.state.app_state
+    for task_id, task in app_state.analysis_tasks.items():
+        if task.get("status") == "running":
+            return {
+                "task_id": task_id,
+                "status": "running",
+                "message": "분석이 진행 중입니다.",
+            }
+    return {"task_id": None, "status": "idle", "message": "진행 중인 분석이 없습니다."}
+
+
+@router.get(
     "/analysis/latest",
     response_model=AnalysisResultSchema,
     responses={404: {"model": ErrorResponse}},

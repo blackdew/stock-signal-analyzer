@@ -108,8 +108,10 @@ def create_app(
     if cors_origins is None:
         cors_origins = [
             "http://localhost:3000",  # React 개발 서버
+            "http://localhost:3001",  # Vite 개발 서버 (포트 우회 대응)
             "http://localhost:5173",  # Vite 개발 서버
             "http://127.0.0.1:3000",
+            "http://127.0.0.1:3001",
             "http://127.0.0.1:5173",
         ]
 

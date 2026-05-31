@@ -45,6 +45,7 @@ const App = () => {
   const [status, setStatus] = useState<AgentStatus>(AgentStatus.IDLE);
   const [logs, setLogs] = useState<string[]>([]);
   const [report, setReport] = useState<Partial<AnalysisReport>>({});
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
   const [selectedStock, setSelectedStock] = useState<StockAnalysis | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'sectors' | 'kospi10' | 'kospiMid' | 'kosdaq' | 'all18' | 'final'>('overview');
   
@@ -118,6 +119,16 @@ const App = () => {
         const history = await ApiService.getAnalysisHistory();
         setServerHistory(history);
 
+        // 진행 중인 분석 태스크가 있는지 먼저 확인
+        const runningTask = await ApiService.getRunningAnalysis();
+        if (runningTask && runningTask.task_id && runningTask.status === 'running') {
+          addLog("진행 중인 분석 태스크를 발견했습니다. 로그 연결 중...");
+          setCurrentTaskId(runningTask.task_id);
+          setStatus(AgentStatus.ANALYZING_KOSPI_MID); // 로그 화면이 활성화되는 분석 중인 상태로 세팅
+          connectToRunningTaskLogs(runningTask.task_id);
+          return;
+        }
+
         // 최신 분석 결과 로드 (히스토리가 있는 경우)
         if (history.length > 0) {
           addLog("기존 분석 결과를 불러오는 중...");
@@ -171,9 +182,17 @@ const App = () => {
       addLog("리포트가 자동으로 저장되었습니다.");
   };
 
+  const isCurrentlyAnalyzing = (currentStatus: AgentStatus) => {
+    return currentStatus !== AgentStatus.IDLE && 
+           currentStatus !== AgentStatus.COMPLETE && 
+           currentStatus !== AgentStatus.ERROR;
+  };
+
   const loadReport = (saved: SavedReport) => {
       setReport(saved.report);
-      setStatus(AgentStatus.COMPLETE);
+      if (!isCurrentlyAnalyzing(status)) {
+        setStatus(AgentStatus.COMPLETE);
+      }
       setActiveTab('final');
       addLog(`저장된 리포트(${saved.date})를 불러왔습니다.`);
   };
@@ -186,7 +205,9 @@ const App = () => {
       const analysisReport = await ApiService.getAnalysisByDate(date);
       setReport(analysisReport);
       setSelectedDate(date);
-      setStatus(AgentStatus.COMPLETE);
+      if (!isCurrentlyAnalyzing(status)) {
+        setStatus(AgentStatus.COMPLETE);
+      }
       setActiveTab('final');
       addLog(`${date} 날짜의 분석 결과를 불러왔습니다.`);
     } catch (error: any) {
@@ -251,99 +272,63 @@ const App = () => {
       }
   };
 
-  const runAnalysis = async (forceNew: boolean = false) => {
-    setLogs([]);
-    setReport({});
-
+  const connectToRunningTaskLogs = async (taskId: string) => {
     try {
-      // Step 1: 기존 분석 결과 확인 시도
-      setStatus(AgentStatus.ANALYZING_SECTORS);
+      addLog(`백엔드 API: 태스크 ${taskId} 로그 수신 연결 중...`);
+      
+      const analysisReport = await new Promise<AnalysisReport>((resolve, reject) => {
+        let unsubscribe: (() => void) | null = null;
+        let fallbackTimeout: ReturnType<typeof setTimeout> | null = null;
 
-      let analysisReport: AnalysisReport | null = null;
-
-      // forceNew가 true면 기존 결과 확인 건너뛰기
-      if (!forceNew) {
-        addLog("백엔드 API: 기존 분석 결과 확인 중...");
-        try {
-          // 먼저 기존 분석 결과가 있는지 확인
-          analysisReport = await ApiService.getLatestAnalysis();
-          addLog("기존 분석 결과를 발견했습니다. 데이터 로드 중...");
-        } catch {
-          // 기존 결과가 없으면 새로 분석 실행
-          addLog("기존 분석 결과가 없습니다. 새로운 분석을 시작합니다...");
-        }
-      } else {
-        addLog("새로운 분석을 시작합니다...");
-      }
-
-      // 기존 결과가 없거나 forceNew일 경우 새 분석 실행
-      if (!analysisReport) {
-
-        // Step 2: 분석 실행
-        setStatus(AgentStatus.ANALYZING_KOSPI_10);
-        addLog("백엔드 API: 분석 태스크 시작...");
-        const taskResponse = await ApiService.runAnalysis({ mode: 'daily', use_cache: true });
-        addLog(`태스크 ID: ${taskResponse.task_id}`);
-
-        // Step 3: SSE로 실시간 로그 수신
-        setStatus(AgentStatus.ANALYZING_KOSPI_MID);
-        addLog("백엔드 API: 실시간 로그 수신 중...");
-
-        // SSE로 로그 스트리밍 구독 + 완료 대기
-        analysisReport = await new Promise<AnalysisReport>((resolve, reject) => {
-          let unsubscribe: (() => void) | null = null;
-          let fallbackTimeout: ReturnType<typeof setTimeout> | null = null;
-
-          // SSE 구독
-          unsubscribe = ApiService.subscribeToTaskLogs(
-            taskResponse.task_id,
-            // 로그 수신 콜백
-            (log) => {
-              const time = new Date(log.timestamp).toLocaleTimeString('ko-KR');
-              addLog(`[${time}] ${log.message}`);
-            },
-            // 상태 변경 콜백 (완료/실패)
-            async (statusEvent) => {
-              if (fallbackTimeout) clearTimeout(fallbackTimeout);
-              if (statusEvent.status === 'completed') {
-                try {
-                  const result = await ApiService.getLatestAnalysis();
-                  resolve(result);
-                } catch (e: any) {
-                  reject(new Error(`결과 조회 실패: ${e.message}`));
-                }
-              } else {
-                reject(new Error(statusEvent.message));
-              }
-            },
-            // 에러 콜백 - SSE 실패 시 폴링으로 폴백
-            async (_error) => {
-              addLog("SSE 연결 실패, 폴링 방식으로 전환합니다...");
+        // SSE 구독
+        unsubscribe = ApiService.subscribeToTaskLogs(
+          taskId,
+          // 로그 수신 콜백
+          (log) => {
+            const time = new Date(log.timestamp).toLocaleTimeString('ko-KR');
+            addLog(`[${time}] ${log.message}`);
+          },
+          // 상태 변경 콜백 (완료/실패)
+          async (statusEvent) => {
+            if (fallbackTimeout) clearTimeout(fallbackTimeout);
+            if (statusEvent.status === 'completed') {
               try {
-                const result = await ApiService.pollAnalysisTask(
-                  taskResponse.task_id,
-                  (status, message) => {
-                    if (status === 'running') {
-                      addLog(message || "분석 진행 중...");
-                    }
-                  },
-                  3000,
-                  1800000  // 30분 타임아웃 (GPT-5.2 모델 사용 시 더 오래 걸림)
-                );
+                const result = await ApiService.getLatestAnalysis();
                 resolve(result);
               } catch (e: any) {
-                reject(e);
+                reject(new Error(`결과 조회 실패: ${e.message}`));
               }
+            } else {
+              reject(new Error(statusEvent.message));
             }
-          );
+          },
+          // 에러 콜백 - SSE 실패 시 폴링으로 폴백
+          async (_error) => {
+            addLog("SSE 연결 실패, 폴링 방식으로 전환합니다...");
+            try {
+              const result = await ApiService.pollAnalysisTask(
+                taskId,
+                (status, message) => {
+                  if (status === 'running') {
+                    addLog(message || "분석 진행 중...");
+                  }
+                },
+                3000,
+                1800000  // 30분 타임아웃
+              );
+              resolve(result);
+            } catch (e: any) {
+              reject(e);
+            }
+          }
+        );
 
-          // 30분 타임아웃 (GPT-5.2 모델 사용 시 더 오래 걸림)
-          fallbackTimeout = setTimeout(() => {
-            if (unsubscribe) unsubscribe();
-            reject(new Error("분석 시간이 초과되었습니다."));
-          }, 1800000);
-        });
-      }
+        // 30분 타임아웃
+        fallbackTimeout = setTimeout(() => {
+          if (unsubscribe) unsubscribe();
+          reject(new Error("분석 시간이 초과되었습니다."));
+        }, 1800000);
+      });
 
       // Step 4: 결과 로드 및 표시
       setStatus(AgentStatus.ANALYZING_KOSDAQ);
@@ -376,6 +361,7 @@ const App = () => {
 
       setStatus(AgentStatus.COMPLETE);
       setActiveTab('final');
+      setCurrentTaskId(null); // 초기화
       saveCurrentReport(finalReport as AnalysisReport);
 
       // 서버 히스토리 갱신
@@ -386,13 +372,71 @@ const App = () => {
           setSelectedDate(history[0].date);
         }
       } catch {
-        // 히스토리 갱신 실패는 무시
+        // 무시
       }
 
     } catch (error: any) {
       console.error(error);
       addLog(`오류 발생: ${error.message}`);
       setStatus(AgentStatus.ERROR);
+      setCurrentTaskId(null); // 초기화
+    }
+  };
+
+  const runAnalysis = async (forceNew: boolean = false) => {
+    setLogs([]);
+    setReport({});
+
+    try {
+      // Step 1: 기존 분석 결과 확인 시도
+      setStatus(AgentStatus.ANALYZING_SECTORS);
+
+      let analysisReport: AnalysisReport | null = null;
+
+      // forceNew가 true면 기존 결과 확인 건너뛰기
+      if (!forceNew) {
+        addLog("백엔드 API: 기존 분석 결과 확인 중...");
+        try {
+          // 먼저 기존 분석 결과가 있는지 확인
+          analysisReport = await ApiService.getLatestAnalysis();
+          addLog("기존 분석 결과를 발견했습니다. 데이터 로드 중...");
+        } catch {
+          // 기존 결과가 없으면 새로 분석 실행
+          addLog("기존 분석 결과가 없습니다. 새로운 분석을 시작합니다...");
+        }
+      } else {
+        addLog("새로운 분석을 시작합니다...");
+      }
+
+      // 기존 결과가 없거나 forceNew일 경우 새 분석 실행
+      if (!analysisReport) {
+        // Step 2: 분석 실행
+        setStatus(AgentStatus.ANALYZING_KOSPI_10);
+        addLog("백엔드 API: 분석 태스크 시작...");
+        const taskResponse = await ApiService.runAnalysis({ mode: 'daily', use_cache: true });
+        addLog(`태스크 ID: ${taskResponse.task_id}`);
+        setCurrentTaskId(taskResponse.task_id);
+
+        // Step 3: SSE로 실시간 로그 수신 및 대기
+        await connectToRunningTaskLogs(taskResponse.task_id);
+      } else {
+        // 기존 결과 로드 및 표시
+        const finalReport = {
+          ...analysisReport,
+          timestamp: analysisReport.timestamp || new Date().toISOString()
+        };
+
+        setReport(finalReport);
+        addLog("리포트 로드 완료!");
+        setStatus(AgentStatus.COMPLETE);
+        setActiveTab('final');
+      }
+
+    } catch (error: any) {
+      console.error(error);
+      addLog(`오류 발생: ${error.message}`);
+      setStatus(AgentStatus.ERROR);
+      setCurrentTaskId(null);
     }
   };
 
