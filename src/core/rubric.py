@@ -7,14 +7,137 @@ Rubric Engine
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.core.config import RUBRIC_WEIGHTS, RUBRIC_WEIGHTS_V1, RUBRIC_WEIGHTS_V3, get_grade_from_score
 
 
 # =============================================================================
+# 퀀트 가치 투자 평가지표 산출 함수 (Piotroski, PEG, Valuation Band)
+# =============================================================================
+
+
+def calc_piotroski_f_score(yearly_history: Dict[str, List[float]]) -> int:
+    """
+    Piotroski F-Score 계산 (9점 만점)
+    
+    수익성(4점), 재무건전성(3점), 운영 효율성(2점)을 종합 평가하여 
+    가치 함정(Value Trap) 우려를 차단합니다.
+    """
+    if not yearly_history:
+        return 0
+
+    score = 0
+    try:
+        net_inc = yearly_history.get("net_income", [])
+        cfo = yearly_history.get("cfo", [])
+        assets = yearly_history.get("assets", [])
+        debt = yearly_history.get("debt_ratio", [])
+        curr_ratio = yearly_history.get("current_ratio", [])
+        cap = yearly_history.get("capital_stock", [])
+        op_margin = yearly_history.get("operating_margin", [])
+        rev = yearly_history.get("revenue", [])
+
+        # 1. ROA > 0 (당기순이익 당해년도 양수)
+        if len(net_inc) >= 3 and net_inc[2] is not None and net_inc[2] > 0:
+            score += 1
+
+        # 2. CFO > 0 (영업활동현금흐름 당해년도 양수)
+        if len(cfo) >= 3 and cfo[2] is not None and cfo[2] > 0:
+            score += 1
+
+        # 3. Delta ROA > 0 (전년 대비 ROA 개선)
+        if len(net_inc) >= 3 and len(assets) >= 3 and assets[1] > 0 and assets[2] > 0:
+            roa_prev = net_inc[1] / assets[1]
+            roa_curr = net_inc[2] / assets[2]
+            if roa_curr > roa_prev:
+                score += 1
+
+        # 4. CFO > Net Income (영업활동현금흐름이 당기순이익보다 우수)
+        if len(cfo) >= 3 and len(net_inc) >= 3 and cfo[2] is not None and net_inc[2] is not None:
+            if cfo[2] >= net_inc[2]:
+                score += 1
+
+        # 5. Delta Leverage < 0 (부채비율 감소)
+        if len(debt) >= 3 and debt[1] is not None and debt[2] is not None:
+            if debt[2] < debt[1]:
+                score += 1
+
+        # 6. Delta Liquidity > 0 (유동비율 개선)
+        if len(curr_ratio) >= 3 and curr_ratio[1] is not None and curr_ratio[2] is not None:
+            if curr_ratio[2] > curr_ratio[1]:
+                score += 1
+
+        # 7. Eq_Issued = 0 (신주 발행 없음 / 자본금 증가 없음)
+        if len(cap) >= 3 and cap[1] is not None and cap[2] is not None:
+            if cap[2] <= cap[1]:
+                score += 1
+
+        # 8. Delta Operating Margin > 0 (영업이익률 마진 향상)
+        if len(op_margin) >= 3 and op_margin[1] is not None and op_margin[2] is not None:
+            if op_margin[2] > op_margin[1]:
+                score += 1
+
+        # 9. Delta Asset Turnover > 0 (자산회전율 개선)
+        if len(rev) >= 3 and len(assets) >= 3 and assets[1] > 0 and assets[2] > 0:
+            turn_prev = rev[1] / assets[1]
+            turn_curr = rev[2] / assets[2]
+            if turn_curr > turn_prev:
+                score += 1
+
+    except Exception:
+        pass
+
+    return score
+
+
+def calc_peg_ratio(per: Optional[float], growth: Optional[float]) -> Tuple[float, float]:
+    """
+    PEG Ratio 계산 (PER / 영업이익 성장률 YoY) 및 스코어링 (10점 만점)
+    
+    성장률이 음수이거나 0일 때 발생 가능한 분모 오류 방지를 위한 Clamping 탑재.
+    """
+    if per is None or per <= 0 or growth is None or growth <= 0:
+        return 1.0, 99.0
+
+    peg = per / growth
+
+    # 스코어링 (10점 만점)
+    if peg <= 0.5:
+        return 10.0, peg
+    elif peg <= 1.0:
+        return 8.0, peg
+    elif peg <= 1.5:
+        return 5.0, peg
+    else:
+        return 1.0, peg
+
+
+def calc_valuation_band_score(
+    current_val: Optional[float],
+    val_min: Optional[float],
+    val_max: Optional[float]
+) -> float:
+    """
+    Valuation Band 내 현재 위치 분위수 계산 및 스코어링 (10점 만점)
+    
+    바닥권(0~20% 영역)에 가까울수록 만점(10점)에 근접하는 하방 경직 가치주 판정.
+    """
+    if None in (current_val, val_min, val_max) or val_max <= val_min:
+        return 5.0
+
+    percentile = (current_val - val_min) / (val_max - val_min)
+    percentile = max(0.0, min(1.0, percentile))
+
+    # 바닥에 있을수록 고득점
+    score = (1.0 - percentile) * 10.0
+    return round(max(0.0, min(10.0, score)), 2)
+
+
+# =============================================================================
 # 데이터 구조 정의
 # =============================================================================
+
 
 
 @dataclass
@@ -1139,13 +1262,15 @@ class RubricEngine:
             position_52w = (current_price - low_52w) / (high_52w - low_52w) * 100
 
         # =================================================================
-        # 1. 밸류에이션 (20점): PER(10) + PBR(10)
+        # 1. 밸류에이션 (20점): PEG(10) + Valuation Band(10)
         # =================================================================
-        per_raw = calc_per_score(per, sector_avg_per)  # 0-10
-        pbr_raw = calc_pbr_score(pbr, sector_avg_pbr)  # 0-5
-        pbr_scaled = pbr_raw * 2  # 0-10으로 스케일
+        # PEG Ratio 계산 (PER / 영업이익 성장률 YoY)
+        peg_score, peg_val = calc_peg_ratio(per, op_growth)
+        
+        # 52주 고저 밴드 분위수 기준 Valuation Band 계산
+        band_score = calc_valuation_band_score(current_price, low_52w, high_52w)
 
-        valuation_raw_total = per_raw + pbr_scaled  # 0-20
+        valuation_raw_total = peg_score + band_score  # 0-20
         valuation_normalized = (valuation_raw_total / 20) * 100
         valuation_weighted = (valuation_normalized / 100) * self.weights["valuation"]
 
@@ -1155,28 +1280,43 @@ class RubricEngine:
             max_score=self.weights["valuation"],
             weighted_score=round(valuation_weighted, 1),
             details={
-                "per": round(per_raw, 2),
-                "pbr": round(pbr_scaled, 2),
+                "peg_score": round(peg_score, 2),
+                "band_score": round(band_score, 2),
+                "peg_value": round(peg_val, 2) if peg_val != 99.0 else None,
                 "per_value": round(per, 2) if per else None,
                 "pbr_value": round(pbr, 2) if pbr else None,
                 "sector_avg_per": round(sector_avg_per, 2) if sector_avg_per else None,
                 "sector_avg_pbr": round(sector_avg_pbr, 2) if sector_avg_pbr else None,
+                "current_price": current_price,
+                "low_52w": low_52w,
+                "high_52w": high_52w,
             }
         )
 
         # =================================================================
-        # 2. 펀더멘털 (15점): ROE(5) + 성장률(6) + 부채비율(4)
+        # 2. 펀더멘털 (15점): ROE(3) + F-Score(9) + 부채비율(3)
         # =================================================================
         roe_raw = calc_roe_score(roe)  # 0-5
         growth_raw = calc_growth_score(op_growth)  # 0-10
         debt_raw = calc_debt_score(debt_ratio)  # 0-5
+        
+        # 다개년 시계열 맵 추출
+        yearly_history = getattr(fundamental_data, "yearly_history", {})
+        f_score = calc_piotroski_f_score(yearly_history)  # 0-9
 
-        # 스케일 조정
-        roe_scaled = roe_raw  # 0-5
-        growth_scaled = (growth_raw / 10) * 6  # 0-6
-        debt_scaled = (debt_raw / 5) * 4  # 0-4
+        # F-Score 정상 산출 여부에 따른 유연한 결측치 폴백(Fallback) 보장
+        if f_score == 0:
+            # [폴백 모드]: 다개년 시계열 결측 시 기존의 단년도 영업이익성장률(6점)로 대체 연동
+            f_score_scaled = (growth_raw / 10) * 6  # 0-6
+            roe_scaled = roe_raw  # 0-5
+            debt_scaled = (debt_raw / 5) * 4  # 0-4
+        else:
+            # [우량 퀀트 모드]: ROE(3점) + F-Score(9점) + 부채비율(3점) = 총 15점 만점 배분
+            f_score_scaled = (f_score / 9) * 9  # 0-9
+            roe_scaled = (roe_raw / 5) * 3  # 0-3
+            debt_scaled = (debt_raw / 5) * 3  # 0-3
 
-        fundamental_raw_total = roe_scaled + growth_scaled + debt_scaled  # 0-15
+        fundamental_raw_total = roe_scaled + f_score_scaled + debt_scaled  # 0-15
         fundamental_normalized = (fundamental_raw_total / 15) * 100
         fundamental_weighted = (fundamental_normalized / 100) * self.weights["fundamental"]
 
@@ -1187,13 +1327,15 @@ class RubricEngine:
             weighted_score=round(fundamental_weighted, 1),
             details={
                 "roe": round(roe_scaled, 2),
-                "growth": round(growth_scaled, 2),
+                "f_score": round(f_score_scaled, 2),
                 "debt": round(debt_scaled, 2),
                 "roe_value": round(roe, 2) if roe else None,
+                "piotroski_f_score_raw": f_score,
                 "op_growth_value": round(op_growth, 2) if op_growth else None,
                 "debt_ratio_value": round(debt_ratio, 2) if debt_ratio else None,
             }
         )
+
 
         # =================================================================
         # 3. 수급 (15점): 외국인(7.5) + 기관(7.5)

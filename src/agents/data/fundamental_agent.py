@@ -53,6 +53,9 @@ class FundamentalData:
     sector_avg_per: Optional[float] = None
     sector_avg_pbr: Optional[float] = None
 
+    # [신규] 다개년 시계열 재무 정보 맵 (Piotroski F-Score, Value Band 계산용)
+    yearly_history: Dict[str, List[float]] = field(default_factory=dict)
+
 
 # =============================================================================
 # FundamentalAgent
@@ -174,6 +177,7 @@ class FundamentalAgent(BaseAgent):
             dividend_yield=dividend_yield,
             sector_avg_per=sector_avg_per,
             sector_avg_pbr=sector_avg_pbr,
+            yearly_history=financial_data.get("yearly_history", {}),
         )
 
         # 캐시 저장
@@ -191,6 +195,7 @@ class FundamentalAgent(BaseAgent):
             "dividend_yield": fundamental_data.dividend_yield,
             "sector_avg_per": fundamental_data.sector_avg_per,
             "sector_avg_pbr": fundamental_data.sector_avg_pbr,
+            "yearly_history": fundamental_data.yearly_history,
         }
         self.cache.set(cache_key, cache_data, ttl_hours=CacheTTL.FUNDAMENTAL)
 
@@ -268,11 +273,37 @@ class FundamentalAgent(BaseAgent):
 
     def _extract_financial_table_data(self, soup: BeautifulSoup, result: Dict[str, Any]) -> None:
         """
-        주요재무정보 테이블에서 ROE, 부채비율, 영업이익률, 성장률을 추출합니다.
+        주요재무정보 테이블에서 최근 4개년 연간 실적 데이터를 시계열 리스트로 추출합니다.
+        F-Score, PEG, Valuation Band 등에 실질적으로 연계됩니다.
         """
+        result["yearly_history"] = {}
+        
+        # 재무 지표 매핑 딕셔너리
+        metric_mapping = {
+            "매출액": "revenue",
+            "영업이익": "operating_profit",
+            "당기순이익": "net_income",
+            "영업이익률": "operating_margin",
+            "ROE(지배주주)": "roe",
+            "부채비율": "debt_ratio",
+            "당좌비율": "current_ratio",  # 유동비율 대용
+            "유동비율": "current_ratio",
+            "자본금": "capital_stock",
+            "영업활동현금흐름": "cfo",
+            "자산총계": "assets",
+        }
+
+        def to_float(val_str: str) -> Optional[float]:
+            try:
+                val_str = val_str.strip().replace(",", "")
+                if val_str and val_str not in ("-", "N/A", ""):
+                    return float(val_str)
+            except ValueError:
+                pass
+            return None
+
         for table in soup.select("table.tb_type1"):
             headers = [th.text.strip() for th in table.select("th")]
-            # 주요재무정보 테이블 확인 (ROE(지배주주) 헤더 포함)
             if "ROE(지배주주)" not in headers:
                 continue
 
@@ -283,68 +314,73 @@ class FundamentalAgent(BaseAgent):
                     continue
 
                 th_text = th.text.strip()
-                tds = row.select("td")
-                if len(tds) < 3:
+                metric_key = None
+                
+                # 명칭 매칭
+                for k, v in metric_mapping.items():
+                    if k in th_text:
+                        metric_key = v
+                        break
+                
+                if not metric_key:
                     continue
 
-                # 2024.12 (3번째 컬럼, 인덱스 2)를 기본으로 사용
-                # 값이 없으면 2023.12 (2번째 컬럼, 인덱스 1) 사용
-                value = None
+                tds = row.select("td")
+                if len(tds) < 4:
+                    continue
+
+                # 최근 연간 4개 칼럼 파싱 (보통 td의 0, 1, 2, 3 인덱스가 연간 실적)
+                yearly_values = []
+                for idx in range(4):
+                    if idx < len(tds):
+                        val = to_float(tds[idx].text)
+                        yearly_values.append(val if val is not None else 0.0)  # 결측치는 안전하게 0.0 처리
+                    else:
+                        yearly_values.append(0.0)
+
+                # 시계열에 축적
+                result["yearly_history"][metric_key] = yearly_values
+
+                # 단일 년도 대표값 (기존 루브릭 Fallback 호환성 유지)
+                # 2024.12(인덱스 2) 또는 2023.12(인덱스 1) 데이터를 대표값으로 추출
+                repr_val = None
                 for idx in [2, 1]:
                     if idx < len(tds):
-                        td_text = tds[idx].text.strip().replace(",", "")
-                        if td_text and td_text != "-":
-                            try:
-                                value = float(td_text)
-                                break
-                            except ValueError:
-                                continue
+                        val = to_float(tds[idx].text)
+                        if val is not None:
+                            repr_val = val
+                            break
+                
+                if repr_val is not None:
+                    if metric_key == "roe" and "roe" not in result:
+                        result["roe"] = round(repr_val, 2)
+                    elif metric_key == "debt_ratio" and "debt_ratio" not in result:
+                        result["debt_ratio"] = round(repr_val, 2)
+                    elif metric_key == "operating_margin" and "operating_margin" not in result:
+                        result["operating_margin"] = round(repr_val, 2)
 
-                if value is None:
-                    continue
-
-                # 각 항목별 추출
-                if th_text == "ROE(지배주주)" and "roe" not in result:
-                    result["roe"] = round(value, 2)
-                elif th_text == "부채비율" and "debt_ratio" not in result:
-                    result["debt_ratio"] = round(value, 2)
-                elif th_text == "영업이익률" and "operating_margin" not in result:
-                    result["operating_margin"] = round(value, 2)
-                elif th_text == "영업이익" and "operating_profit" not in result:
-                    # 영업이익은 성장률 계산용으로 저장
-                    result["operating_profit"] = value
-
-            # 영업이익 성장률 계산 (최근 2년 영업이익 비교)
-            self._calculate_growth_rate_from_table(rows, result)
-
-    def _calculate_growth_rate_from_table(self, rows: list, result: Dict[str, Any]) -> None:
-        """영업이익 성장률을 테이블 데이터에서 계산합니다."""
-        if "operating_profit_growth" in result:
-            return
-
-        for row in rows:
-            th = row.select_one("th")
-            if not th or th.text.strip() != "영업이익":
-                continue
-
-            tds = row.select("td")
-            if len(tds) < 3:
-                continue
-
-            # 2024.12 (인덱스 2)와 2023.12 (인덱스 1) 비교
-            try:
-                current_text = tds[2].text.strip().replace(",", "")
-                prev_text = tds[1].text.strip().replace(",", "")
-
-                if current_text and prev_text and current_text != "-" and prev_text != "-":
-                    current = float(current_text)
-                    prev = float(prev_text)
-
-                    if prev != 0:
-                        growth = ((current - prev) / abs(prev)) * 100
+            # 영업이익 성장률 YoY 자동 계산 (인덱스 1(전년) 대비 인덱스 2(당해)의 비율)
+            if "operating_profit" in result["yearly_history"]:
+                op_list = result["yearly_history"]["operating_profit"]
+                if len(op_list) >= 3:
+                    prev_op = op_list[1]
+                    curr_op = op_list[2]
+                    if prev_op != 0:
+                        growth = ((curr_op - prev_op) / abs(prev_op)) * 100
                         result["operating_profit_growth"] = round(growth, 2)
-            except (ValueError, IndexError):
-                pass
+                    else:
+                        result["operating_profit_growth"] = 0.0
+
+            # 매출액 성장률 YoY 자동 계산
+            if "revenue" in result["yearly_history"]:
+                rev_list = result["yearly_history"]["revenue"]
+                if len(rev_list) >= 3:
+                    prev_rev = rev_list[1]
+                    curr_rev = rev_list[2]
+                    if prev_rev != 0:
+                        result["revenue_growth"] = round(((curr_rev - prev_rev) / abs(prev_rev)) * 100, 2)
+                    else:
+                        result["revenue_growth"] = 0.0
             break
 
     async def _calculate_sector_averages(self) -> None:
