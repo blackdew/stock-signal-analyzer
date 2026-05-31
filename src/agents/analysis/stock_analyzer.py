@@ -803,46 +803,79 @@ class StockAnalyzer(BaseAgent):
     def _get_market_caps(self, symbols: List[str]) -> Dict[str, float]:
         """
         종목들의 시가총액을 조회합니다 (네이버 금융).
-
-        1. 먼저 시가총액 순위에서 조회 (KOSPI/KOSDAQ 상위 100개)
-        2. 순위에 없는 종목은 개별 페이지에서 조회
-
+        파일 캐시(market_data_{symbol} 및 market_cap_{symbol})를 최우선으로 사용하여 웹 요청을 완전 배제합니다.
+        
         Returns:
             종목코드를 키로 하는 시가총액 딕셔너리 (억원 단위)
         """
         result: Dict[str, float] = {}
+        missing_symbols = []
 
+        # 1. 파일 캐시 우선 조회
+        for symbol in symbols:
+            # A. market_data_{symbol} 캐시 확인 (4시간 TTL)
+            cache_key = f"market_data_{symbol}"
+            cached_md = self.cache.get(cache_key, max_age_hours=4)
+            if cached_md and cached_md.get("market_cap"):
+                result[symbol] = cached_md["market_cap"]
+                continue
+
+            # B. market_cap_{symbol} 전용 캐시 확인 (24시간 TTL)
+            cap_key = f"market_cap_{symbol}"
+            cached_cap = self.cache.get(cap_key, max_age_hours=24)
+            if cached_cap is not None:
+                result[symbol] = cached_cap
+                continue
+
+            missing_symbols.append(symbol)
+
+        # 모든 종목이 캐시 히트했으면 즉시 반환
+        if not missing_symbols:
+            return result
+
+        # 2. 캐시 미스된 종목들에 한해서만 순위 목록 또는 개별 조회
         try:
-            # 네이버 금융에서 KOSPI, KOSDAQ 시가총액 순위 조회
+            self._log_info(f"개별 시가총액 조회 필요: {len(missing_symbols)}개 종목 (캐시 미스)")
+            
+            # 네이버 금융에서 KOSPI, KOSDAQ 시가총액 순위 조회 (상위 100개)
             kospi_data = self.fetcher.get_market_cap_rank("KOSPI", 100)
             kosdaq_data = self.fetcher.get_market_cap_rank("KOSDAQ", 100)
 
-            # 심볼별 시가총액 매핑
             market_cap_map = {}
             for stock in kospi_data + kosdaq_data:
                 market_cap_map[stock.symbol] = stock.market_cap or 0
 
-            # 각 심볼의 시가총액 조회
-            missing_symbols = []
-            for symbol in symbols:
+            still_missing = []
+            for symbol in missing_symbols:
                 if symbol in market_cap_map and market_cap_map[symbol] > 0:
-                    result[symbol] = market_cap_map[symbol]
+                    val = market_cap_map[symbol]
+                    result[symbol] = val
+                    self.cache.set(f"market_cap_{symbol}", val, ttl_hours=24)
                 else:
-                    missing_symbols.append(symbol)
+                    still_missing.append(symbol)
 
-            # 순위에 없는 종목은 개별 조회
-            if missing_symbols:
-                self._log_info(f"개별 시가총액 조회 필요: {len(missing_symbols)}개 종목")
-                for symbol in missing_symbols:
-                    market_cap = self.fetcher.get_market_cap(symbol)
+            # 3. 순위 목록에도 없는 종목은 파일 캐시-또는-개별 크롤링
+            if still_missing:
+                for symbol in still_missing:
+                    market_cap = self._get_cached_or_fetch(
+                        f"market_cap_{symbol}",
+                        self.fetcher.get_market_cap,
+                        ttl_hours=24,
+                        symbol=symbol
+                    )
                     result[symbol] = market_cap if market_cap else 0
 
         except Exception as e:
             self._log_warning(f"Failed to get market caps from Naver: {e}")
             # 폴백: 개별 조회
-            for symbol in symbols:
+            for symbol in missing_symbols:
                 if symbol not in result:
-                    market_cap = self.fetcher.get_market_cap(symbol)
+                    market_cap = self._get_cached_or_fetch(
+                        f"market_cap_{symbol}",
+                        self.fetcher.get_market_cap,
+                        ttl_hours=24,
+                        symbol=symbol
+                    )
                     result[symbol] = market_cap if market_cap else 0
 
         return result
@@ -964,6 +997,7 @@ class StockAnalyzer(BaseAgent):
     def _calculate_sector_return_5d(self, symbols: List[str]) -> Optional[float]:
         """
         섹터의 5일 수익률을 계산합니다 (시총 가중 평균).
+        필수 파라미터 start_date와 end_date를 넘겨주어 TypeError를 수정합니다.
 
         Args:
             symbols: 섹터 내 종목 코드 리스트
@@ -974,18 +1008,24 @@ class StockAnalyzer(BaseAgent):
         try:
             market_caps = self._get_market_caps(symbols)
 
-            # 5일 수익률 조회 (간단하게 전일대비 변동률 사용)
             total_market_cap = 0
             weighted_return = 0
+
+            # 최근 15거래일 치의 날짜 범위 계산
+            latest_trading_date = self.fetcher._get_latest_trading_date()
+            end_date = datetime.strptime(latest_trading_date, "%Y%m%d")
+            start_date = end_date - timedelta(days=15)
+            start_str = start_date.strftime("%Y-%m-%d")
+            end_str = end_date.strftime("%Y-%m-%d")
 
             for symbol in symbols:
                 market_cap = market_caps.get(symbol, 0)
                 if market_cap <= 0:
                     continue
 
-                # 주가 변동률 조회
+                # 주가 변동률 조회 (start_date, end_date 인자 필수 전달)
                 try:
-                    stock_data = self.fetcher.fetch_stock_data(symbol)
+                    stock_data = self.fetcher.fetch_stock_data(symbol, start_str, end_str)
                     if stock_data is not None and len(stock_data) >= 5:
                         # 5일 수익률 = (현재가 - 5일전 종가) / 5일전 종가 * 100
                         current_close = stock_data['Close'].iloc[-1]
@@ -994,7 +1034,8 @@ class StockAnalyzer(BaseAgent):
 
                         weighted_return += return_5d * market_cap
                         total_market_cap += market_cap
-                except Exception:
+                except Exception as e:
+                    self._log_debug(f"Failed to calculate return for {symbol}: {e}")
                     continue
 
             if total_market_cap > 0:

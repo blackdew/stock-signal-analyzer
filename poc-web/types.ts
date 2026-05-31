@@ -229,3 +229,12 @@ export interface StockSupplyResponse {
   name: string;
   supply: SupplyItem[];
 }
+
+export interface SectorFlowResult {
+  sector_name: string;
+  rrg_x: number;
+  rrg_y: number;
+  quadrant: 'Leading' | 'Weakening' | 'Lagging' | 'Improving';
+  money_flow_score: number;
+  rank: number;
+}

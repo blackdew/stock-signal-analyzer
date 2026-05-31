@@ -176,9 +176,15 @@ class TestStockAnalyzer:
     """StockAnalyzer 테스트"""
 
     @pytest.fixture
-    def analyzer(self):
-        """테스트용 분석기"""
-        return StockAnalyzer()
+    def analyzer(self, tmp_path):
+        """테스트용 분석기 (독립된 임시 캐시 디렉토리 사용)"""
+        from src.data.cache import CacheManager
+        analyzer = StockAnalyzer()
+        analyzer.cache = CacheManager(cache_dir=tmp_path / "cache")
+        analyzer.market_data_agent.cache = analyzer.cache
+        analyzer.fundamental_agent.cache = analyzer.cache
+        analyzer.news_agent.cache = analyzer.cache
+        return analyzer
 
     def test_init(self, analyzer):
         """초기화 테스트"""

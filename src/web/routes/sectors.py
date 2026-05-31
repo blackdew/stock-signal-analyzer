@@ -276,3 +276,34 @@ async def get_sector_stocks(sector_name: str) -> List[StockAnalysisSchema]:
         status_code=404,
         detail=f"섹터 '{sector_name}'의 종목 정보가 없습니다.",
     )
+
+
+@router.get(
+    "/sectors/flow",
+    response_model=List[Dict[str, Any]],
+    responses={404: {"model": ErrorResponse}},
+)
+async def get_sectors_flow() -> List[Dict[str, Any]]:
+    """
+    13개 섹터의 자금 흐름(Money Flow) 및 RRG 좌표 정보를 조회합니다.
+    
+    Returns:
+        Sector Flow 결과 리스트
+    """
+    flow_json_path = Path("output/data/sector_flow.json")
+    
+    if not flow_json_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="섹터 자금 흐름 및 RRG 분석 데이터가 존재하지 않습니다. 먼저 전체 일간 분석을 수행하십시오."
+        )
+        
+    try:
+        with open(flow_json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"섹터 자금 흐름 데이터 로드 실패: {str(e)}"
+        )

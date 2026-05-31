@@ -20,6 +20,7 @@ import {
   MarketDetails,
   RiskDetails,
   RelativeStrengthDetails,
+  SectorFlowResult,
 } from '../types';
 
 // API Base URL from environment variable
@@ -897,4 +898,17 @@ export const subscribeToTaskLogs = (
   return () => {
     eventSource.close();
   };
+};
+
+/**
+ * 13개 섹터의 자금 흐름(Money Flow) 및 RRG 좌표를 조회합니다.
+ */
+export const getSectorsFlow = async (): Promise<SectorFlowResult[]> => {
+  const response = await fetch(`${API_BASE}/api/sectors/flow`);
+
+  if (!response.ok) {
+    await handleApiError(response);
+  }
+
+  return response.json();
 };

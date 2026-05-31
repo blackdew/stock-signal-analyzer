@@ -341,6 +341,118 @@ class Orchestrator:
                 }
                 self.logger.info(f"Phase 3 완료: {len(stock_paths)}개 종목 리포트 ({phase_time:.1f}초)")
 
+            # Phase 3.5: 섹터 자금 흐름 및 RRG 분석
+            phase_start = time.time()
+            self.logger.info("Phase 3.5: 섹터 자금 흐름 및 RRG 분석 시작")
+            try:
+                from src.agents.analysis.sector_flow_analyzer import SectorFlowAnalyzer
+                from src.core.config import SECTORS
+                import json
+
+                sector_data_map = {}
+                fetcher = self.ranking_agent.stock_analyzer.fetcher
+                
+                # 최근 25거래일 확보하여 20거래일 시계열 연산에 충당 (안전을 위해 40캘린더데이 확보)
+                latest_trading_date = fetcher._get_latest_trading_date()
+                end_dt = datetime.strptime(latest_trading_date, "%Y%m%d")
+                start_dt = end_dt - timedelta(days=40)
+                start_str = start_dt.strftime("%Y-%m-%d")
+                end_str = end_dt.strftime("%Y-%m-%d")
+                
+                # 전체 종목의 주가/거래대금 시계열 수집 (캐시를 타므로 고속)
+                all_stock_data = {}
+                for sector_name, symbols in (dynamic_sectors.items() if dynamic_sectors else SECTORS.items()):
+                    for symbol in symbols:
+                        try:
+                            df = fetcher.fetch_stock_data(symbol, start_str, end_str)
+                            if df is not None and not df.empty:
+                                all_stock_data[symbol] = df
+                        except Exception as e:
+                            self.logger.warning(f"Failed to fetch time-series for {symbol} RRG: {e}")
+                
+                # 시장 전체 거래대금 시계열 계산 (억원 단위)
+                market_volumes_map = {}
+                for symbol, df in all_stock_data.items():
+                    for idx, row in df.iterrows():
+                        date_key = idx.strftime("%Y-%m-%d")
+                        val = (row["Close"] * row["Volume"]) / 100_000_000
+                        market_volumes_map[date_key] = market_volumes_map.get(date_key, 0.0) + val
+                
+                # 섹터별 지표 가공
+                for sector_name, symbols in (dynamic_sectors.items() if dynamic_sectors else SECTORS.items()):
+                    sector_prices_map = {}
+                    sector_volumes_map = {}
+                    
+                    # 시총 정보 추출 (ranking_result 활용)
+                    sector_stocks_results = ranking_result.stock_results.get(f"sector_{sector_name}", {})
+                    if not sector_stocks_results:
+                        sector_stocks_results = {
+                            s: ranking_result.all_stocks[s]
+                            for s in symbols if s in ranking_result.all_stocks
+                        }
+                    
+                    market_caps = {s: (sector_stocks_results[s].market_cap if s in sector_stocks_results else 0.0) for s in symbols}
+                    total_cap = sum(market_caps.values())
+                    
+                    # 수급 합산 (5일 순매수 누적액)
+                    sector_net_buy = 0.0
+                    for symbol in symbols:
+                        md = self.ranking_agent.stock_analyzer.cache.get(f"market_data_{symbol}", max_age_hours=4)
+                        if md:
+                            foreign_net = sum(md.get("foreign_net_buy", []))
+                            inst_net = sum(md.get("institution_net_buy", []))
+                            sector_net_buy += (foreign_net + inst_net)
+                    
+                    # 일별 가격/거래대금 합산
+                    for symbol in symbols:
+                        df = all_stock_data.get(symbol)
+                        if df is None:
+                            continue
+                        cap = market_caps.get(symbol, 0.0)
+                        cap_weight = (cap / total_cap) if total_cap > 0 else (1.0 / len(symbols))
+                        
+                        for idx, row in df.iterrows():
+                            date_key = idx.strftime("%Y-%m-%d")
+                            price_val = row["Close"] * cap_weight
+                            vol_val = (row["Close"] * row["Volume"]) / 100_000_000
+                            
+                            sector_prices_map[date_key] = sector_prices_map.get(date_key, 0.0) + price_val
+                            sector_volumes_map[date_key] = sector_volumes_map.get(date_key, 0.0) + vol_val
+                    
+                    sector_dates = sorted(sector_prices_map.keys())
+                    prices = [sector_prices_map[d] for d in sector_dates]
+                    volumes = [sector_volumes_map[d] for d in sector_dates]
+                    sec_market_vols = [market_volumes_map.get(d, 0.0) for d in sector_dates]
+                    
+                    sector_data_map[sector_name] = {
+                        "prices": prices[-20:] if len(prices) >= 20 else prices,
+                        "volumes": volumes[-20:] if len(volumes) >= 20 else volumes,
+                        "market_volumes": sec_market_vols[-20:] if len(sec_market_vols) >= 20 else sec_market_vols,
+                        "net_buy": sector_net_buy,
+                        "market_cap": total_cap
+                    }
+                
+                # SectorFlowAnalyzer 기동
+                flow_analyzer = SectorFlowAnalyzer()
+                flow_results = await flow_analyzer.analyze_flow(sector_data_map)
+                
+                # 결과 JSON 파일화
+                flow_json_path = Path(self.output_dir) / "data" / "sector_flow.json"
+                flow_json_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                with open(flow_json_path, "w", encoding="utf-8") as f:
+                    json.dump(
+                        [r.__dict__ for r in flow_results],
+                        f,
+                        ensure_ascii=False,
+                        indent=2
+                    )
+                self.logger.info(f"Sector Money Flow & RRG 데이터 JSON 저장 완료 -> {flow_json_path}")
+                stats["phases"]["sector_flow"] = {"time": round(time.time() - phase_start, 2)}
+                
+            except Exception as e:
+                self.logger.error(f"Failed in Sector Flow & RRG phase: {e}")
+
             # Phase 4: 종합 리포트 생성 (03_final_report.md)
             phase_start = time.time()
             self.logger.info("Phase 4: 종합 리포트 생성 시작")

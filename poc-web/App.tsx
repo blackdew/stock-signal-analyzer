@@ -36,6 +36,9 @@ import ChatSidebar from './components/ChatSidebar';
 import SectorBarChart from './components/SectorBarChart';
 import TopSectorCard from './components/TopSectorCard';
 import StockRecommendCard from './components/StockRecommendCard';
+import SectorRrgChart from './components/SectorRrgChart';
+import SectorMoneyFlowBoard from './components/SectorMoneyFlowBoard';
+import { SectorFlowResult } from './types';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import ReactMarkdown from 'react-markdown';
@@ -47,7 +50,23 @@ const App = () => {
   const [report, setReport] = useState<Partial<AnalysisReport>>({});
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
   const [selectedStock, setSelectedStock] = useState<StockAnalysis | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'sectors' | 'kospi10' | 'kospiMid' | 'kosdaq' | 'all18' | 'final'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'sectors' | 'sectorFlow' | 'kospi10' | 'kospiMid' | 'kosdaq' | 'all18' | 'final'>('overview');
+  
+  // RRG & Sector Money Flow States
+  const [sectorFlow, setSectorFlow] = useState<SectorFlowResult[]>([]);
+  const [isLoadingFlow, setIsLoadingFlow] = useState(false);
+
+  const loadSectorFlow = async () => {
+    setIsLoadingFlow(true);
+    try {
+      const data = await ApiService.getSectorsFlow();
+      setSectorFlow(data);
+    } catch (e) {
+      console.error("Failed to load sector flow data:", e);
+    } finally {
+      setIsLoadingFlow(false);
+    }
+  };
   
   // New State Features
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -136,6 +155,7 @@ const App = () => {
           setReport(latestReport);
           setSelectedDate(history[0].date);
           setStatus(AgentStatus.COMPLETE);
+          loadSectorFlow();
           setActiveTab('final');
           addLog("최신 분석 결과를 불러왔습니다.");
         }
@@ -208,6 +228,7 @@ const App = () => {
       if (!isCurrentlyAnalyzing(status)) {
         setStatus(AgentStatus.COMPLETE);
       }
+      loadSectorFlow();
       setActiveTab('final');
       addLog(`${date} 날짜의 분석 결과를 불러왔습니다.`);
     } catch (error: any) {
@@ -360,6 +381,7 @@ const App = () => {
       addLog("리포트 생성 완료!");
 
       setStatus(AgentStatus.COMPLETE);
+      loadSectorFlow();
       setActiveTab('final');
       setCurrentTaskId(null); // 초기화
       saveCurrentReport(finalReport as AnalysisReport);
@@ -429,6 +451,7 @@ const App = () => {
         setReport(finalReport);
         addLog("리포트 로드 완료!");
         setStatus(AgentStatus.COMPLETE);
+        loadSectorFlow();
         setActiveTab('final');
       }
 
@@ -442,9 +465,10 @@ const App = () => {
 
   const navItems = [
     { id: 'overview', label: '대시보드', icon: LayoutDashboard },
-    { id: 'sectors', label: '유망 섹터', icon: Briefcase },
+    { id: 'sectors', label: '유망 섹터 개요', icon: Briefcase },
+    { id: 'sectorFlow', label: '섹터 자금 흐름 (RRG)', icon: BarChart2 },
     { id: 'kospi10', label: '코스피 상위 10', icon: TrendingUp },
-    { id: 'kospiMid', label: '코스피 11-20위', icon: BarChart2 },
+    { id: 'kospiMid', label: '코스피 11-20위', icon: List },
     { id: 'kosdaq', label: '코스닥 상위 10', icon: Zap },
     { id: 'all18', label: '전체 18종목', icon: List },
     { id: 'final', label: '최종 TOP 5', icon: CheckCircle2 },
@@ -807,6 +831,36 @@ const App = () => {
                        </div>
                    </section>
                )}
+            </div>
+        )}
+
+        {(activeTab === 'sectorFlow') && (
+            <div className="space-y-8 pt-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                {sectorFlow && sectorFlow.length > 0 ? (
+                    <>
+                        <SectorRrgChart data={sectorFlow} />
+                        <SectorMoneyFlowBoard data={sectorFlow} />
+                    </>
+                ) : (
+                    <div className="bg-slate-800/40 backdrop-blur-md border border-slate-700 rounded-2xl p-12 text-center max-w-xl mx-auto mt-10">
+                        <div className="w-16 h-16 bg-slate-700/50 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <BarChart2 className="w-8 h-8 text-emerald-500" />
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-100 mb-2">
+                            섹터 자금 흐름 데이터 없음
+                        </h3>
+                        <p className="text-sm text-slate-400 leading-relaxed mb-6">
+                            아직 섹터 자금 흐름 분석 데이터가 생성되지 않았거나 서버에 보관되어 있지 않습니다.
+                            대시보드로 이동하여 '전체 시장 분석 시작'을 수행하면 퀀트 수급 지표와 RRG 좌표가 자동으로 생성됩니다.
+                        </p>
+                        <button
+                            onClick={() => setActiveTab('overview')}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-6 rounded-lg transition-all shadow-lg shadow-emerald-600/20"
+                        >
+                            대시보드로 이동
+                        </button>
+                    </div>
+                )}
             </div>
         )}
 
