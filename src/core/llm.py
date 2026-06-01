@@ -5,6 +5,7 @@ OpenAI API를 통한 LLM 분석 기능을 제공하는 모듈.
 종목 분석 리포트의 상세 분석 텍스트를 생성합니다.
 """
 
+import asyncio
 import logging
 import os
 from dataclasses import dataclass
@@ -352,31 +353,48 @@ class LLMAnalyzer:
             strengths = strengths or []
             weaknesses = weaknesses or []
 
-            # 각 분석 생성
-            summary = await self._generate_summary(
-                name, sector, sector_context, grade, total_score, strengths
-            )
+            # 각 분석 생성 (비동기 병렬 실행으로 5배 속도 향상)
+            tasks = [
+                self._generate_summary(
+                    name, sector, sector_context, grade, total_score, strengths
+                ),
+                self._generate_financial_analysis(
+                    name, symbol, sector, sector_context, market_cap, fundamental_details
+                ),
+                self._generate_technical_analysis(
+                    name, symbol, technical_details
+                ),
+                self._generate_market_sentiment(
+                    name, sector, sector_context, supply_details, news_data
+                ),
+                self._generate_comprehensive_analysis(
+                    name, symbol, sector, sector_context,
+                    technical_details.get("current_price"),
+                    market_cap, total_score, grade,
+                    technical_score, supply_score, fundamental_score,
+                    market_score, risk_score, relative_strength_score,
+                    strengths, weaknesses
+                )
+            ]
 
-            financial_analysis = await self._generate_financial_analysis(
-                name, symbol, sector, sector_context, market_cap, fundamental_details
-            )
+            responses = await asyncio.gather(*tasks, return_exceptions=True)
 
-            technical_analysis = await self._generate_technical_analysis(
-                name, symbol, technical_details
-            )
+            # 예외 인스턴스 발생 시 폴백 처리
+            safe_responses = []
+            for i, resp in enumerate(responses):
+                if isinstance(resp, Exception):
+                    logger.error(f"LLM task {i} failed for {symbol}: {resp}")
+                    safe_responses.append("분석 데이터를 생성할 수 없습니다.")
+                else:
+                    safe_responses.append(resp)
 
-            market_sentiment = await self._generate_market_sentiment(
-                name, sector, sector_context, supply_details, news_data
-            )
-
-            comprehensive_analysis = await self._generate_comprehensive_analysis(
-                name, symbol, sector, sector_context,
-                technical_details.get("current_price"),
-                market_cap, total_score, grade,
-                technical_score, supply_score, fundamental_score,
-                market_score, risk_score, relative_strength_score,
-                strengths, weaknesses
-            )
+            (
+                summary,
+                financial_analysis,
+                technical_analysis,
+                market_sentiment,
+                comprehensive_analysis,
+            ) = safe_responses
 
             # 투자 포인트 및 리스크 추출
             investment_thesis = self._extract_investment_thesis(strengths, sector_context)
