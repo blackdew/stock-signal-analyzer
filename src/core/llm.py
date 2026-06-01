@@ -267,13 +267,13 @@ class LLMAnalyzer:
 
     @property
     def client(self):
-        """OpenAI 클라이언트 (지연 초기화)"""
+        """OpenAI 비동기 클라이언트 (지연 초기화로 이벤트 루프 병목 해소)"""
         if self._client is None:
             if not self.api_key:
                 raise ValueError("OpenAI API key is not configured")
             try:
-                from openai import OpenAI
-                self._client = OpenAI(api_key=self.api_key)
+                from openai import AsyncOpenAI
+                self._client = AsyncOpenAI(api_key=self.api_key)
             except ImportError:
                 raise ImportError("openai package is not installed. Run: pip install openai")
         return self._client
@@ -414,7 +414,7 @@ class LLMAnalyzer:
             total_score=total_score,
             strengths="\n".join(f"- {s}" for s in strengths) if strengths else "- 분석 중",
         )
-        return self._call_llm(prompt)
+        return await self._call_llm(prompt)
 
     async def _generate_financial_analysis(
         self, name: str, symbol: str, sector: str, sector_context: str,
@@ -435,7 +435,7 @@ class LLMAnalyzer:
             op_growth=self._fmt(fundamental_details.get("op_growth_value"), "%"),
             debt_ratio=self._fmt(fundamental_details.get("debt_ratio_value"), "%"),
         )
-        return self._call_llm(prompt)
+        return await self._call_llm(prompt)
 
     async def _generate_technical_analysis(
         self, name: str, symbol: str, technical_details: Dict[str, Any]
@@ -455,7 +455,7 @@ class LLMAnalyzer:
             macd_signal=self._fmt(technical_details.get("macd_signal_value")),
             adx=self._fmt(technical_details.get("adx_value")),
         )
-        return self._call_llm(prompt)
+        return await self._call_llm(prompt)
 
     async def _generate_market_sentiment(
         self, name: str, sector: str, sector_context: str,
@@ -486,7 +486,7 @@ class LLMAnalyzer:
             sentiment_score=news_data.get("avg_sentiment_score", 0.0),
             recent_headlines=headlines_text,
         )
-        return self._call_llm(prompt)
+        return await self._call_llm(prompt)
 
     async def _generate_comprehensive_analysis(
         self, name: str, symbol: str, sector: str, sector_context: str,
@@ -515,12 +515,12 @@ class LLMAnalyzer:
             strengths="\n".join(f"- {s}" for s in strengths) if strengths else "- 분석 중",
             weaknesses="\n".join(f"- {w}" for w in weaknesses) if weaknesses else "- 특이사항 없음",
         )
-        return self._call_llm(prompt)
+        return await self._call_llm(prompt)
 
-    def _call_llm(self, prompt: str) -> str:
-        """LLM API 호출"""
+    async def _call_llm(self, prompt: str) -> str:
+        """LLM API 비동기 호출 (이벤트 루프 차단 완전 해소)"""
         try:
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
                 max_completion_tokens=MAX_TOKENS,

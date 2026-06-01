@@ -242,7 +242,7 @@ async def test_report_generation():
         sector_top=[mock_stocks[2]],
         top_sectors=mock_sectors,
         final_18=mock_stocks,
-        final_top3=mock_stocks[:3],
+        final_top5=mock_stocks[:3],
     )
 
     summary_agent = SummaryAgent(
