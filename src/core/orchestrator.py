@@ -383,15 +383,18 @@ class Orchestrator:
                     sector_prices_map = {}
                     sector_volumes_map = {}
                     
-                    # 시총 정보 추출 (ranking_result 활용)
-                    sector_stocks_results = ranking_result.stock_results.get(f"sector_{sector_name}", {})
-                    if not sector_stocks_results:
-                        sector_stocks_results = {
-                            s: ranking_result.all_stocks[s]
-                            for s in symbols if s in ranking_result.all_stocks
-                        }
-                    
-                    market_caps = {s: (sector_stocks_results[s].market_cap if s in sector_stocks_results else 0.0) for s in symbols}
+                    # 시총 정보 추출 (캐시 및 stock_analyzer에서 안전하게 가져오기)
+                    market_caps = {}
+                    for s in symbols:
+                        cap = 0.0
+                        md = self.ranking_agent.stock_analyzer.cache.get(f"market_data_{s}", max_age_hours=4)
+                        if md and md.get("market_cap"):
+                            cap = float(md["market_cap"])
+                        else:
+                            cached_cap = self.ranking_agent.stock_analyzer.cache.get(f"market_cap_{s}", max_age_hours=24)
+                            if cached_cap is not None:
+                                cap = float(cached_cap)
+                        market_caps[s] = cap
                     total_cap = sum(market_caps.values())
                     
                     # 수급 합산 (5일 순매수 누적액)
