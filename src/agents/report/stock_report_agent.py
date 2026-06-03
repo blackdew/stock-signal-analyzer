@@ -491,6 +491,16 @@ class StockReportAgent(BaseAgent):
 
 ---
 
+## 🎯 실전 매매 가이드 (1일 1회 장 초반/장 마감용)
+
+| 구분 | 권장 가격 | 실행 가이드 |
+|------|-----------|-------------|
+| **권장 매수가 밴드** | **{fmt_price(stock.recommended_buy_low)} ~ {fmt_price(stock.recommended_buy_high)}** | 시가 형성 후 해당 가격대 진입 시 분할 매수 고려 |
+| **손절선 (Stop-Loss)** | **{fmt_price(stock.recommended_stop_loss)}** | 종가 기준 손절선 이탈 시 매도하여 리스크 관리 |
+| **목표가 (Take-Profit)** | **{fmt_price(stock.recommended_target_price)}** | 목표가 도달 시 분할 익절하여 알파 확정 |
+
+---
+
 ## 💡 투자 의견
 
 {opinion}

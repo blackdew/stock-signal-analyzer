@@ -69,6 +69,7 @@ class MarketData:
     volume: Optional[int] = None
     avg_volume_20d: Optional[int] = None
     trading_value: Optional[float] = None  # 거래대금 (억원)
+    avg_trading_value_20d: Optional[float] = None  # 20일 평균 거래대금 (억원)
 
 
 @dataclass
@@ -199,6 +200,9 @@ class MarketDataAgent(BaseAgent):
         volume = int(latest["Volume"])
         trading_value = (current_price * volume) / 100_000_000
 
+        # 20일 평균 거래대금 추출
+        avg_trading_value_20d = float(latest["Trading_Value_20d"]) if pd.notna(latest.get("Trading_Value_20d")) else None
+
         # 7. 시가총액 조회
         market_cap, market_cap_rank = self._get_market_cap_info(symbol, market)
 
@@ -248,6 +252,7 @@ class MarketDataAgent(BaseAgent):
             volume=volume,
             avg_volume_20d=int(latest["Volume_MA20"]) if pd.notna(latest.get("Volume_MA20")) else None,
             trading_value=round(trading_value, 2),
+            avg_trading_value_20d=round(avg_trading_value_20d, 2) if avg_trading_value_20d else None,
         )
 
         # 캐시 저장 (직렬화 가능한 형태로)
@@ -280,6 +285,7 @@ class MarketDataAgent(BaseAgent):
             "volume": market_data.volume,
             "avg_volume_20d": market_data.avg_volume_20d,
             "trading_value": market_data.trading_value,
+            "avg_trading_value_20d": market_data.avg_trading_value_20d,
         }
         self.cache.set(cache_key, cache_data, ttl_hours=CacheTTL.PRICE)
 
@@ -303,6 +309,9 @@ class MarketDataAgent(BaseAgent):
 
         # 거래량 이동평균
         df["Volume_MA20"] = df["Volume"].rolling(window=20).mean()
+        
+        # 20일 평균 거래대금 (종가 * 거래량 / 1억)
+        df["Trading_Value_20d"] = (df["Close"] * df["Volume"] / 100_000_000).rolling(window=20).mean()
 
         # RSI (14일 기준)
         try:

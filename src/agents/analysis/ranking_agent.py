@@ -277,11 +277,31 @@ class RankingAgent(BaseAgent):
             """
             최종 점수 계산
             - 총점: 70%
-            - 수급: 15% (20점 만점 → 100점 환산)
-            - 성장성 (fundamental): 15% (20점 만점 → 100점 환산)
+            - 수급: 15% (V3는 15점 만점, V2는 20점 만점, V1은 25점 만점 → 100점 환산)
+            - 성장성 (fundamental): 15% (V3는 15점 만점, V2는 20점 만점, V1은 25점 만점 → 100점 환산)
             """
-            supply_normalized = stock.supply_score * 5  # 20점 → 100점
-            fundamental_normalized = stock.fundamental_score * 5  # 20점 → 100점
+            supply_max = 20.0
+            fundamental_max = 20.0
+            
+            if stock.rubric_result:
+                if stock.rubric_result.supply:
+                    supply_max = stock.rubric_result.supply.max_score
+                if stock.rubric_result.fundamental:
+                    fundamental_max = stock.rubric_result.fundamental.max_score
+            else:
+                # rubric_result가 없는 경우 (LLMScorer 등)
+                if hasattr(self.stock_analyzer, 'rubric_engine') and self.stock_analyzer.rubric_engine.use_v3:
+                    supply_max = 15.0
+                    fundamental_max = 15.0
+                elif hasattr(self.stock_analyzer, 'rubric_engine') and self.stock_analyzer.rubric_engine.use_v2:
+                    supply_max = 20.0
+                    fundamental_max = 20.0
+                else:
+                    supply_max = 25.0
+                    fundamental_max = 25.0
+
+            supply_normalized = stock.supply_score * (100.0 / supply_max) if supply_max > 0 else stock.supply_score
+            fundamental_normalized = stock.fundamental_score * (100.0 / fundamental_max) if fundamental_max > 0 else stock.fundamental_score
 
             return (
                 stock.total_score * 0.70 +

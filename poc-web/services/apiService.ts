@@ -229,14 +229,14 @@ const generateTechnicalAnalysis = (backend: BackendStockAnalysis): string => {
   // 52주 가격 범위
   if (details.low_52w && details.high_52w) {
     lines.push(`- 52주 범위: ${formatPrice(details.low_52w)} ~ ${formatPrice(details.high_52w)}`);
-    if (details.position_52w !== undefined) {
+    if (details.position_52w != null) {
       lines.push(`- 52주 내 위치: ${details.position_52w.toFixed(1)}%`);
     }
   }
 
   // MACD
-  if (details.macd_value !== undefined) {
-    const macdSignal = details.macd_signal_value !== undefined ? details.macd_signal_value.toFixed(2) : 'N/A';
+  if (details.macd_value != null) {
+    const macdSignal = details.macd_signal_value != null ? details.macd_signal_value.toFixed(2) : 'N/A';
     const macdStatus = details.macd_value > (details.macd_signal_value || 0) ? '매수 신호' : '매도 신호';
     lines.push(`- MACD: ${details.macd_value.toFixed(2)} (시그널: ${macdSignal}) - ${macdStatus}`);
   }
@@ -265,30 +265,30 @@ const generateFinancialAnalysis = (backend: BackendStockAnalysis): string => {
   }
 
   // PER
-  if (details.per_value !== undefined) {
+  if (details.per_value != null) {
     const perStatus = details.per_value < 0 ? '적자' :
       details.per_value < 10 ? '저평가' :
         details.per_value < 20 ? '적정' : '고평가';
     lines.push(`- PER: ${details.per_value.toFixed(2)}배 (${perStatus})`);
-    if (details.sector_avg_per) {
+    if (details.sector_avg_per != null) {
       lines.push(`  - 업종 평균: ${details.sector_avg_per.toFixed(2)}배`);
     }
   }
 
   // PBR
-  if (details.pbr_value !== undefined) {
+  if (details.pbr_value != null) {
     const pbrStatus = details.pbr_value < 1 ? '저평가' : details.pbr_value < 2 ? '적정' : '고평가';
     lines.push(`- PBR: ${details.pbr_value.toFixed(2)}배 (${pbrStatus})`);
   }
 
   // ROE
-  if (details.roe_value !== undefined) {
+  if (details.roe_value != null) {
     const roeStatus = details.roe_value >= 15 ? '우수' : details.roe_value >= 10 ? '양호' : details.roe_value >= 5 ? '보통' : '미흡';
     lines.push(`- ROE: ${formatPct(details.roe_value)} (${roeStatus})`);
   }
 
   // 영업이익 성장률
-  if (details.op_growth_value !== undefined) {
+  if (details.op_growth_value != null) {
     const growthStatus = details.op_growth_value >= 20 ? '고성장' :
       details.op_growth_value >= 10 ? '성장' :
         details.op_growth_value >= 0 ? '정체' : '역성장';
@@ -296,7 +296,7 @@ const generateFinancialAnalysis = (backend: BackendStockAnalysis): string => {
   }
 
   // 부채비율
-  if (details.debt_ratio_value !== undefined) {
+  if (details.debt_ratio_value != null) {
     const debtStatus = details.debt_ratio_value <= 50 ? '매우 건전' :
       details.debt_ratio_value <= 100 ? '건전' :
         details.debt_ratio_value <= 200 ? '보통' : '주의';
@@ -318,14 +318,14 @@ const generateMarketSentiment = (backend: BackendStockAnalysis): string => {
 
   if (supplyDetails) {
     // 외국인 수급
-    if (supplyDetails.foreign_consecutive_days !== undefined) {
+    if (supplyDetails.foreign_consecutive_days != null) {
       const foreignStatus = supplyDetails.foreign_consecutive_days >= 3 ? '강한 매수세' :
         supplyDetails.foreign_consecutive_days >= 1 ? '매수세' : '매도세 또는 관망';
       lines.push(`- 외국인: ${supplyDetails.foreign_consecutive_days}일 연속 순매수 (${foreignStatus})`);
     }
 
     // 기관 수급
-    if (supplyDetails.institution_consecutive_days !== undefined) {
+    if (supplyDetails.institution_consecutive_days != null) {
       const instStatus = supplyDetails.institution_consecutive_days >= 3 ? '강한 매수세' :
         supplyDetails.institution_consecutive_days >= 1 ? '매수세' : '매도세 또는 관망';
       lines.push(`- 기관: ${supplyDetails.institution_consecutive_days}일 연속 순매수 (${instStatus})`);

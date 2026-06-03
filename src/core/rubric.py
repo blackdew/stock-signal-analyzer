@@ -1218,17 +1218,7 @@ class RubricEngine:
         dividend_yield: Optional[float],
     ) -> RubricResult:
         """
-        V3 8대 핵심 루브릭 평가를 수행합니다.
-
-        V3 카테고리:
-        1. 밸류에이션 (20%): PER, PBR
-        2. 펀더멘털 (15%): ROE, 성장률, 부채비율
-        3. 수급 (15%): 외국인, 기관
-        4. 모멘텀 (15%): RSI, MACD, 거래대금
-        5. 기술적 (10%): 추세, 지지/저항, ADX
-        6. 섹터 (10%): 섹터순위, 섹터모멘텀
-        7. 리스크 (10%): 변동성, 베타, 하방리스크
-        8. 주주환원 (5%): 배당수익률
+        V3 8대 핵심 루브릭 평가를 수행합니다. (결측치 정형화 및 거래대금 20일 평균 연동 탑재)
         """
         # 데이터 추출 - 기술적/모멘텀
         ma20 = getattr(market_data, "ma20", None) if market_data else None
@@ -1239,6 +1229,7 @@ class RubricEngine:
         macd_signal = getattr(market_data, "macd_signal", None) if market_data else None
         adx = getattr(market_data, "adx", None) if market_data else None
         trading_value = getattr(market_data, "trading_value", None) if market_data else None
+        avg_trading_value_20d = getattr(market_data, "avg_trading_value_20d", None) if market_data else None
 
         # 데이터 추출 - 수급
         foreign_net = getattr(market_data, "foreign_net_buy", None) if market_data else None
@@ -1264,21 +1255,40 @@ class RubricEngine:
         # =================================================================
         # 1. 밸류에이션 (20점): PEG(10) + Valuation Band(10)
         # =================================================================
-        # PEG Ratio 계산 (PER / 영업이익 성장률 YoY)
-        peg_score, peg_val = calc_peg_ratio(per, op_growth)
-        
-        # 52주 고저 밴드 분위수 기준 Valuation Band 계산
-        band_score = calc_valuation_band_score(current_price, low_52w, high_52w)
+        val_raw_total = 0.0
+        val_max_possible = 0.0
+        peg_missing = (per is None) or (op_growth is None)
+        band_missing = (current_price is None) or (low_52w is None) or (high_52w is None)
 
-        valuation_raw_total = peg_score + band_score  # 0-20
-        valuation_normalized = (valuation_raw_total / 20) * 100
-        valuation_weighted = (valuation_normalized / 100) * self.weights["valuation"]
+        if not peg_missing:
+            peg_score, peg_val = calc_peg_ratio(per, op_growth)
+            val_raw_total += peg_score
+            val_max_possible += 10.0
+        else:
+            peg_score = 0.0
+            peg_val = 99.0
+
+        if not band_missing:
+            band_score = calc_valuation_band_score(current_price, low_52w, high_52w)
+            val_raw_total += band_score
+            val_max_possible += 10.0
+        else:
+            band_score = 0.0
+
+        if val_max_possible > 0:
+            valuation_normalized = (val_raw_total / val_max_possible) * 100
+            valuation_weighted = (valuation_normalized / 100) * self.weights["valuation"]
+            valuation_has_data = True
+        else:
+            valuation_normalized = 50.0
+            valuation_weighted = 0.0
+            valuation_has_data = False
 
         valuation = CategoryScore(
             name="valuation",
             score=round(valuation_normalized, 1),
             max_score=self.weights["valuation"],
-            weighted_score=round(valuation_weighted, 1),
+            weighted_score=round((valuation_normalized / 100) * self.weights["valuation"], 1),
             details={
                 "peg_score": round(peg_score, 2),
                 "band_score": round(band_score, 2),
@@ -1304,52 +1314,119 @@ class RubricEngine:
         yearly_history = getattr(fundamental_data, "yearly_history", {})
         f_score = calc_piotroski_f_score(yearly_history)  # 0-9
 
+        # Piotroski F-score 결측 여부 체크
+        # 만약 F-Score가 0점이어도 yearly_history가 정상 존재하면 결측이 아닌 0점 득점으로 인정
+        f_score_missing = not yearly_history
+
+        fund_raw_total = 0.0
+        fund_max_possible = 0.0
+
+        roe_missing = roe is None
+        debt_missing = debt_ratio is None
+
         # F-Score 정상 산출 여부에 따른 유연한 결측치 폴백(Fallback) 보장
-        if f_score == 0:
-            # [폴백 모드]: 다개년 시계열 결측 시 기존의 단년도 영업이익성장률(6점)로 대체 연동
-            f_score_scaled = (growth_raw / 10) * 6  # 0-6
-            roe_scaled = roe_raw  # 0-5
-            debt_scaled = (debt_raw / 5) * 4  # 0-4
+        if f_score_missing:
+            # [폴백 모드]: 다개년 시계열 결측 시 기존의 단년도 영업이익성장률(6점 만점)로 대체 연동
+            growth_missing = op_growth is None
+            if not growth_missing:
+                f_score_scaled = (growth_raw / 10) * 6  # 0-6
+                fund_raw_total += f_score_scaled
+                fund_max_possible += 6.0
+            else:
+                f_score_scaled = 0.0
+                # growth와 f_score 모두 없으므로 max_possible에 더하지 않음 (결측)
+            
+            if not roe_missing:
+                roe_scaled = roe_raw  # 0-5
+                fund_raw_total += roe_scaled
+                fund_max_possible += 5.0
+            else:
+                roe_scaled = 0.0
+
+            if not debt_missing:
+                debt_scaled = (debt_raw / 5) * 4  # 0-4
+                fund_raw_total += debt_scaled
+                fund_max_possible += 4.0
+            else:
+                debt_scaled = 0.0
         else:
             # [우량 퀀트 모드]: ROE(3점) + F-Score(9점) + 부채비율(3점) = 총 15점 만점 배분
             f_score_scaled = (f_score / 9) * 9  # 0-9
-            roe_scaled = (roe_raw / 5) * 3  # 0-3
-            debt_scaled = (debt_raw / 5) * 3  # 0-3
+            fund_raw_total += f_score_scaled
+            fund_max_possible += 9.0
 
-        fundamental_raw_total = roe_scaled + f_score_scaled + debt_scaled  # 0-15
-        fundamental_normalized = (fundamental_raw_total / 15) * 100
-        fundamental_weighted = (fundamental_normalized / 100) * self.weights["fundamental"]
+            if not roe_missing:
+                roe_scaled = (roe_raw / 5) * 3  # 0-3
+                fund_raw_total += roe_scaled
+                fund_max_possible += 3.0
+            else:
+                roe_scaled = 0.0
+
+            if not debt_missing:
+                debt_scaled = (debt_raw / 5) * 3  # 0-3
+                fund_raw_total += debt_scaled
+                fund_max_possible += 3.0
+            else:
+                debt_scaled = 0.0
+
+        if fund_max_possible > 0:
+            fundamental_normalized = (fund_raw_total / fund_max_possible) * 100
+            fundamental_weighted = (fundamental_normalized / 100) * self.weights["fundamental"]
+            fundamental_has_data = True
+        else:
+            fundamental_normalized = 50.0
+            fundamental_weighted = 0.0
+            fundamental_has_data = False
 
         fundamental = CategoryScore(
             name="fundamental",
             score=round(fundamental_normalized, 1),
             max_score=self.weights["fundamental"],
-            weighted_score=round(fundamental_weighted, 1),
+            weighted_score=round((fundamental_normalized / 100) * self.weights["fundamental"], 1),
             details={
                 "roe": round(roe_scaled, 2),
                 "f_score": round(f_score_scaled, 2),
                 "debt": round(debt_scaled, 2),
                 "roe_value": round(roe, 2) if roe else None,
-                "piotroski_f_score_raw": f_score,
+                "piotroski_f_score_raw": f_score if not f_score_missing else None,
                 "op_growth_value": round(op_growth, 2) if op_growth else None,
                 "debt_ratio_value": round(debt_ratio, 2) if debt_ratio else None,
             }
         )
 
-
         # =================================================================
         # 3. 수급 (15점): 외국인(7.5) + 기관(7.5)
         # =================================================================
-        foreign_raw = calc_foreign_score(foreign_net)  # 0-10
-        inst_raw = calc_institution_score(inst_net)  # 0-10
+        foreign_missing = not foreign_net
+        inst_missing = not inst_net
 
-        # 스케일 조정
-        foreign_scaled = (foreign_raw / 10) * 7.5  # 0-7.5
-        inst_scaled = (inst_raw / 10) * 7.5  # 0-7.5
+        supply_raw_total = 0.0
+        supply_max_possible = 0.0
 
-        supply_raw_total = foreign_scaled + inst_scaled  # 0-15
-        supply_normalized = (supply_raw_total / 15) * 100
-        supply_weighted = (supply_normalized / 100) * self.weights["supply"]
+        if not foreign_missing:
+            foreign_raw = calc_foreign_score(foreign_net)  # 0-10
+            foreign_scaled = (foreign_raw / 10) * 7.5  # 0-7.5
+            supply_raw_total += foreign_scaled
+            supply_max_possible += 7.5
+        else:
+            foreign_scaled = 0.0
+
+        if not inst_missing:
+            inst_raw = calc_institution_score(inst_net)  # 0-10
+            inst_scaled = (inst_raw / 10) * 7.5  # 0-7.5
+            supply_raw_total += inst_scaled
+            supply_max_possible += 7.5
+        else:
+            inst_scaled = 0.0
+
+        if supply_max_possible > 0:
+            supply_normalized = (supply_raw_total / supply_max_possible) * 100
+            supply_weighted = (supply_normalized / 100) * self.weights["supply"]
+            supply_has_data = True
+        else:
+            supply_normalized = 50.0
+            supply_weighted = 0.0
+            supply_has_data = False
 
         # 연속 순매수 일수 계산
         foreign_consecutive = 0
@@ -1371,7 +1448,7 @@ class RubricEngine:
             name="supply",
             score=round(supply_normalized, 1),
             max_score=self.weights["supply"],
-            weighted_score=round(supply_weighted, 1),
+            weighted_score=round((supply_normalized / 100) * self.weights["supply"], 1),
             details={
                 "foreign": round(foreign_scaled, 2),
                 "institution": round(inst_scaled, 2),
@@ -1385,24 +1462,52 @@ class RubricEngine:
         # =================================================================
         # 4. 모멘텀 (15점): RSI(5) + MACD(5) + 거래대금(5)
         # =================================================================
-        rsi_raw = calc_rsi_score(rsi)  # 0-10
-        macd_raw = calc_macd_score(macd, macd_signal)  # 0-5
-        tv_raw = calc_trading_value_score(trading_value, None)  # 0-5
+        rsi_missing = rsi is None
+        macd_missing = macd is None or macd_signal is None
+        tv_missing = trading_value is None or avg_trading_value_20d is None
 
-        # 스케일 조정
-        rsi_scaled = (rsi_raw / 10) * 5  # 0-5
-        macd_scaled = macd_raw  # 0-5
-        tv_scaled = tv_raw  # 0-5
+        momentum_raw_total = 0.0
+        momentum_max_possible = 0.0
 
-        momentum_raw_total = rsi_scaled + macd_scaled + tv_scaled  # 0-15
-        momentum_normalized = (momentum_raw_total / 15) * 100
-        momentum_weighted = (momentum_normalized / 100) * self.weights["momentum"]
+        if not rsi_missing:
+            rsi_raw = calc_rsi_score(rsi)  # 0-10
+            rsi_scaled = (rsi_raw / 10) * 5  # 0-5
+            momentum_raw_total += rsi_scaled
+            momentum_max_possible += 5.0
+        else:
+            rsi_scaled = 0.0
+
+        if not macd_missing:
+            macd_raw = calc_macd_score(macd, macd_signal)  # 0-5
+            macd_scaled = macd_raw  # 0-5
+            momentum_raw_total += macd_scaled
+            momentum_max_possible += 5.0
+        else:
+            macd_scaled = 0.0
+
+        if not tv_missing:
+            # avg_trading_value_20d 탑재하여 연동 (H2 해결)
+            tv_raw = calc_trading_value_score(trading_value, avg_trading_value_20d)  # 0-5
+            tv_scaled = tv_raw  # 0-5
+            momentum_raw_total += tv_scaled
+            momentum_max_possible += 5.0
+        else:
+            tv_scaled = 0.0
+
+        if momentum_max_possible > 0:
+            momentum_normalized = (momentum_raw_total / momentum_max_possible) * 100
+            momentum_weighted = (momentum_normalized / 100) * self.weights["momentum"]
+            momentum_has_data = True
+        else:
+            momentum_normalized = 50.0
+            momentum_weighted = 0.0
+            momentum_has_data = False
 
         momentum = CategoryScore(
             name="momentum",
             score=round(momentum_normalized, 1),
             max_score=self.weights["momentum"],
-            weighted_score=round(momentum_weighted, 1),
+            weighted_score=round((momentum_normalized / 100) * self.weights["momentum"], 1),
             details={
                 "rsi": round(rsi_scaled, 2),
                 "macd": round(macd_scaled, 2),
@@ -1417,24 +1522,51 @@ class RubricEngine:
         # =================================================================
         # 5. 기술적 (10점): 추세(4) + 지지/저항(3) + ADX(3)
         # =================================================================
-        trend_raw = calc_trend_score(ma20, ma60)  # 0-10
-        sr_raw = calc_support_resistance_score(current_price, low_52w, high_52w)  # 0-10
-        adx_raw = calc_adx_score(adx)  # 0-5
+        trend_missing = ma20 is None or ma60 is None
+        sr_missing = current_price is None or low_52w is None or high_52w is None
+        adx_missing = adx is None
 
-        # 스케일 조정
-        trend_scaled = (trend_raw / 10) * 4  # 0-4
-        sr_scaled = (sr_raw / 10) * 3  # 0-3
-        adx_scaled = (adx_raw / 5) * 3  # 0-3
+        technical_raw_total = 0.0
+        technical_max_possible = 0.0
 
-        technical_raw_total = trend_scaled + sr_scaled + adx_scaled  # 0-10
-        technical_normalized = (technical_raw_total / 10) * 100
-        technical_weighted = (technical_normalized / 100) * self.weights["technical"]
+        if not trend_missing:
+            trend_raw = calc_trend_score(ma20, ma60)  # 0-10
+            trend_scaled = (trend_raw / 10) * 4  # 0-4
+            technical_raw_total += trend_scaled
+            technical_max_possible += 4.0
+        else:
+            trend_scaled = 0.0
+
+        if not sr_missing:
+            sr_raw = calc_support_resistance_score(current_price, low_52w, high_52w)  # 0-10
+            sr_scaled = (sr_raw / 10) * 3  # 0-3
+            technical_raw_total += sr_scaled
+            technical_max_possible += 3.0
+        else:
+            sr_scaled = 0.0
+
+        if not adx_missing:
+            adx_raw = calc_adx_score(adx)  # 0-5
+            adx_scaled = (adx_raw / 5) * 3  # 0-3
+            technical_raw_total += adx_scaled
+            technical_max_possible += 3.0
+        else:
+            adx_scaled = 0.0
+
+        if technical_max_possible > 0:
+            technical_normalized = (technical_raw_total / technical_max_possible) * 100
+            technical_weighted = (technical_normalized / 100) * self.weights["technical"]
+            technical_has_data = True
+        else:
+            technical_normalized = 50.0
+            technical_weighted = 0.0
+            technical_has_data = False
 
         technical = CategoryScore(
             name="technical",
             score=round(technical_normalized, 1),
             max_score=self.weights["technical"],
-            weighted_score=round(technical_weighted, 1),
+            weighted_score=round((technical_normalized / 100) * self.weights["technical"], 1),
             details={
                 "trend": round(trend_scaled, 2),
                 "support_resistance": round(sr_scaled, 2),
@@ -1452,18 +1584,40 @@ class RubricEngine:
         # =================================================================
         # 6. 섹터 (10점): 섹터순위(5) + 섹터모멘텀(5)
         # =================================================================
-        rank_raw = calc_sector_rank_score(sector_rank, sector_total)  # 0-5
-        sector_mom_raw = calc_sector_momentum_score(sector_return_5d)  # 0-5
+        rank_missing = sector_rank is None or sector_total is None
+        sector_mom_missing = sector_return_5d is None
 
-        sector_raw_total = rank_raw + sector_mom_raw  # 0-10
-        sector_normalized = (sector_raw_total / 10) * 100
-        sector_weighted = (sector_normalized / 100) * self.weights["sector"]
+        sector_raw_total = 0.0
+        sector_max_possible = 0.0
+
+        if not rank_missing:
+            rank_raw = calc_sector_rank_score(sector_rank, sector_total)  # 0-5
+            sector_raw_total += rank_raw
+            sector_max_possible += 5.0
+        else:
+            rank_raw = 0.0
+
+        if not sector_mom_missing:
+            sector_mom_raw = calc_sector_momentum_score(sector_return_5d)  # 0-5
+            sector_raw_total += sector_mom_raw
+            sector_max_possible += 5.0
+        else:
+            sector_mom_raw = 0.0
+
+        if sector_max_possible > 0:
+            sector_normalized = (sector_raw_total / sector_max_possible) * 100
+            sector_weighted = (sector_normalized / 100) * self.weights["sector"]
+            sector_has_data = True
+        else:
+            sector_normalized = 50.0
+            sector_weighted = 0.0
+            sector_has_data = False
 
         sector_cat = CategoryScore(
             name="sector",
             score=round(sector_normalized, 1),
             max_score=self.weights["sector"],
-            weighted_score=round(sector_weighted, 1),
+            weighted_score=round((sector_normalized / 100) * self.weights["sector"], 1),
             details={
                 "sector_rank": round(rank_raw, 2),
                 "sector_momentum": round(sector_mom_raw, 2),
@@ -1476,19 +1630,48 @@ class RubricEngine:
         # =================================================================
         # 7. 리스크 (10점): 변동성(4) + 베타(3) + 하방리스크(3)
         # =================================================================
-        volatility_raw = calc_volatility_score(atr_pct)  # 0-4
-        beta_raw = calc_beta_score(beta)  # 0-3
-        downside_raw = calc_downside_risk_score(max_drawdown_pct)  # 0-3
+        vol_missing = atr_pct is None
+        beta_missing = beta is None
+        downside_missing = max_drawdown_pct is None
 
-        risk_raw_total = volatility_raw + beta_raw + downside_raw  # 0-10
-        risk_normalized = (risk_raw_total / 10) * 100
-        risk_weighted = (risk_normalized / 100) * self.weights["risk"]
+        risk_raw_total = 0.0
+        risk_max_possible = 0.0
+
+        if not vol_missing:
+            volatility_raw = calc_volatility_score(atr_pct)  # 0-4
+            risk_raw_total += volatility_raw
+            risk_max_possible += 4.0
+        else:
+            volatility_raw = 0.0
+
+        if not beta_missing:
+            beta_raw = calc_beta_score(beta)  # 0-3
+            risk_raw_total += beta_raw
+            risk_max_possible += 3.0
+        else:
+            beta_raw = 0.0
+
+        if not downside_missing:
+            downside_raw = calc_downside_risk_score(max_drawdown_pct)  # 0-3
+            risk_raw_total += downside_raw
+            risk_max_possible += 3.0
+        else:
+            downside_raw = 0.0
+
+        if risk_max_possible > 0:
+            risk_normalized = (risk_raw_total / risk_max_possible) * 100
+            risk_weighted = (risk_normalized / 100) * self.weights["risk"]
+            risk_has_data = True
+        else:
+            risk_normalized = 50.0
+            risk_weighted = 0.0
+            risk_has_data = False
 
         risk = CategoryScore(
             name="risk",
             score=round(risk_normalized, 1),
             max_score=self.weights["risk"],
-            weighted_score=round(risk_weighted, 1),
+            weighted_score=round((risk_normalized / 100) * self.weights["risk"], 1),
             details={
                 "volatility": round(volatility_raw, 2),
                 "beta": round(beta_raw, 2),
@@ -1502,17 +1685,32 @@ class RubricEngine:
         # =================================================================
         # 8. 주주환원 (5점): 배당수익률(5)
         # =================================================================
-        dividend_raw = calc_dividend_yield_score(dividend_yield)  # 0-5
+        div_missing = dividend_yield is None
 
-        shareholder_raw_total = dividend_raw  # 0-5
-        shareholder_normalized = (shareholder_raw_total / 5) * 100
-        shareholder_weighted = (shareholder_normalized / 100) * self.weights["shareholder"]
+        shareholder_raw_total = 0.0
+        shareholder_max_possible = 0.0
+
+        if not div_missing:
+            dividend_raw = calc_dividend_yield_score(dividend_yield)  # 0-5
+            shareholder_raw_total += dividend_raw
+            shareholder_max_possible += 5.0
+        else:
+            dividend_raw = 0.0
+
+        if shareholder_max_possible > 0:
+            shareholder_normalized = (shareholder_raw_total / shareholder_max_possible) * 100
+            shareholder_weighted = (shareholder_normalized / 100) * self.weights["shareholder"]
+            shareholder_has_data = True
+        else:
+            shareholder_normalized = 50.0
+            shareholder_weighted = 0.0
+            shareholder_has_data = False
 
         shareholder = CategoryScore(
             name="shareholder",
             score=round(shareholder_normalized, 1),
             max_score=self.weights["shareholder"],
-            weighted_score=round(shareholder_weighted, 1),
+            weighted_score=round((shareholder_normalized / 100) * self.weights["shareholder"], 1),
             details={
                 "dividend_yield": round(dividend_raw, 2),
                 "dividend_yield_value": round(dividend_yield, 2) if dividend_yield else None,
@@ -1520,57 +1718,68 @@ class RubricEngine:
         )
 
         # =================================================================
-        # 총점 계산 (100점 만점)
+        # 2단계 리스케일링: 결측 카테고리를 제외한 분모 재조정 (H3 해결)
         # =================================================================
-        total_score = (
-            valuation.weighted_score +
-            fundamental.weighted_score +
-            supply.weighted_score +
-            momentum.weighted_score +
-            technical.weighted_score +
-            sector_cat.weighted_score +
-            risk.weighted_score +
-            shareholder.weighted_score
-        )
+        categories_data = [
+            (valuation_weighted, self.weights["valuation"], valuation_has_data),
+            (fundamental_weighted, self.weights["fundamental"], fundamental_has_data),
+            (supply_weighted, self.weights["supply"], supply_has_data),
+            (momentum_weighted, self.weights["momentum"], momentum_has_data),
+            (technical_weighted, self.weights["technical"], technical_has_data),
+            (sector_weighted, self.weights["sector"], sector_has_data),
+            (risk_weighted, self.weights["risk"], risk_has_data),
+            (shareholder_weighted, self.weights["shareholder"], shareholder_has_data),
+        ]
+
+        sum_weighted_scores = 0.0
+        sum_weights = 0.0
+
+        for w_score, weight, has_data in categories_data:
+            if has_data:
+                sum_weighted_scores += w_score
+                sum_weights += weight
+
+        if sum_weights > 0:
+            total_score = (sum_weighted_scores / sum_weights) * 100
+        else:
+            total_score = 50.0  # 모두 결측인 경우 50점 중간값 폴백
 
         # 투자 등급 판정
         grade = get_investment_grade(total_score)
 
-        # V3에서도 기존 V2 필드 호환을 위해 market, relative_strength 생성
-        # (V3에서는 사용하지 않지만 API 호환성 유지)
+        # V3에서도 기존 V2 필드 호환을 위해 market, relative_strength 생성 (API 호환성 유지)
         news_score = calc_news_score(avg_sentiment)
         analyst_score = calc_analyst_score(target_price, current_price)
-        market_raw_total = news_score + sector_mom_raw + analyst_score
+        market_raw_total = news_score + (sector_mom_raw if sector_mom_raw is not None else 2.5) + analyst_score
         market_normalized = (market_raw_total / 20) * 100
 
         market = CategoryScore(
             name="market",
             score=round(market_normalized, 1),
             max_score=15,  # V2 기준
-            weighted_score=0.0,  # V3에서는 사용하지 않음
+            weighted_score=round((market_normalized / 100) * 15, 1),
             details={
                 "news": round(news_score, 2),
-                "sector_momentum": round(sector_mom_raw, 2),
+                "sector_momentum": round(sector_mom_raw, 2) if sector_mom_raw is not None else 2.5,
                 "analyst": round(analyst_score, 2),
             }
         )
 
-        # 알파 계산
         alpha = None
         if stock_return_20d is not None and market_return_20d is not None:
             alpha = stock_return_20d - market_return_20d
 
         alpha_score = calc_alpha_score(stock_return_20d, market_return_20d)
-        rs_raw_total = rank_raw + alpha_score
+        rs_raw_total = (rank_raw if rank_raw is not None else 2.5) + alpha_score
         rs_normalized = (rs_raw_total / 10) * 100
 
         relative_strength = CategoryScore(
             name="relative_strength",
             score=round(rs_normalized, 1),
             max_score=10,  # V2 기준
-            weighted_score=0.0,  # V3에서는 사용하지 않음
+            weighted_score=round((rs_normalized / 100) * 10, 1),
             details={
-                "sector_rank": round(rank_raw, 2),
+                "sector_rank": round(rank_raw, 2) if rank_raw is not None else 2.5,
                 "alpha": round(alpha_score, 2),
                 "sector_rank_value": sector_rank,
                 "sector_total_value": sector_total,
@@ -1583,19 +1792,16 @@ class RubricEngine:
         return RubricResult(
             symbol=symbol,
             name=name,
-            # V2 호환 카테고리 (API 호환성)
             technical=technical,
             supply=supply,
             fundamental=fundamental,
             market=market,
             risk=risk,
             relative_strength=relative_strength,
-            # V3 전용 카테고리
             valuation=valuation,
             momentum=momentum,
             sector=sector_cat,
             shareholder=shareholder,
-            # 최종 결과
             total_score=round(total_score, 1),
             grade=grade,
             rubric_version="v3",

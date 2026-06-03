@@ -94,6 +94,12 @@ class StockAnalysisResult:
     total_score: float = 0.0
     investment_grade: str = "Hold"
 
+    # 1일 1회 매매용 권장 가격 가이드
+    recommended_buy_low: float = 0.0          # 권장 매수 하한가 (원)
+    recommended_buy_high: float = 0.0         # 권장 매수 상한가 (원)
+    recommended_stop_loss: float = 0.0        # 권장 손절가 (원)
+    recommended_target_price: float = 0.0     # 권장 목표가 (원)
+
     # 순위
     rank_in_group: int = 0
     final_rank: Optional[int] = None
@@ -142,6 +148,11 @@ class StockAnalysisResult:
             "shareholder_score": self.shareholder_score,
             "total_score": self.total_score,
             "investment_grade": self.investment_grade,
+            # 매매 가격 가이드
+            "recommended_buy_low": self.recommended_buy_low,
+            "recommended_buy_high": self.recommended_buy_high,
+            "recommended_stop_loss": self.recommended_stop_loss,
+            "recommended_target_price": self.recommended_target_price,
             "rank_in_group": self.rank_in_group,
             "final_rank": self.final_rank,
             "data_quality": self.data_quality.to_dict() if self.data_quality else None,
@@ -306,6 +317,73 @@ class StockAnalysisResult:
             result["news_items"] = self.news_items
 
         return result
+
+
+def round_stock_tick(price: float) -> int:
+    """
+    한국 주식 가격대별 호가 단위(Tick size)에 맞게 가격을 보정합니다.
+    """
+    price = float(price)
+    if price < 2000:
+        return int(round(price))  # 1원 단위
+    elif price < 5000:
+        # 5원 단위이나 10원 단위로 맞추어도 시가/종가 매매에는 안전함
+        return int(round(price, -1))
+    elif price < 20000:
+        return int(round(price, -1)) # 10원 단위
+    elif price < 50000:
+        return int(round(price / 50) * 50) # 50원 단위
+    elif price < 200000:
+        return int(round(price, -2)) # 100원 단위
+    elif price < 500000:
+        return int(round(price / 500) * 500) # 500원 단위
+    else:
+        return int(round(price, -3)) # 1000원 단위
+
+
+def calculate_trading_guide(
+    current_price: Optional[float],
+    atr: Optional[float],
+    atr_pct: Optional[float],
+    total_score: float
+) -> tuple[float, float, float, float]:
+    """
+    ATR 기반의 권장 매수가 밴드, 손절선, 목표가를 산출합니다.
+    """
+    if current_price is None or current_price <= 0:
+        return 0.0, 0.0, 0.0, 0.0
+        
+    p = current_price
+    
+    # atr이 없으면 atr_pct 또는 기본값 3%를 이용해서 임의 산출
+    if atr is not None and atr > 0:
+        a = atr
+    elif atr_pct is not None and atr_pct > 0:
+        a = p * (atr_pct / 100.0)
+    else:
+        a = p * 0.03  # 3% 기본값
+        
+    # 주도주(Strong Buy 또는 Buy, total_score >= 60) 판별
+    is_strong = total_score >= 60.0
+    
+    if is_strong:
+        # 주도주는 가격이 시가에 빠르게 떠서 갈 수 있으므로 밴드를 살짝 높여 잡음
+        buy_high = p - 0.2 * a
+        buy_low = p - 1.2 * a
+    else:
+        # 일반 종목은 눌림목 깊은 구간 진입
+        buy_high = p - 0.5 * a
+        buy_low = p - 1.5 * a
+        
+    stop_loss = p - 2.0 * a
+    target_price = p + 3.0 * a
+    
+    return (
+        float(round_stock_tick(buy_low)),
+        float(round_stock_tick(buy_high)),
+        float(round_stock_tick(stop_loss)),
+        float(round_stock_tick(target_price))
+    )
 
 
 # =============================================================================
@@ -634,6 +712,16 @@ class StockAnalyzer(BaseAgent):
             sector_return_5d=sector_return_5d,
         )
 
+        # ATR 가격 매매 가이드 계산
+        current_price = market_data.current_price if market_data else None
+        atr = market_data.atr if market_data and hasattr(market_data, 'atr') else None
+        buy_low, buy_high, stop_loss, target_price = calculate_trading_guide(
+            current_price=current_price,
+            atr=atr,
+            atr_pct=atr_pct,
+            total_score=rubric_result.total_score
+        )
+
         # StockAnalysisResult 생성
         result = StockAnalysisResult(
             symbol=symbol,
@@ -655,6 +743,11 @@ class StockAnalyzer(BaseAgent):
             shareholder_score=rubric_result.shareholder.weighted_score if rubric_result.shareholder else 0.0,
             total_score=rubric_result.total_score,
             investment_grade=rubric_result.grade,
+            # 매매 가격 가이드
+            recommended_buy_low=buy_low,
+            recommended_buy_high=buy_high,
+            recommended_stop_loss=stop_loss,
+            recommended_target_price=target_price,
             data_quality=data_quality,
             news_items=[
                 {"title": item.title, "sentiment": item.sentiment}
@@ -718,6 +811,17 @@ class StockAnalyzer(BaseAgent):
         except Exception as e:
             self._log_debug(f"RubricEngine 점수 계산 실패 for {symbol}: {e}")
 
+        # ATR 가격 매매 가이드 계산
+        current_price = market_data.current_price if market_data else None
+        atr = market_data.atr if market_data and hasattr(market_data, 'atr') else None
+        calc_score = rubric_result.total_score if rubric_result else llm_result.total_score
+        buy_low, buy_high, stop_loss, target_price = calculate_trading_guide(
+            current_price=current_price,
+            atr=atr,
+            atr_pct=atr_pct,
+            total_score=calc_score
+        )
+
         # LLM이 fallback인 경우 RubricEngine 점수 사용
         if llm_result.is_fallback and rubric_result:
             self._log_debug(f"LLM fallback for {symbol}, using RubricEngine scores")
@@ -742,6 +846,11 @@ class StockAnalyzer(BaseAgent):
                 shareholder_score=rubric_result.shareholder.weighted_score if rubric_result.shareholder else 0.0,
                 total_score=rubric_result.total_score,
                 investment_grade=rubric_result.grade,
+                # 매매 가격 가이드
+                recommended_buy_low=buy_low,
+                recommended_buy_high=buy_high,
+                recommended_stop_loss=stop_loss,
+                recommended_target_price=target_price,
                 data_quality=data_quality,
                 # Fallback 템플릿 분석 (RubricEngine 기반)
                 summary=f"{rubric_result.grade} 등급 (총점: {rubric_result.total_score:.1f}점)",
@@ -782,6 +891,11 @@ class StockAnalyzer(BaseAgent):
             shareholder_score=llm_result.shareholder_score,
             total_score=llm_result.total_score,
             investment_grade=llm_result.grade,
+            # 매매 가격 가이드
+            recommended_buy_low=buy_low,
+            recommended_buy_high=buy_high,
+            recommended_stop_loss=stop_loss,
+            recommended_target_price=target_price,
             data_quality=data_quality,
             # LLM 분석 결과
             summary=llm_result.summary,

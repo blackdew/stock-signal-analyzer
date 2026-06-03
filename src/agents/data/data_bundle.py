@@ -154,6 +154,7 @@ class StockDataBundle:
                 "volume": market_data.volume,
                 "avg_volume_20d": market_data.avg_volume_20d,
                 "trading_value": market_data.trading_value,
+                "avg_trading_value_20d": market_data.avg_trading_value_20d,
             }
 
         # 재무 데이터 추출
