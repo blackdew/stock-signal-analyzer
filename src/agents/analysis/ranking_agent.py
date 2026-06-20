@@ -278,7 +278,7 @@ class RankingAgent(BaseAgent):
         use_v3 = False
         if hasattr(self.stock_analyzer, 'rubric_engine') and getattr(self.stock_analyzer.rubric_engine, 'use_v3', False):
             use_v3 = True
-        elif all_selected and any(getattr(s, 'valuation_score', 0.0) > 0.0 or (s.rubric_result and s.rubric_result.valuation is not None) for s in all_selected):
+        elif all_selected and any(getattr(s, 'valuation_score', 0.0) > 0.0 or (s.rubric_result and getattr(s.rubric_result, 'valuation', None) is not None) for s in all_selected):
             use_v3 = True
 
         def final_score(stock: StockAnalysisResult) -> float:
@@ -289,12 +289,16 @@ class RankingAgent(BaseAgent):
                 fundamental_max = 15.0
                 
                 if stock.rubric_result:
-                    if stock.rubric_result.valuation:
-                        valuation_max = stock.rubric_result.valuation.max_score
-                    if stock.rubric_result.supply:
-                        supply_max = stock.rubric_result.supply.max_score
-                    if stock.rubric_result.fundamental:
-                        fundamental_max = stock.rubric_result.fundamental.max_score
+                    val_obj = getattr(stock.rubric_result, 'valuation', None)
+                    sup_obj = getattr(stock.rubric_result, 'supply', None)
+                    fund_obj = getattr(stock.rubric_result, 'fundamental', None)
+                    
+                    if val_obj:
+                        valuation_max = getattr(val_obj, 'max_score', 20.0)
+                    if sup_obj:
+                        supply_max = getattr(sup_obj, 'max_score', 15.0)
+                    if fund_obj:
+                        fundamental_max = getattr(fund_obj, 'max_score', 15.0)
                 
                 valuation_val = getattr(stock, 'valuation_score', 0.0)
                 valuation_normalized = valuation_val * (100.0 / valuation_max) if valuation_max > 0 else valuation_val
@@ -312,10 +316,13 @@ class RankingAgent(BaseAgent):
                 fundamental_max = 20.0
                 
                 if stock.rubric_result:
-                    if stock.rubric_result.supply:
-                        supply_max = stock.rubric_result.supply.max_score
-                    if stock.rubric_result.fundamental:
-                        fundamental_max = stock.rubric_result.fundamental.max_score
+                    sup_obj = getattr(stock.rubric_result, 'supply', None)
+                    fund_obj = getattr(stock.rubric_result, 'fundamental', None)
+                    
+                    if sup_obj:
+                        supply_max = getattr(sup_obj, 'max_score', 20.0)
+                    if fund_obj:
+                        fundamental_max = getattr(fund_obj, 'max_score', 20.0)
                 else:
                     if hasattr(self.stock_analyzer, 'rubric_engine') and getattr(self.stock_analyzer.rubric_engine, 'use_v2', False):
                         supply_max = 20.0

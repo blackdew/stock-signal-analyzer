@@ -316,7 +316,7 @@ class TestStockReportAgent:
             final_rank=2,
         )
 
-        result = await agent.generate_reports([mock_stock_result, stock2], "20250118")
+        result = await agent.generate_reports([mock_stock_result, stock2], "20250118", use_llm=False)
 
         assert len(result) == 2
         assert "005930" in result
