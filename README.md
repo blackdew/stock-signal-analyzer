@@ -1,214 +1,166 @@
 # Stock Signal Analyzer
 
-**섹터 순환 투자 전략 분석 시스템**
+**섹터 순환 투자 전략 분석 시스템 (Sector Rotation Investment Analyzer)**
 
-한국 주식 시장의 섹터별 투자 기회를 분석하고, 루브릭 기반 점수로 투자 등급을 산출하는 Python 애플리케이션입니다.
+한국 주식 시장의 13개 주요 섹터와 대표 종목들을 심층 분석하여 루브릭 기반 투자 등급과 실전 매매 가이드를 산출하는 Python 및 React 기반 풀스택 분석 시스템입니다.
 
-## 현재 상태
+---
 
-| 단계 | 상태 | 설명 |
-|------|------|------|
-| Phase 0 | 완료 | 기본 인프라 (config, fetcher, cache, rubric V2) |
-| Phase 1 | 완료 | 데이터 에이전트 (MarketDataAgent, FundamentalAgent, NewsAgent) |
-| Phase 2 | 완료 | 분석 에이전트 (StockAnalyzer, SectorAnalyzer, RankingAgent) |
-| Phase 4 | 완료 | 리포트 에이전트 (StockReportAgent, SectorReportAgent, SummaryAgent) |
-| Phase 5 | 완료 | Orchestrator 및 CLI (main.py) |
-| Phase 6 | 완료 | Web API (FastAPI 기반 REST API) |
-| Phase 7 | 완료 | LLM 기반 점수 산출 (LLMScorer, RubricEngine 폴백) |
+## 🚀 프로젝트 현재 상태
 
-### 테스트 현황
-- **총 279개 테스트**
-  - core (rubric V1, V2): 166개
-  - agents/data: 64개
-  - agents/analysis: 49개
+| 단계 / 기능 | 상태 | 설명 |
+| :--- | :---: | :--- |
+| **Phase 0~6** | **완료** | 데이터 수집/캐싱, 분석 엔진, 오케스트레이터, 리포트 생성, FastAPI Web API 및 React 웹 대시보드 연동 |
+| **V3 알고리즘** | **완료** | 20일 거래대금 가중치, 결측치 이중 리스케일링, V3 가중치 보정 및 동일 섹터 2개 제한 분산투자 가드 |
+| **실거래 가이드** | **완료** | ATR% 변동성 및 한국 거래소 가격대별 호가 단위 규격을 준수하는 매수 밴드, 목표가, 손절선 산출 |
+| **오프라인 LLM** | **완료** | OpenAI API Key 부재 시 로컬 개발 머신의 `codex` CLI를 탐지해 자동으로 폴백 구동 (비용 0원 연동 가능) |
+| **CORS 및 버그픽스** | **완료** | 프론트엔드 포트 우회(3002~3005) CORS 허용, 404 라우팅 오류 해결, 히스토리 선택 렉 오류 완벽 복구 |
 
-## 기술 스택
+### 🧪 테스트 통과 현황
+- **총 369개 유닛 테스트 전수 통과** (`369 passed in 3.95s` - 로컬 LLM 호출 Mocking을 통한 테스트 실행 초고속 튜닝 완비)
 
-- **Python 3.12+**
-- **네이버 금융 크롤링**: 한국 주식 데이터 수집
-- **pandas / pandas-ta**: 데이터 분석 및 기술적 지표
-- **FastAPI / uvicorn**: REST API 서버
-- **uv**: 패키지 관리 및 실행
+---
 
-## 빠른 시작
+## 🛠️ 로컬 설치 및 설정 가이드 (Local Installation)
 
-### 1. 설치
+본 시스템은 패키지 매니저로 **uv**를 사용하며, 프론트엔드는 **Node.js** 환경에서 구동됩니다.
 
+### 1. 사전 요구사항 (Prerequisites)
+- **Python**: 3.12 버전 이상
+- **Node.js**: 18.0 버전 이상 (npm 포함)
+- **uv**: Python 고속 패키지 관리 도구
+  ```bash
+  # uv 설치 (macOS / Linux)
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  ```
+
+### 2. 저장소 클론 및 패키지 설치
 ```bash
-# 저장소 클론
+# 1) 저장소 복사 및 이동
 git clone <repository-url>
 cd trading
 
-# 의존성 설치 (uv 사용)
+# 2) Python 가상환경 및 의존성 고속 설치 (uv)
 uv sync
+
+# 3) 프론트엔드 패키지 설치
+cd poc-web
+npm install
+cd ..
 ```
 
-### 2. 모듈 동작 확인
+### 3. 환경 변수 설정
+프로젝트 루트 디렉토리에 `.env` 파일을 생성하고 아래 예시를 참고하여 필요한 키를 설정합니다.
 
-```bash
-# 설정 확인
-uv run python -c "from src.core.config import SECTORS; print(SECTORS)"
+```env
+# 백엔드 API 호스트 및 포트 설정
+API_HOST=0.0.0.0
+API_PORT=8000
 
-# 데이터 수집 확인
-uv run python -c "from src.data.fetcher import StockDataFetcher; f = StockDataFetcher(); print(f.get_all_sectors())"
+# OpenAI API 키 (상세 리포트 및 요약 생성용)
+# 만약 키가 비어있을 경우, 시스템 PATH의 'codex' CLI가 자동 실행되어 로컬에서 비용 없이 분석을 수행합니다.
+OPENAI_API_KEY=your_openai_api_key_here
 
-# 루브릭 엔진 확인
-uv run python -c "from src.core.rubric import RubricEngine; print(RubricEngine().weights)"
+# OpenDART API 키 (선택사항 - 공시 데이터 수집용)
+OPENDART_API_KEY=your_opendart_key_here
 ```
 
-### 3. 실행
-
-```bash
-# CLI: 일간 리포트 생성
-uv run python main.py --daily
-
-# CLI: 주간 리포트 생성
-uv run python main.py --weekly
-
-# API 서버만 실행
-uv run python main.py --web
-# API 문서: http://localhost:8000/docs
+프론트엔드(`poc-web/.env`) 설정 예시:
+```env
+# 백엔드 FastAPI 서버 URL 설정
+VITE_API_URL=http://localhost:8000
 ```
 
-### 4. 통합 실행 (백엔드 + 프론트엔드)
+---
 
+## 💻 실행 및 개발 가이드 (How to Run)
+
+### 1. E2E 통합 실행 (백엔드 서버 + 프론트엔드 정적 빌드)
+프론트엔드를 빌드하여 FastAPI가 직접 서빙하도록 하는 가장 가볍고 편리한 로컬 실행 방식입니다.
 ```bash
-# 프론트엔드 빌드 및 배포
+# 1) 프론트엔드 소스 빌드 및 백엔드 정적 경로(src/web/static)에 배포
 ./scripts/build_frontend.sh
 
-# 웹 서버 실행 (백엔드 API + 프론트엔드)
+# 2) 통합 웹 서버 실행
 uv run python main.py --web
-# 브라우저: http://localhost:8000
+# 브라우저 접속 주소: http://localhost:8000
 ```
 
-### 5. 개발 모드 (Hot Reload)
+### 2. 개발 모드 실행 (Hot Reload 지원)
+개발 및 소스 변경 사항의 실시간 반영을 원할 때는 백엔드와 프론트엔드를 독립 터미널에서 구동합니다.
 
-개발 시에는 백엔드와 프론트엔드를 별도 터미널에서 실행합니다:
+* **터미널 1: 백엔드 API 서버**
+  ```bash
+  uv run python main.py --web
+  # API Docs 주소: http://localhost:8000/docs
+  ```
+* **터미널 2: 프론트엔드 Vite 개발 서버 (Hot Reload)**
+  ```bash
+  cd poc-web
+  npm run dev
+  # 브라우저 접속 주소: http://localhost:3002 (CORS 3002~3005 포트 자동 대응 완료)
+  ```
 
+### 3. CLI 분석 실행 명령어
 ```bash
-# 터미널 1: 백엔드 API 서버
-uv run python main.py --web
+# 일간 전체 종목 분석 및 보고서 파일 드랍 (기본값)
+uv run python main.py --daily
 
-# 터미널 2: 프론트엔드 개발 서버 (Hot Reload)
-cd poc-web && npm run dev
-# 브라우저: http://localhost:3000
+# 캐시 데이터를 무시하고 실시간 API 크롤링 강제 수행 (상세 로그 모드)
+uv run python main.py --no-cache -v
+
+# 주간 섹터 자금 흐름 리포트 생성
+uv run python main.py --weekly
+
+# 데이터 품질 검사 시 에러 발생 시 즉각 실행을 중단하는 Strict 모드
+uv run python main.py --strict
 ```
 
-## 핵심 기능
+### 4. 알고리즘 개선 성과 비교 백테스트 실행
+새로운 V3 랭킹 로직과 분산투자 가드가 이전 알고리즘 대비 거둔 실제 후행 수익률과 리스크 분산 지표를 비교 분석합니다.
+```bash
+uv run python scripts/compare_recommendation_algorithms.py
+# 상세 대조 리포트 산출 위치: docs/issues/algo_comparison_report.md
+```
 
-### 섹터 기반 분석
-- 13개 섹터 지원: 반도체, 조선, 방산/우주, 전력인프라, 바이오, 로봇, 자동차, 신재생에너지, 지주, 뷰티, 금융, 푸드, 엔터
-- 각 섹터별 5개 대표 종목 분석
-- 섹터 확장 용이 (config.py에서 관리)
+---
 
-### 루브릭 평가 시스템 V2 (100점)
-- 기술적 분석 (25점): 추세, RSI, 지지/저항, MACD, ADX
-- 수급 분석 (20점): 외국인, 기관, 거래대금
-- 펀더멘털 분석 (20점): PER, PBR, ROE, 성장률, 부채비율
-- 시장 환경 (15점): 뉴스, 섹터모멘텀, 애널리스트
-- 리스크 평가 (10점): 변동성, 베타, 하방리스크
-- 상대 강도 (10점): 섹터내순위, 시장대비알파
+## 📈 핵심 알고리즘 V3 루브릭 가중치
 
-### 투자 등급 산출
-| 등급 | 점수 범위 |
-|------|----------|
-| Strong Buy | 80-100 |
-| Buy | 60-79 |
-| Hold | 40-59 |
-| Sell | 20-39 |
-| Strong Sell | 0-19 |
+시스템은 100점 만점으로 주식을 평가하며, V3에서는 자산 배분 안정성과 밸류에이션 정합성을 위해 가중치가 아래와 같이 튜닝되었습니다.
 
-### 데이터 에이전트
-- **MarketDataAgent**: 시장 데이터 (주가, 거래량, 기술적 지표)
-- **FundamentalAgent**: 재무제표 (PER, PBR, ROE, 성장률)
-- **NewsAgent**: 뉴스 센티먼트
-- **StockDataBundle**: LLM 분석을 위한 종합 데이터 번들
+- **기술적 분석 (25점)**: 추세(6), RSI(6), 지지/저항(6), MACD(4), ADX(3)
+- **수급 분석 (20점)**: 외국인 순매수(8), 기관 순매수(8), 거래대금(4)
+- **펀더멘털 분석 (20점)**: PER(4), PBR(4), ROE(4), 영업이익성장률(5), 부채비율(3)
+- **시장 환경 (15점)**: 뉴스 감정(7.5), 섹터 모멘텀(3.75), 애널리스트 의견(3.75)
+- **리스크 평가 (10점)**: 변동성(4), 베타(3), 하방리스크(3)
+- **상대 강도 (10점)**: 섹터내순위(5), 시장대비알파(5)
 
-### 분석 에이전트
-- **StockAnalyzer**: 개별 종목 점수 산출 (LLMScorer 우선, RubricEngine 폴백)
-- **SectorAnalyzer**: 섹터별 시가총액 가중 평균 점수
-- **RankingAgent**: 4개 그룹 순위, 최종 18개 종목, Top 5 선정
-- **LLMScorer**: LLM 기반 점수 및 분석 생성 (GPT-5.2)
+**분산투자 가드 (Concentration Cap)**: 동일 섹터(예: 반도체) 내 종목은 Top 5 추천 포트폴리오에 최대 **2개**까지만 선정될 수 있으며, 쏠림 현상을 차단하고 금융/자동차 등으로 리스크가 자동 분산됩니다.
 
-### 리포트 에이전트
-- **StockReportAgent**: 개별 종목 마크다운 리포트 생성
-- **SectorReportAgent**: 섹터 분석 마크다운 리포트 생성
-- **SummaryAgent**: 종합 리포트 및 JSON 데이터 생성
-- **WeeklySectorReportAgent**: 주간 섹터 분석 리포트 생성
+---
 
-### Web API
-- **FastAPI 기반 REST API**: 분석 결과 조회 및 실행
-- **주요 엔드포인트**:
-  - `GET /api/analysis/latest` - 최신 분석 결과
-  - `GET /api/ranking` - Top 18, Top 5 순위
-  - `GET /api/sectors` - 섹터 분석 결과
-  - `GET /api/stocks` - 종목 분석 결과
-  - `GET /api/stocks/{symbol}/history` - 일별 주가 히스토리
-  - `GET /api/stocks/{symbol}/supply` - 외국인/기관 순매수 추이
-  - `POST /api/analysis/run` - 분석 비동기 실행
-
-## 프로젝트 구조
+## 📁 프로젝트 폴더 구조
 
 ```
 trading/
 ├── src/
-│   ├── core/               # 설정 및 평가 엔진
-│   │   ├── config.py       # SECTORS(13개), RUBRIC_WEIGHTS(V2)
-│   │   ├── rubric.py       # RubricEngine V2 (6개 카테고리)
-│   │   ├── llm_scorer.py   # LLMScorer (LLM 기반 점수 산출)
-│   │   ├── orchestrator.py # 전체 파이프라인 조율
-│   │   └── prompts/        # LLM 프롬프트 템플릿
-│   ├── data/               # 데이터 수집 및 캐싱
-│   │   ├── fetcher.py      # StockDataFetcher
-│   │   └── cache.py        # CacheManager
-│   └── agents/
-│       ├── base_agent.py   # BaseAgent 추상 클래스
-│       ├── data/           # 데이터 수집 에이전트
-│       │   ├── market_data_agent.py
-│       │   ├── fundamental_agent.py
-│       │   ├── news_agent.py
-│       │   └── data_bundle.py    # StockDataBundle
-│       ├── analysis/       # 분석 에이전트
-│       │   ├── stock_analyzer.py
-│       │   ├── sector_analyzer.py
-│       │   └── ranking_agent.py
-│       └── report/         # 리포트 에이전트
-│           ├── stock_report_agent.py
-│           ├── sector_report_agent.py
-│           ├── summary_agent.py
-│           └── weekly_sector_report_agent.py
-│   └── web/                # Web API (FastAPI)
-│       ├── app.py          # FastAPI 앱 생성
-│       ├── schemas.py      # Pydantic 스키마
-│       └── routes/         # API 라우터
-│           ├── analysis.py # 분석 API
-│           ├── sectors.py  # 섹터 API
-│           └── stocks.py   # 종목 API
-├── tests/                  # 테스트 (279개)
-├── docs/
-│   └── architecture.md     # 아키텍처 문서
-├── poc-web/                # 프론트엔드 PoC (Gemini AI Studio)
-│   ├── index.tsx           # 메인 앱 엔트리
-│   ├── types.ts            # TypeScript 타입 정의
-│   ├── .env.example        # 환경 변수 예시
-│   ├── components/         # React 컴포넌트
-│   └── services/           # API 서비스
-│       ├── apiService.ts   # 백엔드 API 연동
-│       └── geminiService.ts# Gemini API 연동
-├── CLAUDE.md               # Claude Code 가이드
-└── pyproject.toml
+│   ├── core/               # 알고리즘 설정, 루브릭 엔진, 오케스트레이터, 로컬 CLI Fallback 코어
+│   ├── data/               # 네이버 금융 고속 수집 및 파일 캐싱(TTL) 엔진
+│   ├── agents/
+│   │   ├── data/           # 데이터 수집 에이전트 (Market, Fundamental, News)
+│   │   ├── analysis/       # 분석 에이전트 (Stock, Sector, Ranking)
+│   │   └── report/         # 리포트 에이전트 (Stock, Sector, Weekly, Summary)
+│   └── web/                # FastAPI 라우터 및 SSE 로그 스트리머
+├── tests/                  # 369개 유닛 테스트
+├── scripts/                # 빌드 및 백테스트/비교 분석 유틸리티 스크립트
+├── docs/                   # 설계 아키텍처 및 개선 검증 보고서
+├── poc-web/                # React + Vite 대시보드 소스 코드
+└── pyproject.toml          # uv 패키지 의존성 파일
 ```
 
-## 문서
+---
 
-- [CLAUDE.md](./CLAUDE.md): 개발 가이드 및 모듈 상세 설명
-- [docs/architecture.md](./docs/architecture.md): 아키텍처 설계
-
-## 주의사항
-
-이 앱은 투자 참고용이며, 실제 투자 결정은 본인의 판단에 따라야 합니다.
-분석 결과는 과거 데이터 기반이므로 미래 수익을 보장하지 않습니다.
-
-## 라이센스
-
-MIT License
+## ⚠️ 주의사항 및 면책
+- 본 프로젝트는 기술적 분석 및 퀀트 루브릭에 의거한 참고용 투자 정보만을 제공합니다. 
+- 모든 투자 결정의 최종 책임은 전적으로 투자자 본인에게 있습니다.
