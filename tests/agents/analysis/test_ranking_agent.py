@@ -469,3 +469,75 @@ class TestRankingAgentEdgeCases:
         assert "kospi_11_20" in details
         assert "kosdaq_top10" in details
         assert "sector_top" in details
+
+    def test_select_final_top5_v3_scoring(self, agent):
+        """V3 루브릭 가중치 반영 테스트"""
+        stocks = [
+            StockAnalysisResult(
+                symbol="stock_0", name="종목0", sector="반도체", group="test",
+                market_cap=1000, total_score=80.0, supply_score=12.0, fundamental_score=12.0,
+                valuation_score=16.0
+            ),
+            StockAnalysisResult(
+                symbol="stock_1", name="종목1", sector="바이오", group="test",
+                market_cap=1000, total_score=80.0, supply_score=15.0, fundamental_score=15.0,
+                valuation_score=10.0
+            )
+        ]
+        agent.stock_analyzer.rubric_engine = MagicMock()
+        agent.stock_analyzer.rubric_engine.use_v3 = True
+        
+        top2 = agent.select_final_top5(stocks)
+        
+        # stock_0: total_score 80 * 0.60 (48.0)
+        #          supply_normalized = 12 * (100 / 15) = 80 * 0.15 (12.0)
+        #          valuation_normalized = 16 * (100 / 20) = 80 * 0.15 (12.0)
+        #          fundamental_normalized = 12 * (100 / 15) = 80 * 0.10 (8.0)
+        #          합계 = 48.0 + 12.0 + 12.0 + 8.0 = 80.0
+        
+        # stock_1: total_score 80 * 0.60 (48.0)
+        #          supply_normalized = 15 * (100 / 15) = 100 * 0.15 (15.0)
+        #          valuation_normalized = 10 * (100 / 20) = 50 * 0.15 (7.5)
+        #          fundamental_normalized = 15 * (100 / 15) = 100 * 0.10 (10.0)
+        #          합계 = 48.0 + 15.0 + 7.5 + 10.0 = 80.5
+        
+        assert top2[0].symbol == "stock_1"
+        assert top2[1].symbol == "stock_0"
+
+    def test_select_final_top5_sector_cap(self, agent):
+        """섹터 편중 방지 제한 테스트"""
+        stocks = [
+            StockAnalysisResult(
+                symbol="stock_0", name="종목0", sector="반도체", group="test",
+                market_cap=1000, total_score=90, supply_score=15, fundamental_score=15,
+            ),
+            StockAnalysisResult(
+                symbol="stock_1", name="종목1", sector="반도체", group="test",
+                market_cap=1000, total_score=88, supply_score=15, fundamental_score=15,
+            ),
+            StockAnalysisResult(
+                symbol="stock_2", name="종목2", sector="반도체", group="test",
+                market_cap=1000, total_score=86, supply_score=15, fundamental_score=15,
+            ),
+            StockAnalysisResult(
+                symbol="stock_3", name="종목3", sector="바이오", group="test",
+                market_cap=1000, total_score=85, supply_score=15, fundamental_score=15,
+            ),
+            StockAnalysisResult(
+                symbol="stock_4", name="종목4", sector="조선", group="test",
+                market_cap=1000, total_score=84, supply_score=15, fundamental_score=15,
+            ),
+            StockAnalysisResult(
+                symbol="stock_5", name="종목5", sector="조선", group="test",
+                market_cap=1000, total_score=82, supply_score=15, fundamental_score=15,
+            ),
+        ]
+        
+        top5 = agent.select_final_top5(stocks)
+        
+        assert len(top5) == 5
+        selected_symbols = [s.symbol for s in top5]
+        # 반도체는 2개 제한이 있어 stock_2는 탈락함
+        assert "stock_2" not in selected_symbols
+        assert "stock_5" in selected_symbols
+

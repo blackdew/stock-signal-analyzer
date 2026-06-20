@@ -281,7 +281,10 @@ class LLMAnalyzer:
 
     def is_available(self) -> bool:
         """LLM 서비스 사용 가능 여부"""
-        return bool(self.api_key)
+        if self.api_key:
+            return True
+        import shutil
+        return bool(shutil.which("codex"))
 
     async def analyze(
         self,
@@ -537,6 +540,13 @@ class LLMAnalyzer:
 
     async def _call_llm(self, prompt: str) -> str:
         """LLM API 비동기 호출 (이벤트 루프 차단 완전 해소)"""
+        if not self.api_key:
+            import shutil
+            if shutil.which("codex"):
+                return await self._call_codex_async(prompt)
+            logger.error("Neither OpenAI API key nor codex command is available")
+            return "분석 데이터를 생성할 수 없습니다."
+
         try:
             response = await self.client.chat.completions.create(
                 model=self.model,
@@ -548,6 +558,55 @@ class LLMAnalyzer:
         except Exception as e:
             logger.error(f"LLM API call failed: {e}")
             return "분석 데이터를 생성할 수 없습니다."
+
+    async def _call_codex_async(self, prompt: str) -> str:
+        """Codex CLI 비동기 호출"""
+        import tempfile
+        import shutil
+        from pathlib import Path
+        
+        empty_dir = Path("/Users/sookbunlee/work/trading/.gemini/antigravity/empty_dir")
+        empty_dir.mkdir(parents=True, exist_ok=True)
+        
+        with tempfile.NamedTemporaryFile(dir=empty_dir, suffix=".txt", delete=False) as f_out:
+            out_path = f_out.name
+            
+        try:
+            cmd = [
+                "codex", "exec", prompt,
+                "--ephemeral",
+                "-o", out_path,
+                "-C", str(empty_dir)
+            ]
+            
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode == 0 and os.path.exists(out_path):
+                with open(out_path, "r", encoding="utf-8") as f:
+                    content = f.read().strip()
+                if content:
+                    return content
+            
+            err_msg = stderr.decode("utf-8", errors="ignore")
+            logger.error(f"Codex CLI call failed (code {process.returncode}): {err_msg}")
+            return "분석 데이터를 생성할 수 없습니다."
+            
+        except Exception as e:
+            logger.error(f"Codex CLI integration failed: {e}")
+            return "분석 데이터를 생성할 수 없습니다."
+        finally:
+            if os.path.exists(out_path):
+                try:
+                    os.unlink(out_path)
+                except Exception:
+                    pass
 
     def _fmt(self, value: Any, suffix: str = "") -> str:
         """값 포맷팅"""

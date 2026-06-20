@@ -60,3 +60,7 @@ src/web/static/
 # Frontend package-lock (use npm ci with package.json only)
 poc-web/package-lock.json
 
+# Gemini CLI and agent temporary files
+.gemini/
+
+

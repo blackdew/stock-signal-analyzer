@@ -246,7 +246,10 @@ class LLMScorer:
 
     def is_available(self) -> bool:
         """LLM 서비스 사용 가능 여부"""
-        return bool(self.api_key)
+        if self.api_key:
+            return True
+        import shutil
+        return bool(shutil.which("codex"))
 
     async def analyze_stock(self, data: StockDataBundle) -> LLMScoreResult:
         """
@@ -378,6 +381,12 @@ class LLMScorer:
 
     def _call_llm(self, prompt: str) -> str:
         """LLM API 호출"""
+        if not self.api_key:
+            import shutil
+            if shutil.which("codex"):
+                return self._call_codex_sync(prompt)
+            raise ValueError("Neither OpenAI API key nor codex command is available")
+
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -396,6 +405,58 @@ class LLMScorer:
         except Exception as e:
             logger.error(f"LLM API call failed: {e}")
             raise
+
+    def _call_codex_sync(self, prompt: str) -> str:
+        """Codex CLI 동기 호출"""
+        import tempfile
+        import subprocess
+        import os
+        from pathlib import Path
+        
+        empty_dir = Path("/Users/sookbunlee/work/trading/.gemini/antigravity/empty_dir")
+        empty_dir.mkdir(parents=True, exist_ok=True)
+        
+        with tempfile.NamedTemporaryFile(dir=empty_dir, suffix=".txt", delete=False) as f_out:
+            out_path = f_out.name
+            
+        try:
+            system_msg = "You are a Korean stock market analyst. Always respond with valid JSON only. No additional text or explanation."
+            combined_prompt = f"{system_msg}\n\n[User Request]\n{prompt}"
+            
+            cmd = [
+                "codex", "exec", combined_prompt,
+                "--ephemeral",
+                "-o", out_path,
+                "-C", str(empty_dir)
+            ]
+            
+            result = subprocess.run(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            if result.returncode == 0 and os.path.exists(out_path):
+                with open(out_path, "r", encoding="utf-8") as f:
+                    content = f.read().strip()
+                if content:
+                    return content
+            
+            err_msg = result.stderr or ""
+            logger.error(f"Codex CLI call failed (code {result.returncode}): {err_msg}")
+            raise RuntimeError(f"Codex CLI execution failed: {err_msg}")
+            
+        except Exception as e:
+            logger.error(f"Codex CLI integration failed: {e}")
+            raise
+        finally:
+            if os.path.exists(out_path):
+                try:
+                    os.unlink(out_path)
+                except Exception:
+                    pass
 
     def _parse_stock_response(self, response_text: str, symbol: str, name: str) -> LLMScoreResult:
         """LLM 응답을 파싱하여 LLMScoreResult로 변환 (V3 8대 루브릭)"""

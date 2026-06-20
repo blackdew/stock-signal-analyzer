@@ -258,14 +258,15 @@ class RankingAgent(BaseAgent):
         최종 Top 5를 선정합니다.
 
         선정 기준:
-        - 총점 (70% 가중치)
-        - 수급 점수 (15% 가중치)
-        - 성장성 점수 (15% 가중치)
+        - V3: 총점 60% + 수급 15% + 밸류에이션 15% + 성장성 10%
+        - V1/V2: 총점 70% + 수급 15% + 성장성 15%
 
         동점 처리:
         1. 수급 점수 높은 종목
-        2. 거래대금 (시가총액으로 대체)
-        3. 시가총액 높은 종목
+        2. 시가총액 높은 종목
+
+        섹터 제약:
+        - 동일 섹터 내 최대 2개 종목까지만 허용 (분산투자 가드)
 
         Args:
             all_selected: 선정된 종목 리스트
@@ -273,48 +274,67 @@ class RankingAgent(BaseAgent):
         Returns:
             Top 5 StockAnalysisResult 리스트
         """
+        # 루브릭 버전 판정 (V3 여부)
+        use_v3 = False
+        if hasattr(self.stock_analyzer, 'rubric_engine') and getattr(self.stock_analyzer.rubric_engine, 'use_v3', False):
+            use_v3 = True
+        elif all_selected and any(getattr(s, 'valuation_score', 0.0) > 0.0 or (s.rubric_result and s.rubric_result.valuation is not None) for s in all_selected):
+            use_v3 = True
+
         def final_score(stock: StockAnalysisResult) -> float:
-            """
-            최종 점수 계산
-            - 총점: 70%
-            - 수급: 15% (V3는 15점 만점, V2는 20점 만점, V1은 25점 만점 → 100점 환산)
-            - 성장성 (fundamental): 15% (V3는 15점 만점, V2는 20점 만점, V1은 25점 만점 → 100점 환산)
-            """
-            supply_max = 20.0
-            fundamental_max = 20.0
-            
-            if stock.rubric_result:
-                if stock.rubric_result.supply:
-                    supply_max = stock.rubric_result.supply.max_score
-                if stock.rubric_result.fundamental:
-                    fundamental_max = stock.rubric_result.fundamental.max_score
+            """최종 점수 계산 (V3 대응)"""
+            if use_v3:
+                valuation_max = 20.0
+                supply_max = 15.0
+                fundamental_max = 15.0
+                
+                if stock.rubric_result:
+                    if stock.rubric_result.valuation:
+                        valuation_max = stock.rubric_result.valuation.max_score
+                    if stock.rubric_result.supply:
+                        supply_max = stock.rubric_result.supply.max_score
+                    if stock.rubric_result.fundamental:
+                        fundamental_max = stock.rubric_result.fundamental.max_score
+                
+                valuation_val = getattr(stock, 'valuation_score', 0.0)
+                valuation_normalized = valuation_val * (100.0 / valuation_max) if valuation_max > 0 else valuation_val
+                supply_normalized = stock.supply_score * (100.0 / supply_max) if supply_max > 0 else stock.supply_score
+                fundamental_normalized = stock.fundamental_score * (100.0 / fundamental_max) if fundamental_max > 0 else stock.fundamental_score
+                
+                return (
+                    stock.total_score * 0.60 +
+                    supply_normalized * 0.15 +
+                    valuation_normalized * 0.15 +
+                    fundamental_normalized * 0.10
+                )
             else:
-                # rubric_result가 없는 경우 (LLMScorer 등)
-                if hasattr(self.stock_analyzer, 'rubric_engine') and self.stock_analyzer.rubric_engine.use_v3:
-                    supply_max = 15.0
-                    fundamental_max = 15.0
-                elif hasattr(self.stock_analyzer, 'rubric_engine') and self.stock_analyzer.rubric_engine.use_v2:
-                    supply_max = 20.0
-                    fundamental_max = 20.0
+                supply_max = 20.0
+                fundamental_max = 20.0
+                
+                if stock.rubric_result:
+                    if stock.rubric_result.supply:
+                        supply_max = stock.rubric_result.supply.max_score
+                    if stock.rubric_result.fundamental:
+                        fundamental_max = stock.rubric_result.fundamental.max_score
                 else:
-                    supply_max = 25.0
-                    fundamental_max = 25.0
-
-            supply_normalized = stock.supply_score * (100.0 / supply_max) if supply_max > 0 else stock.supply_score
-            fundamental_normalized = stock.fundamental_score * (100.0 / fundamental_max) if fundamental_max > 0 else stock.fundamental_score
-
-            return (
-                stock.total_score * 0.70 +
-                supply_normalized * 0.15 +
-                fundamental_normalized * 0.15
-            )
+                    if hasattr(self.stock_analyzer, 'rubric_engine') and getattr(self.stock_analyzer.rubric_engine, 'use_v2', False):
+                        supply_max = 20.0
+                        fundamental_max = 20.0
+                    else:
+                        supply_max = 25.0
+                        fundamental_max = 25.0
+                        
+                supply_normalized = stock.supply_score * (100.0 / supply_max) if supply_max > 0 else stock.supply_score
+                fundamental_normalized = stock.fundamental_score * (100.0 / fundamental_max) if fundamental_max > 0 else stock.fundamental_score
+                
+                return (
+                    stock.total_score * 0.70 +
+                    supply_normalized * 0.15 +
+                    fundamental_normalized * 0.15
+                )
 
         def tiebreaker(stock: StockAnalysisResult) -> tuple:
-            """
-            동점 시 우선순위:
-            1. 수급 점수 (높을수록 좋음)
-            2. 시가총액 (높을수록 좋음)
-            """
+            """동점 시 우선순위"""
             return (stock.supply_score, stock.market_cap)
 
         # 최종 점수 계산 및 정렬
@@ -326,7 +346,27 @@ class RankingAgent(BaseAgent):
         # 1차: 최종 점수 내림차순, 2차: 동점자 처리
         scored_stocks.sort(key=lambda x: (x[1], x[2]), reverse=True)
 
-        return [stock for stock, _, _ in scored_stocks[:5]]
+        # 섹터 편중 방지 가드: 동일 섹터당 최대 2개 종목만 허용
+        selected_stocks = []
+        sector_counts = {}
+
+        for stock, _, _ in scored_stocks:
+            sector = stock.sector or "Unknown"
+            if sector_counts.get(sector, 0) < 2:
+                selected_stocks.append(stock)
+                sector_counts[sector] = sector_counts.get(sector, 0) + 1
+                if len(selected_stocks) >= 5:
+                    break
+
+        # 만약 섹터 제약으로 인해 5개를 모두 채우지 못했다면, 제약을 해제하고 잔여석을 점수 순으로 보충
+        if len(selected_stocks) < 5:
+            for stock, _, _ in scored_stocks:
+                if stock not in selected_stocks:
+                    selected_stocks.append(stock)
+                    if len(selected_stocks) >= 5:
+                        break
+
+        return selected_stocks
 
     async def get_group_details(self) -> Dict[str, List[Dict[str, Any]]]:
         """
