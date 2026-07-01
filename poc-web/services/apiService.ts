@@ -697,7 +697,7 @@ export const pollAnalysisTask = async (
   taskId: string,
   onProgress?: (status: string, message?: string) => void,
   intervalMs: number = 2000,
-  timeoutMs: number = 1800000, // 30분 타임아웃 (GPT-5.2 모델 사용 시 더 오래 걸림)
+  timeoutMs: number = 7200000, // 2시간 타임아웃 (GPT-5.2 모델 사용 시 더 오래 걸림)
 ): Promise<AnalysisReport> => {
   const startTime = Date.now();
 

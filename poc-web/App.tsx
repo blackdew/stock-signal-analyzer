@@ -335,7 +335,7 @@ const App = () => {
                   }
                 },
                 3000,
-                1800000  // 30분 타임아웃
+                7200000  // 2시간 타임아웃
               );
               resolve(result);
             } catch (e: any) {
@@ -344,11 +344,11 @@ const App = () => {
           }
         );
 
-        // 30분 타임아웃
+        // 2시간 타임아웃
         fallbackTimeout = setTimeout(() => {
           if (unsubscribe) unsubscribe();
           reject(new Error("분석 시간이 초과되었습니다."));
-        }, 1800000);
+        }, 7200000);
       });
 
       // Step 4: 결과 로드 및 표시
